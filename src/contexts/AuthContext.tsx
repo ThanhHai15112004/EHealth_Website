@@ -92,16 +92,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const response = await authService.login({ email, password });
 
             if (response.success && response.data) {
-                setUser(response.data.user as User);
+                // Backend trả về: { access_token, refresh_token, account_id, role }
+                const userData: User = {
+                    id: response.data.account_id,
+                    email: email,
+                    fullName: email.split('@')[0],
+                    role: response.data.role.toLowerCase() as User['role'],
+                };
+                setUser(userData);
 
                 // Chuyển hướng dựa theo role
-                const redirectUrl = getRedirectUrl(response.data.user.role);
+                const redirectUrl = getRedirectUrl(userData.role);
                 router.push(redirectUrl);
 
                 return { success: true, message: 'Đăng nhập thành công!' };
             }
 
-            return { success: false, message: response.message };
+            return { success: false, message: response.message || 'Đăng nhập thất bại' };
         } catch (error: any) {
             return {
                 success: false,
@@ -141,15 +148,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
     // Helper: Lấy URL redirect theo role
     // ============================================
     const getRedirectUrl = (role: string): string => {
-        switch (role) {
+        switch (role.toLowerCase()) {
             case 'admin':
                 return '/admin';
             case 'doctor':
                 return '/portal/doctor';
             case 'pharmacist':
                 return '/portal/pharmacist';
+            case 'receptionist':
+                return '/portal/receptionist';
             default:
-                return '/';
+                return '/login';
         }
     };
 

@@ -1,21 +1,18 @@
 "use client";
 
 import { useState } from "react";
+import {
+    TopDiseasesChart,
+    GenderDistribution,
+    HourlyVisitsChart,
+} from "@/components/admin/dashboard";
 
 // Mock data
 const MONTHLY_REVENUE = [
-    { month: "T1", value: 450 },
-    { month: "T2", value: 520 },
-    { month: "T3", value: 480 },
-    { month: "T4", value: 610 },
-    { month: "T5", value: 580 },
-    { month: "T6", value: 720 },
-    { month: "T7", value: 680 },
-    { month: "T8", value: 850 },
-    { month: "T9", value: 780 },
-    { month: "T10", value: 920 },
-    { month: "T11", value: 880 },
-    { month: "T12", value: 1050 },
+    { month: "T1", value: 450 }, { month: "T2", value: 520 }, { month: "T3", value: 480 },
+    { month: "T4", value: 610 }, { month: "T5", value: 580 }, { month: "T6", value: 720 },
+    { month: "T7", value: 680 }, { month: "T8", value: 850 }, { month: "T9", value: 780 },
+    { month: "T10", value: 920 }, { month: "T11", value: 880 }, { month: "T12", value: 1050 },
 ];
 
 const DEPARTMENT_STATS = [
@@ -137,6 +134,13 @@ export default function StatisticsPage() {
                         Ổn định
                     </div>
                 </div>
+            </div>
+
+            {/* Phân tích chi tiết: Top bệnh lý + Giới tính + Lượt khám/giờ */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <TopDiseasesChart />
+                <GenderDistribution />
+                <HourlyVisitsChart />
             </div>
 
             {/* Charts Row */}

@@ -10,14 +10,19 @@
 // Các API liên quan đến xác thực
 // ============================================
 export const AUTH_ENDPOINTS = {
-    LOGIN: '/api/auth/login',
-    REGISTER: '/api/auth/register',
+    LOGIN_EMAIL: '/api/auth/login/email',
+    LOGIN_PHONE: '/api/auth/login/phone',
+    REGISTER_EMAIL: '/api/auth/register/email',
+    REGISTER_PHONE: '/api/auth/register/phone',
     LOGOUT: '/api/auth/logout',
     REFRESH_TOKEN: '/api/auth/refresh-token',
     FORGOT_PASSWORD: '/api/auth/forgot-password',
     RESET_PASSWORD: '/api/auth/reset-password',
     VERIFY_EMAIL: '/api/auth/verify-email',
-    GOOGLE_LOGIN: '/api/auth/google',
+    UNLOCK_ACCOUNT: '/api/auth/unlock-account',
+    SESSIONS: '/api/auth/sessions',
+    SESSIONS_LOGOUT_ALL: '/api/auth/sessions/logout-all',
+    SESSION_DELETE: (sessionId: string) => `/api/auth/sessions/${sessionId}`,
 };
 
 // ============================================
@@ -57,7 +62,18 @@ export const PATIENT_ENDPOINTS = {
     DETAIL: (id: string) => `/api/patients/${id}`,
     CREATE: '/api/patients',
     UPDATE: (id: string) => `/api/patients/${id}`,
-    DELETE: (id: string) => `/api/patients/${id}`,
+    STATUS: (id: string) => `/api/patients/${id}/status`,
+    LINK: '/api/patients/link',
+    // Contact
+    UPDATE_CONTACT: (patientId: string) => `/api/patients/${patientId}/contact`,
+    ADD_CONTACT: (patientId: string) => `/api/patients/${patientId}/contacts`,
+    EDIT_CONTACT: (patientId: string, contactId: string) => `/api/patients/${patientId}/contacts/${contactId}`,
+    DELETE_CONTACT: (patientId: string, contactId: string) => `/api/patients/${patientId}/contacts/${contactId}`,
+    // Relations
+    ADD_RELATION: (patientId: string) => `/api/patients/${patientId}/relations`,
+    EDIT_RELATION: (patientId: string, relationId: string) => `/api/patients/${patientId}/relations/${relationId}`,
+    DELETE_RELATION: (patientId: string, relationId: string) => `/api/patients/${patientId}/relations/${relationId}`,
+    // Legacy (for other modules still using these)
     MEDICAL_RECORDS: (patientId: string) => `/api/patients/${patientId}/medical-records`,
     PRESCRIPTIONS: (patientId: string) => `/api/patients/${patientId}/prescriptions`,
 };
@@ -150,3 +166,98 @@ export const NOTIFICATION_ENDPOINTS = {
     MARK_ALL_READ: '/api/notifications/read-all',
     DELETE: (id: string) => `/api/notifications/${id}`,
 };
+
+// ============================================
+// EMR Endpoints
+// Các API liên quan đến hồ sơ bệnh án điện tử
+// ============================================
+export const EMR_ENDPOINTS = {
+    LIST: '/api/emr',
+    DETAIL: (id: string) => `/api/emr/${id}`,
+    CREATE: '/api/emr',
+    UPDATE: (id: string) => `/api/emr/${id}`,
+    SIGN: (id: string) => `/api/emr/${id}/sign`,
+    LOCK: (id: string) => `/api/emr/${id}/lock`,
+    SAVE_DRAFT: (id: string) => `/api/emr/${id}/draft`,
+    BY_PATIENT: (patientId: string) => `/api/emr/patient/${patientId}`,
+    VITAL_SIGNS: (emrId: string) => `/api/emr/${emrId}/vital-signs`,
+    DIAGNOSES: (emrId: string) => `/api/emr/${emrId}/diagnoses`,
+};
+
+// ============================================
+// Document Endpoints
+// Các API liên quan đến tài liệu bệnh nhân
+// ============================================
+export const DOCUMENT_ENDPOINTS = {
+    LIST: (patientId: string) => `/api/patients/${patientId}/documents`,
+    UPLOAD: (patientId: string) => `/api/patients/${patientId}/documents`,
+    DETAIL: (patientId: string, docId: string) => `/api/patients/${patientId}/documents/${docId}`,
+    DELETE: (patientId: string, docId: string) => `/api/patients/${patientId}/documents/${docId}`,
+    VERSIONS: (patientId: string, docId: string) => `/api/patients/${patientId}/documents/${docId}/versions`,
+};
+
+// ============================================
+// Billing Endpoints
+// Các API liên quan đến thanh toán
+// ============================================
+export const BILLING_ENDPOINTS = {
+    LIST: '/api/billing/invoices',
+    DETAIL: (id: string) => `/api/billing/invoices/${id}`,
+    CREATE: '/api/billing/invoices',
+    PAY: (id: string) => `/api/billing/invoices/${id}/pay`,
+    REFUND: (id: string) => `/api/billing/invoices/${id}/refund`,
+    SERVICES: '/api/billing/services',
+    RECONCILIATION: '/api/billing/reconciliation',
+    TRANSACTIONS: '/api/billing/transactions',
+};
+
+// ============================================
+// AI Endpoints
+// Các API liên quan đến AI
+// ============================================
+export const AI_ENDPOINTS = {
+    CHAT: '/api/ai/chat',
+    SYMPTOM_CHECK: '/api/ai/symptom-check',
+    SUGGEST_APPOINTMENT: '/api/ai/suggest-appointment',
+    SUMMARIZE_RECORD: (recordId: string) => `/api/ai/summarize/${recordId}`,
+    ANALYZE: '/api/ai/analyze',
+    LOGS: '/api/ai/logs',
+};
+
+// ============================================
+// Telemedicine Endpoints
+// Các API liên quan đến khám từ xa
+// ============================================
+export const TELEMEDICINE_ENDPOINTS = {
+    LIST: '/api/telemedicine/sessions',
+    DETAIL: (id: string) => `/api/telemedicine/sessions/${id}`,
+    CREATE: '/api/telemedicine/sessions',
+    START: (id: string) => `/api/telemedicine/sessions/${id}/start`,
+    END: (id: string) => `/api/telemedicine/sessions/${id}/end`,
+    CHAT: (sessionId: string) => `/api/telemedicine/sessions/${sessionId}/chat`,
+    SHARE_DOCUMENT: (sessionId: string) => `/api/telemedicine/sessions/${sessionId}/documents`,
+};
+
+// ============================================
+// Permission Endpoints
+// Các API liên quan đến quyền hạn
+// ============================================
+export const PERMISSION_ENDPOINTS = {
+    ROLES: '/api/roles',
+    ROLE_DETAIL: (id: string) => `/api/roles/${id}`,
+    PERMISSIONS: '/api/permissions',
+    ASSIGN_PERMISSIONS: (roleId: string) => `/api/roles/${roleId}/permissions`,
+};
+
+// ============================================
+// EHR Endpoints
+// Các API liên quan đến hồ sơ sức khỏe điện tử
+// ============================================
+export const EHR_ENDPOINTS = {
+    SUMMARY: (patientId: string) => `/api/ehr/${patientId}/summary`,
+    VITAL_HISTORY: (patientId: string) => `/api/ehr/${patientId}/vitals`,
+    TREATMENT_HISTORY: (patientId: string) => `/api/ehr/${patientId}/treatments`,
+    TIMELINE: (patientId: string) => `/api/ehr/${patientId}/timeline`,
+    MEDICAL_HISTORY: (patientId: string) => `/api/ehr/${patientId}/history`,
+};
+

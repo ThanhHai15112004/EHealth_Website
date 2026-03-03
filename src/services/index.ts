@@ -17,3 +17,9 @@ export * from './medicineService';
 
 // Departments
 export * from './departmentService';
+
+// Permissions & Roles
+export * from './permissionService';
+
+// Patients
+export * from './patientService';

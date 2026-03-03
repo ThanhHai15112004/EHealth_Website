@@ -1,12 +1,8 @@
 /**
  * Authentication Service
- * Xử lý các chức năng đăng nhập, đăng ký, đăng xuất
- * 
- * @description
- * - Đăng nhập / Đăng ký
- * - Quên mật khẩu / Đặt lại mật khẩu
- * - Đăng nhập Google
- * - Quản lý token
+ * Xử lý đăng nhập, đăng ký, đăng xuất — theo đúng Swagger API Backend
+ *
+ * Backend: http://160.250.186.97:3000/api-docs
  */
 
 import axiosClient from '@/api/axiosClient';
@@ -14,51 +10,74 @@ import { AUTH_ENDPOINTS } from '@/api/endpoints';
 import { AUTH_CONFIG } from '@/config';
 
 // ============================================
-// Types
+// Types — theo đúng schema backend
 // ============================================
 
 export interface LoginCredentials {
     email: string;
     password: string;
+    clientInfo?: {
+        deviceId?: string;
+        deviceName?: string;
+        userAgent?: string;
+    };
+}
+
+export interface LoginPhoneCredentials {
+    phone: string;
+    password: string;
+    clientInfo?: {
+        deviceId?: string;
+        deviceName?: string;
+    };
 }
 
 export interface RegisterData {
-    fullName: string;
+    name: string;
     email: string;
     password: string;
-    phoneNumber?: string;
 }
 
+export interface RegisterPhoneData {
+    name: string;
+    phone: string;
+    password: string;
+}
+
+// Backend trả về: { success, data: { access_token, refresh_token, account_id, role } }
 export interface AuthResponse {
     success: boolean;
-    message: string;
+    message?: string;
     data?: {
-        user: {
-            id: string;
-            email: string;
-            fullName: string;
-            role: string;
-            avatar?: string;
-        };
-        accessToken: string;
-        refreshToken: string;
+        access_token: string;
+        refresh_token: string;
+        account_id: string;
+        role: string;
     };
 }
 
 // ============================================
-// Đăng nhập
+// Đăng nhập bằng Email
 // ============================================
 export const login = async (credentials: LoginCredentials): Promise<AuthResponse> => {
     try {
-        const response = await axiosClient.post(AUTH_ENDPOINTS.LOGIN, credentials);
+        const response = await axiosClient.post(AUTH_ENDPOINTS.LOGIN_EMAIL, {
+            email: credentials.email,
+            password: credentials.password,
+            clientInfo: credentials.clientInfo,
+        });
 
-        // Lưu token vào localStorage nếu đăng nhập thành công
         if (response.data.success && response.data.data) {
-            const { accessToken, refreshToken, user } = response.data.data;
+            const { access_token, refresh_token, account_id, role } = response.data.data;
 
-            localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, accessToken);
-            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
-            localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(user));
+            localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, access_token);
+            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refresh_token);
+            localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify({
+                id: account_id,
+                email: credentials.email,
+                fullName: credentials.email.split('@')[0], // Backend chưa trả fullName
+                role: role.toLowerCase(),
+            }));
         }
 
         return response.data;
@@ -71,18 +90,68 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
 };
 
 // ============================================
-// Đăng ký tài khoản
+// Đăng nhập bằng SĐT
 // ============================================
-export const register = async (data: RegisterData): Promise<AuthResponse> => {
+export const loginByPhone = async (credentials: LoginPhoneCredentials): Promise<AuthResponse> => {
     try {
-        const response = await axiosClient.post(AUTH_ENDPOINTS.REGISTER, {
-            full_name: data.fullName,
-            email: data.email,
-            password: data.password,
-            phone_number: data.phoneNumber,
+        const response = await axiosClient.post(AUTH_ENDPOINTS.LOGIN_PHONE, {
+            phone: credentials.phone,
+            password: credentials.password,
+            clientInfo: credentials.clientInfo,
         });
 
+        if (response.data.success && response.data.data) {
+            const { access_token, refresh_token, account_id, role } = response.data.data;
+
+            localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, access_token);
+            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refresh_token);
+            localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify({
+                id: account_id,
+                phone: credentials.phone,
+                fullName: credentials.phone,
+                role: role.toLowerCase(),
+            }));
+        }
+
         return response.data;
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Đăng nhập thất bại',
+        };
+    }
+};
+
+// ============================================
+// Đăng ký bằng Email
+// ============================================
+export const register = async (data: RegisterData): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.post(AUTH_ENDPOINTS.REGISTER_EMAIL, {
+            email: data.email,
+            password: data.password,
+            name: data.name,
+        });
+        return { success: true, message: response.data?.message || 'Đăng ký thành công' };
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Đăng ký thất bại',
+        };
+    }
+};
+
+// ============================================
+// Đăng ký bằng SĐT
+// ============================================
+export const registerByPhone = async (data: RegisterPhoneData): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.post(AUTH_ENDPOINTS.REGISTER_PHONE, {
+            phone: data.phone,
+            password: data.password,
+            name: data.name,
+        });
+        return { success: true, message: response.data?.message || 'Đăng ký thành công' };
     } catch (error: any) {
         return {
             success: false,
@@ -97,17 +166,30 @@ export const register = async (data: RegisterData): Promise<AuthResponse> => {
 export const logout = async (): Promise<void> => {
     try {
         const refreshToken = localStorage.getItem(AUTH_CONFIG.REFRESH_TOKEN_KEY);
-
         if (refreshToken) {
-            await axiosClient.post(AUTH_ENDPOINTS.LOGOUT, { refresh_token: refreshToken });
+            await axiosClient.post(AUTH_ENDPOINTS.LOGOUT, { refreshToken });
         }
     } catch (error) {
         console.error('Lỗi khi đăng xuất:', error);
     } finally {
-        // Xóa tất cả dữ liệu auth khỏi localStorage
         localStorage.removeItem(AUTH_CONFIG.ACCESS_TOKEN_KEY);
         localStorage.removeItem(AUTH_CONFIG.REFRESH_TOKEN_KEY);
         localStorage.removeItem(AUTH_CONFIG.USER_KEY);
+    }
+};
+
+// ============================================
+// Xác thực Email (OTP)
+// ============================================
+export const verifyEmail = async (email: string, code: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.post(AUTH_ENDPOINTS.VERIFY_EMAIL, { email, code });
+        return { success: true, message: response.data?.message || 'Xác thực thành công' };
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Mã xác thực không đúng hoặc hết hạn',
+        };
     }
 };
 
@@ -117,7 +199,7 @@ export const logout = async (): Promise<void> => {
 export const forgotPassword = async (email: string): Promise<{ success: boolean; message: string }> => {
     try {
         const response = await axiosClient.post(AUTH_ENDPOINTS.FORGOT_PASSWORD, { email });
-        return response.data;
+        return { success: true, message: response.data?.message || 'Email đặt lại mật khẩu đã được gửi' };
     } catch (error: any) {
         return {
             success: false,
@@ -129,16 +211,10 @@ export const forgotPassword = async (email: string): Promise<{ success: boolean;
 // ============================================
 // Đặt lại mật khẩu
 // ============================================
-export const resetPassword = async (
-    token: string,
-    newPassword: string
-): Promise<{ success: boolean; message: string }> => {
+export const resetPassword = async (token: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
     try {
-        const response = await axiosClient.post(AUTH_ENDPOINTS.RESET_PASSWORD, {
-            token,
-            new_password: newPassword,
-        });
-        return response.data;
+        const response = await axiosClient.post(AUTH_ENDPOINTS.RESET_PASSWORD, { token, newPassword });
+        return { success: true, message: response.data?.message || 'Đặt lại mật khẩu thành công' };
     } catch (error: any) {
         return {
             success: false,
@@ -148,42 +224,61 @@ export const resetPassword = async (
 };
 
 // ============================================
-// Đăng nhập bằng Google
+// Mở khóa tài khoản
 // ============================================
-export const googleLogin = async (idToken: string): Promise<AuthResponse> => {
+export const unlockAccount = async (email: string): Promise<{ success: boolean; message?: string }> => {
     try {
-        const response = await axiosClient.post(AUTH_ENDPOINTS.GOOGLE_LOGIN, { id_token: idToken });
-
-        // Lưu token nếu thành công
-        if (response.data.success && response.data.data) {
-            const { accessToken, refreshToken, user } = response.data.data;
-
-            localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, accessToken);
-            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
-            localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(user));
-        }
-
-        return response.data;
+        const response = await axiosClient.post(AUTH_ENDPOINTS.UNLOCK_ACCOUNT, { email });
+        return { success: true, message: response.data?.message };
     } catch (error: any) {
         return {
             success: false,
-            message: error.response?.data?.message || 'Đăng nhập Google thất bại',
+            message: error.response?.data?.message || 'Mở khóa thất bại',
         };
     }
 };
 
 // ============================================
-// Lấy thông tin user từ localStorage
+// Session Management
+// ============================================
+export const getSessions = async () => {
+    try {
+        const response = await axiosClient.get(AUTH_ENDPOINTS.SESSIONS);
+        return response.data;
+    } catch (error: any) {
+        return { success: false, sessions: [] };
+    }
+};
+
+export const logoutAllSessions = async () => {
+    try {
+        await axiosClient.post(AUTH_ENDPOINTS.SESSIONS_LOGOUT_ALL);
+        return { success: true };
+    } catch (error: any) {
+        return { success: false };
+    }
+};
+
+export const deleteSession = async (sessionId: string) => {
+    try {
+        await axiosClient.delete(AUTH_ENDPOINTS.SESSION_DELETE(sessionId));
+        return { success: true };
+    } catch (error: any) {
+        return { success: false };
+    }
+};
+
+// ============================================
+// Helpers
 // ============================================
 export const getCurrentUser = () => {
+    if (typeof window === 'undefined') return null;
     const userStr = localStorage.getItem(AUTH_CONFIG.USER_KEY);
     return userStr ? JSON.parse(userStr) : null;
 };
 
-// ============================================
-// Kiểm tra đã đăng nhập chưa
-// ============================================
 export const isAuthenticated = (): boolean => {
+    if (typeof window === 'undefined') return false;
     const token = localStorage.getItem(AUTH_CONFIG.ACCESS_TOKEN_KEY);
     return !!token;
 };

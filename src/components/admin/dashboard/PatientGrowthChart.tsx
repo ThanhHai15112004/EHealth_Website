@@ -4,76 +4,37 @@ import Link from "next/link";
 import { ROUTES } from "@/constants/routes";
 import { UI_TEXT } from "@/constants/ui-text";
 
-// Types
 interface PatientGrowthData {
     month: string;
     value: number;
 }
 
-interface PatientGrowthChartProps {
-    data: PatientGrowthData[];
-    highlightIndex?: number;
-}
+export function PatientGrowthChart({ data, highlightIndex = 7 }: { data: PatientGrowthData[]; highlightIndex?: number }) {
+    const maxVal = Math.max(...data.map((d) => d.value));
+    const total = data.reduce((s, d) => s + d.value, 0);
 
-// Chart Bar Component
-function ChartBar({
-    item,
-    index,
-    isHighlighted
-}: {
-    item: PatientGrowthData;
-    index: number;
-    isHighlighted: boolean;
-}) {
     return (
-        <div className="group relative flex-1 flex flex-col items-center gap-2 h-full justify-end">
-            <div
-                className={`w-full ${isHighlighted
-                        ? "bg-[#3C81C6] shadow-lg shadow-blue-200 dark:shadow-none"
-                        : "bg-[#3C81C6]/10 group-hover:bg-[#3C81C6]/20"
-                    } rounded-t-sm relative transition-all duration-300`}
-                style={{ height: `${item.value}%` }}
-            >
-                {isHighlighted && (
-                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-[#1e242b] text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                        2,450
-                    </div>
-                )}
-            </div>
-            <span className={`text-xs ${isHighlighted ? "font-bold text-[#3C81C6]" : "text-gray-400"}`}>
-                {item.month}
-            </span>
-        </div>
-    );
-}
-
-// Time Period Selector
-function TimePeriodSelector() {
-    return (
-        <select className="text-sm border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 text-[#687582] dark:text-gray-300 focus:ring-[#3C81C6] focus:border-[#3C81C6] px-3 py-1.5">
-            <option>12 tháng qua</option>
-            <option>6 tháng qua</option>
-            <option>Tháng này</option>
-        </select>
-    );
-}
-
-// Main Component
-export function PatientGrowthChart({ data, highlightIndex = 7 }: PatientGrowthChartProps) {
-    return (
-        <div className="lg:col-span-2 bg-white dark:bg-[#1e242b] p-6 rounded-2xl border border-[#dde0e4] dark:border-[#2d353e] shadow-sm">
+        <div className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#dde0e4] dark:border-[#2d353e] shadow-sm flex flex-col">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-                <div>
-                    <h3 className="text-lg font-bold text-[#121417] dark:text-white">
-                        {UI_TEXT.ADMIN.DASHBOARD.PATIENT_GROWTH}
-                    </h3>
-                    <p className="text-xs text-[#687582] dark:text-gray-400">
-                        Thống kê lượng bệnh nhân mới trong năm 2024
-                    </p>
+            <div className="px-4 py-2.5 border-b border-[#f0f1f3] dark:border-[#2d353e] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                    <div className="p-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <span className="material-symbols-outlined text-blue-600 text-[20px]">monitoring</span>
+                    </div>
+                    <div>
+                        <h3 className="text-sm font-bold text-[#121417] dark:text-white">
+                            {UI_TEXT.ADMIN.DASHBOARD.PATIENT_GROWTH}
+                        </h3>
+                        <p className="text-xs text-[#687582] dark:text-gray-500">
+                            Lượng bệnh nhân mới theo tháng — Tổng: <b className="text-[#121417] dark:text-white">{total.toLocaleString("vi-VN")}</b>
+                        </p>
+                    </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    <TimePeriodSelector />
+                    <select className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-[#13191f] text-[#687582] dark:text-gray-300 focus:ring-[#3C81C6] focus:border-[#3C81C6] px-2.5 py-1.5">
+                        <option>2024</option>
+                        <option>2023</option>
+                    </select>
                     <Link
                         href={ROUTES.ADMIN.STATISTICS}
                         className="text-xs text-[#3C81C6] hover:underline font-medium"
@@ -84,15 +45,62 @@ export function PatientGrowthChart({ data, highlightIndex = 7 }: PatientGrowthCh
             </div>
 
             {/* Chart */}
-            <div className="h-64 w-full flex items-end justify-between gap-2 sm:gap-4 mt-8 px-2">
-                {data.map((item, index) => (
-                    <ChartBar
-                        key={item.month}
-                        item={item}
-                        index={index}
-                        isHighlighted={index === highlightIndex}
-                    />
-                ))}
+            <div className="flex-1 px-4 pb-3 pt-3">
+                {/* Grid lines */}
+                <div className="relative h-36">
+                    {/* Y-axis reference lines */}
+                    {[0, 25, 50, 75, 100].map((pct) => (
+                        <div
+                            key={pct}
+                            className="absolute left-0 right-0 border-t border-dashed border-gray-100 dark:border-gray-800"
+                            style={{ bottom: `${pct}%` }}
+                        >
+                            {pct > 0 && (
+                                <span className="absolute -top-2.5 -left-0 text-[9px] text-[#687582] dark:text-gray-600">
+                                    {Math.round((pct / 100) * maxVal)}
+                                </span>
+                            )}
+                        </div>
+                    ))}
+
+                    {/* Bars */}
+                    <div className="absolute inset-0 flex items-end gap-2 pl-6">
+                        {data.map((item, index) => {
+                            const pct = (item.value / maxVal) * 100;
+                            const isHighlighted = index === highlightIndex;
+                            return (
+                                <div key={item.month} className="group relative flex-1 flex flex-col items-center gap-2 h-full justify-end">
+                                    {/* Tooltip */}
+                                    <div className="absolute -top-7 left-1/2 -translate-x-1/2 bg-[#1e242b] dark:bg-white text-white dark:text-[#1e242b] text-[10px] py-0.5 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10 font-medium">
+                                        {item.value.toLocaleString()} BN
+                                    </div>
+                                    <div
+                                        className={`w-full rounded-t-[3px] relative transition-all duration-300 ${isHighlighted
+                                            ? "bg-gradient-to-t from-[#3C81C6] to-[#60a5fa] shadow-sm shadow-blue-200 dark:shadow-none"
+                                            : "bg-[#3C81C6]/12 group-hover:bg-[#3C81C6]/25"
+                                            }`}
+                                        style={{ height: `${Math.max(pct, 4)}%` }}
+                                    />
+                                    <span className={`text-[10px] ${isHighlighted ? "font-bold text-[#3C81C6]" : "text-[#687582] dark:text-gray-500"}`}>
+                                        {item.month}
+                                    </span>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                {/* Legend */}
+                <div className="flex items-center gap-4 mt-2 pt-2 border-t border-[#f0f1f3] dark:border-[#2d353e]">
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-sm bg-gradient-to-t from-[#3C81C6] to-[#60a5fa]" />
+                        <span className="text-[11px] text-[#687582] dark:text-gray-500">Cao nhất</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="w-2.5 h-2.5 rounded-sm bg-[#3C81C6]/15" />
+                        <span className="text-[11px] text-[#687582] dark:text-gray-500">Bệnh nhân mới</span>
+                    </div>
+                </div>
             </div>
         </div>
     );

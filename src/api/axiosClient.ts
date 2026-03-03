@@ -71,17 +71,18 @@ axiosClient.interceptors.response.use(
                         { refresh_token: refreshToken }
                     );
 
-                    const { access_token, refresh_token: newRefreshToken } = response.data;
+                    const newAccessToken = response.data?.data?.access_token;
 
-                    // Lưu token mới
-                    localStorage.setItem('accessToken', access_token);
-                    localStorage.setItem('refreshToken', newRefreshToken);
+                    if (newAccessToken) {
+                        // Lưu token mới
+                        localStorage.setItem('accessToken', newAccessToken);
 
-                    // Thử lại request ban đầu với token mới
-                    if (originalRequest.headers) {
-                        originalRequest.headers.Authorization = `Bearer ${access_token}`;
+                        // Thử lại request ban đầu với token mới
+                        if (originalRequest.headers) {
+                            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                        }
+                        return axiosClient(originalRequest);
                     }
-                    return axiosClient(originalRequest);
                 }
             } catch (refreshError) {
                 // Refresh token thất bại - Đăng xuất user

@@ -235,8 +235,8 @@ export default function QueuePage() {
                                         key={status}
                                         onClick={() => setStatusFilter(status)}
                                         className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${statusFilter === status
-                                                ? "bg-[#3C81C6] text-white"
-                                                : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                                            ? "bg-[#3C81C6] text-white"
+                                            : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
                                             }`}
                                     >
                                         {status === "all"
@@ -264,7 +264,7 @@ export default function QueuePage() {
                                         Thông tin bệnh nhân
                                     </th>
                                     <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">
-                                        Check-in
+                                        Tiếp nhận
                                     </th>
                                     <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">
                                         Lý do khám
@@ -301,8 +301,8 @@ export default function QueuePage() {
                                                 <td className="py-4 px-6">
                                                     <span
                                                         className={`inline-flex items-center justify-center size-8 rounded-full text-sm font-bold ${patient.status === "examining"
-                                                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                                                                : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                                                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                                            : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
                                                             }`}
                                                     >
                                                         {patient.queueNumber}

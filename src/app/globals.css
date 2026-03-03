@@ -91,3 +91,11 @@ body {
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #64748b;
 }
+
+/* ============================================
+   ECG Line Animation
+   ============================================ */
+.animate-ecg-line {
+  stroke-dasharray: 2400;
+  stroke-dashoffset: 2400;
+}

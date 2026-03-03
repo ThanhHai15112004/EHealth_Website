@@ -1,416 +1,145 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { UI_TEXT } from "@/constants/ui-text";
-import { MOCK_PATIENT_RECORDS } from "@/lib/mock-data/doctor";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-type FilterTab = "all" | "recent" | "inpatient" | "starred";
+const MOCK_TIMELINE = [
+    { id: 1, date: "20/02/2025", type: "visit", title: "Khám Tim mạch", doctor: "BS. Trần Văn Minh", department: "Tim mạch", details: "Tăng huyết áp - I10. Điều chỉnh liều thuốc.", vitalSigns: { bp: "140/90", hr: "78" } },
+    { id: 2, date: "20/02/2025", type: "lab", title: "Xét nghiệm máu", details: "Glucose: 7.2 mmol/L (cao), HbA1c: 6.8%, Cholesterol: 5.5 mmol/L" },
+    { id: 3, date: "15/01/2025", type: "visit", title: "Khám Nội tiết", doctor: "BS. Lê Thị Hoa", department: "Nội tiết", details: "Tiểu đường type 2, kiểm soát tốt", vitalSigns: { bp: "130/85", hr: "72" } },
+    { id: 4, date: "15/01/2025", type: "prescription", title: "Đơn thuốc #DT002", details: "Metformin 500mg (2 viên/ngày), Glimepiride 2mg (1 viên/ngày)" },
+    { id: 5, date: "10/12/2024", type: "visit", title: "Kiểm tra định kỳ", doctor: "BS. Trần Văn Minh", department: "Tim mạch", details: "Huyết áp ổn định. Duy trì phác đồ hiện tại.", vitalSigns: { bp: "125/80", hr: "70" } },
+    { id: 6, date: "10/12/2024", type: "imaging", title: "X-quang ngực", details: "Bóng tim bình thường, phổi sạch, không thấy bất thường." },
+    { id: 7, date: "05/11/2024", type: "visit", title: "Khám Nội tổng quát", doctor: "BS. Phạm Chí Thanh", department: "Nội tổng quát", details: "Viêm dạ dày - K29. Kê thuốc điều trị 14 ngày." },
+    { id: 8, date: "05/11/2024", type: "prescription", title: "Đơn thuốc #DT003", details: "Omeprazole 20mg (1 viên/sáng trước ăn), Sucralfate 1g (3 viên/ngày)" },
+];
+
+const typeConfig: Record<string, { icon: string; color: string; label: string }> = {
+    visit: { icon: "stethoscope", color: "bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400", label: "Lượt khám" },
+    lab: { icon: "science", color: "bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400", label: "Xét nghiệm" },
+    prescription: { icon: "medication", color: "bg-teal-100 text-teal-600 dark:bg-teal-900/20 dark:text-teal-400", label: "Đơn thuốc" },
+    imaging: { icon: "radiology", color: "bg-orange-100 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400", label: "Hình ảnh" },
+};
 
 export default function MedicalRecordsPage() {
-    const [patients] = useState(MOCK_PATIENT_RECORDS);
-    const [selectedPatient, setSelectedPatient] = useState(patients[0] || null);
-    const [searchQuery, setSearchQuery] = useState("");
-    const [activeTab, setActiveTab] = useState<FilterTab>("all");
+    const router = useRouter();
+    const [filterType, setFilterType] = useState("all");
 
-    const filteredPatients = useMemo(() => {
-        return patients.filter((patient) => {
-            const matchesSearch =
-                searchQuery === "" ||
-                patient.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                patient.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                patient.phone.includes(searchQuery);
-            return matchesSearch;
-        });
-    }, [patients, searchQuery]);
+    const filtered = MOCK_TIMELINE.filter((item) => filterType === "all" || item.type === filterType);
 
-    const tabs: { key: FilterTab; label: string; icon: string }[] = [
-        { key: "all", label: UI_TEXT.DOCTOR.MEDICAL_RECORDS.ALL, icon: "folder" },
-        { key: "recent", label: UI_TEXT.DOCTOR.MEDICAL_RECORDS.RECENT, icon: "schedule" },
-        { key: "inpatient", label: UI_TEXT.DOCTOR.MEDICAL_RECORDS.INPATIENT, icon: "bed" },
-        { key: "starred", label: UI_TEXT.DOCTOR.MEDICAL_RECORDS.STARRED, icon: "star" },
-    ];
+    // Group by date
+    const grouped = filtered.reduce((acc, item) => {
+        if (!acc[item.date]) acc[item.date] = [];
+        acc[item.date].push(item);
+        return acc;
+    }, {} as Record<string, typeof MOCK_TIMELINE>);
 
     return (
-        <div className="flex h-full overflow-hidden">
-            {/* Patient List Sidebar */}
-            <aside className="w-80 bg-white dark:bg-[#1e242b] border-r border-[#e5e7eb] dark:border-[#2d353e] flex flex-col shrink-0">
-                <div className="p-4 border-b border-[#e5e7eb] dark:border-[#2d353e]">
-                    <h3 className="text-sm font-bold text-[#121417] dark:text-white mb-3">
-                        {UI_TEXT.DOCTOR.MEDICAL_RECORDS.PATIENT_LIST}
-                    </h3>
-                    <div className="relative">
-                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-[#687582]">
-                            <span className="material-symbols-outlined text-[20px]">search</span>
-                        </span>
-                        <input
-                            type="text"
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full py-2.5 pl-10 pr-4 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 focus:border-[#3C81C6] dark:text-white placeholder:text-gray-400"
-                            placeholder={UI_TEXT.DOCTOR.MEDICAL_RECORDS.SEARCH_PLACEHOLDER}
-                        />
-                    </div>
+        <div className="p-6 md:p-8"><div className="max-w-5xl mx-auto space-y-6">
+            {/* Header */}
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Hồ sơ sức khỏe điện tử (EHR)</h1>
+                    <p className="text-sm text-[#687582] mt-1">Lộ trình sức khỏe — Nguyễn Văn An (BN001)</p>
                 </div>
+            </div>
 
-                {/* Filter Tabs */}
-                <div className="px-4 py-2 border-b border-[#e5e7eb] dark:border-[#2d353e] flex gap-1 overflow-x-auto">
-                    {tabs.map((tab) => (
-                        <button
-                            key={tab.key}
-                            onClick={() => setActiveTab(tab.key)}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg whitespace-nowrap transition-colors ${activeTab === tab.key
-                                ? "bg-[#3C81C6]/10 text-[#3C81C6]"
-                                : "text-[#687582] dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
-                                }`}
-                        >
-                            <span className="material-symbols-outlined text-[16px]">
-                                {tab.icon}
-                            </span>
-                            {tab.label}
-                        </button>
+            {/* Patient Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                {[
+                    { l: "Chẩn đoán hiện tại", v: "Tăng HA + ĐTĐ2", i: "medical_information", c: "from-red-500 to-red-600" },
+                    { l: "Lần khám gần nhất", v: "20/02/2025", i: "event", c: "from-blue-500 to-blue-600" },
+                    { l: "Tổng lượt khám", v: "12", i: "history", c: "from-green-500 to-green-600" },
+                    { l: "Dị ứng", v: "Penicillin", i: "warning", c: "from-amber-500 to-amber-600" },
+                ].map((s) => (
+                    <div key={s.l} className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#dde0e4] dark:border-[#2d353e] p-4 flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${s.c} flex items-center justify-center`}>
+                            <span className="material-symbols-outlined text-white" style={{ fontSize: "20px" }}>{s.i}</span>
+                        </div>
+                        <div><p className="text-sm font-bold text-[#121417] dark:text-white">{s.v}</p><p className="text-xs text-[#687582]">{s.l}</p></div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Vital Signs Trend (simplified) */}
+            <div className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#dde0e4] dark:border-[#2d353e] p-5">
+                <h3 className="text-sm font-semibold text-[#121417] dark:text-white mb-3">Biểu đồ theo dõi huyết áp</h3>
+                <div className="flex items-end gap-4 h-40">
+                    {[
+                        { date: "11/2024", val: 130, color: "bg-green-500" },
+                        { date: "12/2024", val: 125, color: "bg-green-500" },
+                        { date: "01/2025", val: 135, color: "bg-amber-500" },
+                        { date: "02/2025", val: 140, color: "bg-red-500" },
+                    ].map((d) => (
+                        <div key={d.date} className="flex-1 flex flex-col items-center gap-2">
+                            <div className="relative w-full flex justify-center">
+                                <div className={`w-8 rounded-t-md ${d.color} transition-all`} style={{ height: `${(d.val - 100) * 3}px` }} />
+                                <span className="absolute -top-5 text-xs font-bold text-[#121417] dark:text-white">{d.val}</span>
+                            </div>
+                            <span className="text-[10px] text-[#687582]">{d.date}</span>
+                        </div>
                     ))}
                 </div>
-
-                {/* Patient List */}
-                <div className="flex-1 overflow-y-auto p-2 space-y-2">
-                    {filteredPatients.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-12 text-center">
-                            <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">
-                                search_off
-                            </span>
-                            <p className="text-sm text-[#687582] dark:text-gray-400">
-                                Không tìm thấy bệnh nhân
-                            </p>
-                        </div>
-                    ) : (
-                        filteredPatients.map((patient) => (
-                            <button
-                                key={patient.id}
-                                onClick={() => setSelectedPatient(patient)}
-                                className={`w-full text-left p-3 rounded-lg transition-colors ${selectedPatient?.id === patient.id
-                                    ? "bg-[#3C81C6]/10 border border-[#3C81C6]/30"
-                                    : "bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent"
-                                    }`}
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div
-                                        className="size-10 rounded-full bg-cover bg-center border border-gray-200 bg-gray-100 shrink-0"
-                                        style={{
-                                            backgroundImage: patient.avatar
-                                                ? `url('${patient.avatar}')`
-                                                : undefined,
-                                        }}
-                                    >
-                                        {!patient.avatar && (
-                                            <div className="size-full flex items-center justify-center text-gray-400">
-                                                <span className="material-symbols-outlined">
-                                                    person
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-semibold text-[#121417] dark:text-white truncate">
-                                            {patient.fullName}
-                                        </p>
-                                        <p className="text-xs text-[#687582] dark:text-gray-400">
-                                            {patient.id} • {patient.gender}, {patient.age}T
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="mt-2 flex items-center justify-between text-xs">
-                                    <span className="text-[#687582] dark:text-gray-400">
-                                        {patient.lastVisit}
-                                    </span>
-                                    <span className="text-[#121417] dark:text-gray-300 truncate max-w-[120px]">
-                                        {patient.currentDiagnosis}
-                                    </span>
-                                </div>
-                            </button>
-                        ))
-                    )}
+                <div className="flex items-center gap-4 mt-3 pt-3 border-t border-[#dde0e4] dark:border-[#2d353e]">
+                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-green-500" /><span className="text-xs text-[#687582]">Bình thường</span></div>
+                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-amber-500" /><span className="text-xs text-[#687582]">Cảnh báo</span></div>
+                    <div className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-red-500" /><span className="text-xs text-[#687582]">Cao</span></div>
                 </div>
-            </aside>
+            </div>
 
-            {/* Patient Detail */}
-            {selectedPatient ? (
-                <main className="flex-1 overflow-y-auto p-6">
-                    <div className="max-w-5xl mx-auto space-y-6">
-                        {/* Patient Header */}
-                        <div className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#e5e7eb] dark:border-[#2d353e] shadow-sm p-6">
-                            <div className="flex items-start justify-between gap-6">
-                                <div className="flex items-center gap-4">
-                                    <div
-                                        className="size-20 rounded-xl bg-cover bg-center border-2 border-[#3C81C6]/30 shadow-lg"
-                                        style={{
-                                            backgroundImage: selectedPatient.avatar
-                                                ? `url('${selectedPatient.avatar}')`
-                                                : undefined,
-                                            backgroundColor: selectedPatient.avatar
-                                                ? undefined
-                                                : "#e5e7eb",
-                                        }}
-                                    >
-                                        {!selectedPatient.avatar && (
-                                            <div className="size-full flex items-center justify-center text-gray-400">
-                                                <span className="material-symbols-outlined text-4xl">
-                                                    person
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div>
-                                        <h2 className="text-xl font-bold text-[#121417] dark:text-white">
-                                            {selectedPatient.fullName}
-                                        </h2>
-                                        <p className="text-sm text-[#687582] dark:text-gray-400">
-                                            {selectedPatient.id} • {selectedPatient.gender},{" "}
-                                            {selectedPatient.age} tuổi
-                                        </p>
-                                        <div className="flex items-center gap-4 mt-2 text-xs text-[#687582] dark:text-gray-400">
-                                            <span className="flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-[16px]">
-                                                    cake
-                                                </span>
-                                                {selectedPatient.birthDate}
-                                            </span>
-                                            <span className="flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-[16px]">
-                                                    phone
-                                                </span>
-                                                {selectedPatient.phone}
-                                            </span>
-                                            <span className="flex items-center gap-1">
-                                                <span className="material-symbols-outlined text-[16px]">
-                                                    location_on
-                                                </span>
-                                                {selectedPatient.address}
-                                            </span>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        onClick={() => alert(`Đã ${selectedPatient.id} ${selectedPatient.fullName} vào danh sách theo dõi!`)}
-                                        className="p-2 text-[#687582] hover:text-yellow-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                                        title="Đánh dấu quan trọng"
-                                    >
-                                        <span className="material-symbols-outlined">star</span>
-                                    </button>
-                                    <button
-                                        onClick={() => alert(`Đang xuất hồ sơ bệnh án của ${selectedPatient.fullName}...`)}
-                                        className="flex items-center gap-2 px-4 py-2 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-lg text-sm font-medium transition-colors"
-                                    >
-                                        <span className="material-symbols-outlined text-[18px]">
-                                            download
-                                        </span>
-                                        {UI_TEXT.DOCTOR.MEDICAL_RECORDS.EXPORT_REPORT}
-                                    </button>
-                                </div>
+            {/* Filter */}
+            <div className="flex gap-2 flex-wrap">
+                {[{ k: "all", l: "Tất cả" }, ...Object.entries(typeConfig).map(([k, v]) => ({ k, l: v.label }))].map((f) => (
+                    <button key={f.k} onClick={() => setFilterType(f.k)}
+                        className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${filterType === f.k ? "bg-[#3C81C6] text-white" : "bg-white dark:bg-[#1e242b] text-[#687582] border border-[#dde0e4] dark:border-[#2d353e]"}`}>
+                        {f.l}
+                    </button>
+                ))}
+            </div>
+
+            {/* Timeline */}
+            <div className="space-y-6">
+                {Object.entries(grouped).map(([date, items]) => (
+                    <div key={date}>
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="w-8 h-8 rounded-full bg-[#3C81C6] flex items-center justify-center">
+                                <span className="material-symbols-outlined text-white" style={{ fontSize: "16px" }}>calendar_today</span>
                             </div>
-
-                            {/* Allergies Warning */}
-                            {selectedPatient.allergies &&
-                                selectedPatient.allergies.length > 0 && (
-                                    <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/30 rounded-lg">
-                                        <p className="text-xs font-bold text-red-700 dark:text-red-400 flex items-center gap-1">
-                                            <span className="material-symbols-outlined text-[16px]">
-                                                warning
-                                            </span>
-                                            Dị ứng & Cảnh báo
-                                        </p>
-                                        <div className="mt-1 flex flex-wrap gap-2">
-                                            {selectedPatient.allergies.map((allergy, index) => (
-                                                <span
-                                                    key={index}
-                                                    className="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 text-xs rounded"
-                                                >
-                                                    {allergy.name} - {allergy.reaction} ({allergy.year})
-                                                </span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
+                            <h3 className="text-sm font-bold text-[#121417] dark:text-white">{date}</h3>
                         </div>
-
-                        {/* Timeline */}
-                        <div className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#e5e7eb] dark:border-[#2d353e] shadow-sm p-6">
-                            <h3 className="text-lg font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-6">
-                                <span className="material-symbols-outlined text-[#3C81C6]">
-                                    timeline
-                                </span>
-                                {UI_TEXT.DOCTOR.MEDICAL_RECORDS.TIMELINE}
-                            </h3>
-
-                            {selectedPatient.medicalHistory &&
-                                selectedPatient.medicalHistory.length > 0 ? (
-                                <div className="relative">
-                                    {/* Timeline line */}
-                                    <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-[#e5e7eb] dark:bg-[#2d353e]"></div>
-
-                                    <div className="space-y-6">
-                                        {selectedPatient.medicalHistory.map((record, index) => (
-                                            <div key={index} className="relative pl-10">
-                                                {/* Timeline dot */}
-                                                <div
-                                                    className={`absolute left-2.5 top-1 size-3 rounded-full ${record.isCurrent
-                                                        ? "bg-[#3C81C6] ring-4 ring-[#3C81C6]/20"
-                                                        : "bg-gray-300 dark:bg-gray-600"
-                                                        }`}
-                                                ></div>
-
-                                                <div
-                                                    className={`p-4 rounded-lg ${record.isCurrent
-                                                        ? "bg-[#3C81C6]/5 border border-[#3C81C6]/20"
-                                                        : "bg-gray-50 dark:bg-gray-800"
-                                                        }`}
-                                                >
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <div className="flex items-center gap-2">
-                                                            <span className="text-sm font-bold text-[#121417] dark:text-white">
-                                                                {record.diagnosis}
-                                                            </span>
-                                                            <span className="text-xs text-[#687582] dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">
-                                                                {record.icdCode}
-                                                            </span>
-                                                            {record.isCurrent && (
-                                                                <span className="text-xs text-[#3C81C6] bg-[#3C81C6]/10 px-2 py-0.5 rounded font-medium">
-                                                                    Lần khám này
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <span className="text-xs text-[#687582] dark:text-gray-400">
-                                                            {record.date}
-                                                            {record.time && ` - ${record.time}`}
-                                                        </span>
+                        <div className="ml-4 pl-7 border-l-2 border-[#dde0e4] dark:border-[#2d353e] space-y-3">
+                            {items.map((item) => {
+                                const config = typeConfig[item.type];
+                                return (
+                                    <div key={item.id} className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#dde0e4] dark:border-[#2d353e] p-4 hover:shadow-md transition-shadow relative">
+                                        {/* Dot */}
+                                        <div className="absolute -left-[calc(1.75rem+5px)] top-5 w-3 h-3 rounded-full bg-white dark:bg-[#1e242b] border-2 border-[#3C81C6]" />
+                                        <div className="flex items-start gap-3">
+                                            <div className={`w-9 h-9 rounded-lg ${config.color} flex items-center justify-center flex-shrink-0`}>
+                                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{config.icon}</span>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <p className="text-sm font-bold text-[#121417] dark:text-white">{item.title}</p>
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${config.color}`}>{config.label}</span>
+                                                </div>
+                                                {"doctor" in item && <p className="text-xs text-[#687582] mb-1">{item.doctor} • {item.department}</p>}
+                                                <p className="text-sm text-[#687582]">{item.details}</p>
+                                                {"vitalSigns" in item && item.vitalSigns && (
+                                                    <div className="flex gap-3 mt-2">
+                                                        <span className="text-xs bg-[#f6f7f8] dark:bg-[#13191f] px-2 py-1 rounded">HA: {item.vitalSigns.bp} mmHg</span>
+                                                        <span className="text-xs bg-[#f6f7f8] dark:bg-[#13191f] px-2 py-1 rounded">Mạch: {item.vitalSigns.hr} bpm</span>
                                                     </div>
-                                                    <p className="text-xs text-[#687582] dark:text-gray-400 mb-2">
-                                                        {record.doctor} • {record.department}
-                                                    </p>
-                                                    {record.symptoms && (
-                                                        <p className="text-sm text-[#121417] dark:text-gray-200 mb-1">
-                                                            <span className="font-medium">Triệu chứng:</span>{" "}
-                                                            {record.symptoms}
-                                                        </p>
-                                                    )}
-                                                    {record.treatment && (
-                                                        <p className="text-sm text-[#121417] dark:text-gray-200">
-                                                            <span className="font-medium">Điều trị:</span>{" "}
-                                                            {record.treatment}
-                                                        </p>
-                                                    )}
-                                                </div>
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="text-center py-12">
-                                    <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">
-                                        history
-                                    </span>
-                                    <p className="text-sm text-[#687582] dark:text-gray-400">
-                                        Chưa có lịch sử khám
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Lab Results */}
-                        <div className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#e5e7eb] dark:border-[#2d353e] shadow-sm p-6">
-                            <div className="flex items-center justify-between mb-6">
-                                <h3 className="text-lg font-bold text-[#121417] dark:text-white flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-green-600">
-                                        biotech
-                                    </span>
-                                    {UI_TEXT.DOCTOR.MEDICAL_RECORDS.LAB_RESULTS}
-                                </h3>
-                                <button
-                                    onClick={() => alert('Đang xem tất cả xét nghiệm...')}
-                                    className="text-sm text-[#3C81C6] font-medium hover:underline"
-                                >
-                                    {UI_TEXT.COMMON.VIEW_ALL}
-                                </button>
-                            </div>
-
-                            {selectedPatient.labResults &&
-                                selectedPatient.labResults.length > 0 ? (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                    {selectedPatient.labResults.map((lab) => (
-                                        <div
-                                            key={lab.id}
-                                            className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg cursor-pointer hover:shadow-md transition-shadow"
-                                        >
-                                            <div className="flex items-center gap-3 mb-2">
-                                                <div
-                                                    className={`size-10 rounded-lg flex items-center justify-center ${lab.type === "pdf"
-                                                        ? "bg-red-100 dark:bg-red-900/20 text-red-600"
-                                                        : "bg-blue-100 dark:bg-blue-900/20 text-blue-600"
-                                                        }`}
-                                                >
-                                                    <span className="material-symbols-outlined">
-                                                        {lab.type === "pdf"
-                                                            ? "picture_as_pdf"
-                                                            : "image"}
-                                                    </span>
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-semibold text-[#121417] dark:text-white truncate">
-                                                        {lab.name}
-                                                    </p>
-                                                    <p className="text-xs text-[#687582] dark:text-gray-400">
-                                                        {lab.date}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <p className="text-xs text-[#687582] dark:text-gray-400">
-                                                BS. {lab.doctor} • {lab.result}
-                                            </p>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-12">
-                                    <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">
-                                        science
-                                    </span>
-                                    <p className="text-sm text-[#687582] dark:text-gray-400">
-                                        Chưa có kết quả xét nghiệm
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Footer */}
-                        <div className="flex items-center justify-between text-xs text-[#687582] dark:text-gray-400">
-                            <span>
-                                {UI_TEXT.DOCTOR.MEDICAL_RECORDS.LAST_UPDATED}:{" "}
-                                {UI_TEXT.DOCTOR.MEDICAL_RECORDS.JUST_NOW}
-                            </span>
-                            <button
-                                onClick={() => alert(`Đang mở hồ sơ đầy đủ của ${selectedPatient?.fullName}...`)}
-                                className="flex items-center gap-1 text-[#3C81C6] font-medium hover:underline"
-                            >
-                                <span className="material-symbols-outlined text-[16px]">
-                                    open_in_new
-                                </span>
-                                {UI_TEXT.DOCTOR.MEDICAL_RECORDS.VIEW_FULL_RECORD}
-                            </button>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
-                </main>
-            ) : (
-                <main className="flex-1 flex items-center justify-center">
-                    <div className="text-center">
-                        <span className="material-symbols-outlined text-6xl text-gray-300 dark:text-gray-600 mb-4">
-                            folder_open
-                        </span>
-                        <p className="text-lg font-medium text-[#687582] dark:text-gray-400">
-                            Chọn một bệnh nhân để xem hồ sơ
-                        </p>
-                    </div>
-                </main>
-            )}
-        </div>
+                ))}
+            </div>
+        </div></div>
     );
 }

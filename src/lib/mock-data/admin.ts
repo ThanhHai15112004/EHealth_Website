@@ -436,3 +436,300 @@ export const MOCK_PATIENT_GROWTH = [
     { month: "T11", value: 60 },
     { month: "T12", value: 40 },
 ];
+
+// ============================================
+// Doanh thu theo tháng (cho biểu đồ)
+// ============================================
+
+export const MOCK_REVENUE_DATA = [
+    { month: "T1", value: 850 },
+    { month: "T2", value: 920 },
+    { month: "T3", value: 780 },
+    { month: "T4", value: 1050 },
+    { month: "T5", value: 1120 },
+    { month: "T6", value: 980 },
+    { month: "T7", value: 1200 },
+    { month: "T8", value: 1350 },
+    { month: "T9", value: 1100 },
+    { month: "T10", value: 1280 },
+    { month: "T11", value: 1150 },
+    { month: "T12", value: 950 },
+];
+
+// ============================================
+// Lịch hẹn sắp tới
+// ============================================
+
+export const MOCK_UPCOMING_APPOINTMENTS = [
+    {
+        id: "APT-001",
+        patientName: "Nguyễn Thị Mai",
+        patientAge: 35,
+        doctorName: "BS. Nguyễn Văn A",
+        department: "Tim mạch",
+        time: "08:30",
+        date: "Hôm nay",
+        status: "confirmed",
+        type: "Tái khám",
+    },
+    {
+        id: "APT-002",
+        patientName: "Trần Văn Hùng",
+        patientAge: 52,
+        doctorName: "BS. Trần Thị B",
+        department: "Nhi khoa",
+        time: "09:00",
+        date: "Hôm nay",
+        status: "waiting",
+        type: "Khám mới",
+    },
+    {
+        id: "APT-003",
+        patientName: "Lê Hoàng Long",
+        patientAge: 28,
+        doctorName: "BS. Lê Văn C",
+        department: "Thần kinh",
+        time: "09:30",
+        date: "Hôm nay",
+        status: "confirmed",
+        type: "Khám mới",
+    },
+    {
+        id: "APT-004",
+        patientName: "Phạm Ngọc Anh",
+        patientAge: 41,
+        doctorName: "BS. Phạm Minh D",
+        department: "Cấp cứu",
+        time: "10:00",
+        date: "Hôm nay",
+        status: "in_progress",
+        type: "Tái khám",
+    },
+    {
+        id: "APT-005",
+        patientName: "Vũ Đức Thắng",
+        patientAge: 60,
+        doctorName: "BS. Hoàng Thị E",
+        department: "Da liễu",
+        time: "10:30",
+        date: "Hôm nay",
+        status: "confirmed",
+        type: "Khám mới",
+    },
+    {
+        id: "APT-006",
+        patientName: "Đỗ Minh Tú",
+        patientAge: 22,
+        doctorName: "BS. Nguyễn Văn A",
+        department: "Tim mạch",
+        time: "14:00",
+        date: "Hôm nay",
+        status: "confirmed",
+        type: "Tái khám",
+    },
+];
+
+// ============================================
+// Hàng đợi bệnh nhân
+// ============================================
+
+export const MOCK_PATIENT_QUEUE = [
+    {
+        id: "Q-001",
+        order: 1,
+        patientName: "Nguyễn Thị Mai",
+        patientCode: "BN-2024-0891",
+        department: "Tim mạch",
+        doctor: "BS. Nguyễn Văn A",
+        waitTime: "5 phút",
+        status: "examining",
+    },
+    {
+        id: "Q-002",
+        order: 2,
+        patientName: "Trần Văn Hùng",
+        patientCode: "BN-2024-0892",
+        department: "Nhi khoa",
+        doctor: "BS. Trần Thị B",
+        waitTime: "12 phút",
+        status: "waiting",
+    },
+    {
+        id: "Q-003",
+        order: 3,
+        patientName: "Lê Hoàng Long",
+        patientCode: "BN-2024-0893",
+        department: "Thần kinh",
+        doctor: "BS. Lê Văn C",
+        waitTime: "18 phút",
+        status: "waiting",
+    },
+    {
+        id: "Q-004",
+        order: 4,
+        patientName: "Phạm Ngọc Anh",
+        patientCode: "BN-2024-0894",
+        department: "Cấp cứu",
+        doctor: "BS. Phạm Minh D",
+        waitTime: "25 phút",
+        status: "waiting",
+    },
+    {
+        id: "Q-005",
+        order: 5,
+        patientName: "Vũ Đức Thắng",
+        patientCode: "BN-2024-0895",
+        department: "Da liễu",
+        doctor: "BS. Hoàng Thị E",
+        waitTime: "32 phút",
+        status: "checked_in",
+    },
+    {
+        id: "Q-006",
+        order: 6,
+        patientName: "Hoàng Minh Quân",
+        patientCode: "BN-2024-0896",
+        department: "Tim mạch",
+        doctor: "BS. Nguyễn Văn A",
+        waitTime: "40 phút",
+        status: "checked_in",
+    },
+];
+
+// ============================================
+// Thuốc cảnh báo (sắp hết hạn / tồn kho thấp)
+// ============================================
+
+export const MOCK_MEDICINE_ALERTS_LIST = [
+    {
+        id: "MA-001",
+        name: "Panadol Extra",
+        code: "SP-2024-002",
+        stock: 45,
+        unit: "Hộp",
+        alertType: "low_stock",
+        alertLabel: "Tồn kho thấp",
+        expiryDate: "15/03/2026",
+    },
+    {
+        id: "MA-002",
+        name: "Amoxicillin 250mg",
+        code: "SP-2024-012",
+        stock: 12,
+        unit: "Hộp",
+        alertType: "low_stock",
+        alertLabel: "Tồn kho thấp",
+        expiryDate: "20/08/2026",
+    },
+    {
+        id: "MA-003",
+        name: "Vitamin B12 Injection",
+        code: "SP-2024-008",
+        stock: 200,
+        unit: "Ống",
+        alertType: "expiring",
+        alertLabel: "Sắp hết hạn",
+        expiryDate: "10/04/2026",
+    },
+    {
+        id: "MA-004",
+        name: "Siro Ho Prospan",
+        code: "SP-2024-004",
+        stock: 0,
+        unit: "Chai",
+        alertType: "out_of_stock",
+        alertLabel: "Hết hàng",
+        expiryDate: "—",
+    },
+    {
+        id: "MA-005",
+        name: "Cefuroxime 500mg",
+        code: "SP-2024-015",
+        stock: 28,
+        unit: "Hộp",
+        alertType: "expiring",
+        alertLabel: "Sắp hết hạn",
+        expiryDate: "01/04/2026",
+    },
+];
+
+// ============================================
+// Phân bổ bác sĩ theo khoa
+// ============================================
+
+export const MOCK_DOCTOR_DISTRIBUTION = [
+    { department: "Tim mạch", icon: "cardiology", color: "#ef4444", totalDoctors: 15, onDuty: 8, patientsWaiting: 12 },
+    { department: "Nhi khoa", icon: "child_care", color: "#3b82f6", totalDoctors: 12, onDuty: 6, patientsWaiting: 8 },
+    { department: "Thần kinh", icon: "psychology", color: "#8b5cf6", totalDoctors: 8, onDuty: 4, patientsWaiting: 5 },
+    { department: "Cấp cứu", icon: "emergency", color: "#f97316", totalDoctors: 20, onDuty: 12, patientsWaiting: 3 },
+    { department: "Da liễu", icon: "dermatology", color: "#14b8a6", totalDoctors: 6, onDuty: 3, patientsWaiting: 7 },
+    { department: "Sản phụ khoa", icon: "pregnant_woman", color: "#ec4899", totalDoctors: 10, onDuty: 5, patientsWaiting: 4 },
+];
+
+// ============================================
+// Hoạt động gần đây — mở rộng
+// ============================================
+
+export const MOCK_ACTIVITY_LOGS_EXTENDED: ActivityLog[] = [
+    ...MOCK_ACTIVITY_LOGS,
+    {
+        id: "5",
+        userId: "u4",
+        userName: "Lễ tân Trần Thị B",
+        action: "Tiếp nhận bệnh nhân mới — Nguyễn Thị Mai (BN-2024-0891)",
+        status: "SUCCESS",
+        time: "08:20 AM",
+        createdAt: "2024-01-27T08:20:00",
+        updatedAt: "2024-01-27T08:20:00",
+    },
+    {
+        id: "6",
+        userId: "u5",
+        userName: "BS. Hoàng Thị E",
+        action: "Kê đơn thuốc cho bệnh nhân Trần Văn Hùng (#DT-4521)",
+        status: "SUCCESS",
+        time: "08:05 AM",
+        createdAt: "2024-01-27T08:05:00",
+        updatedAt: "2024-01-27T08:05:00",
+    },
+    {
+        id: "7",
+        userId: "sys",
+        userName: "System Bot",
+        action: "Cảnh báo: Thuốc Panadol Extra sắp hết tồn kho (còn 45 hộp)",
+        status: "PENDING",
+        time: "07:30 AM",
+        createdAt: "2024-01-27T07:30:00",
+        updatedAt: "2024-01-27T07:30:00",
+    },
+    {
+        id: "8",
+        userId: "u1",
+        userName: "BS. Nguyễn Văn A",
+        action: "Hoàn thành ca khám bệnh nhân Lê Hoàng Long (#KH-8812)",
+        status: "SUCCESS",
+        time: "07:15 AM",
+        createdAt: "2024-01-27T07:15:00",
+        updatedAt: "2024-01-27T07:15:00",
+    },
+    {
+        id: "9",
+        userId: "u6",
+        userName: "DS. Lê Văn C",
+        action: "Cấp phát thuốc đơn #DT-4518 cho BN Phạm Ngọc Anh",
+        status: "SUCCESS",
+        time: "07:00 AM",
+        createdAt: "2024-01-27T07:00:00",
+        updatedAt: "2024-01-27T07:00:00",
+    },
+    {
+        id: "10",
+        userId: "sys",
+        userName: "System Bot",
+        action: "Gửi nhắc nhở lịch hẹn cho 15 bệnh nhân ngày mai",
+        status: "SUCCESS",
+        time: "06:00 AM",
+        createdAt: "2024-01-27T06:00:00",
+        updatedAt: "2024-01-27T06:00:00",
+    },
+];
