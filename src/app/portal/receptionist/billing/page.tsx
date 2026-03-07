@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 const MOCK_INVOICES = [
     { id: "HD001", patient: "Nguyễn Văn An", patientId: "BN001", date: "28/02/2025", services: "Khám Tim mạch + Xét nghiệm máu", total: 850000, insurance: 680000, paid: 170000, status: "paid", method: "Tiền mặt" },
@@ -29,10 +30,9 @@ const statusMap: Record<string, { label: string; style: string }> = {
 };
 
 export default function BillingPage() {
+    const router = useRouter();
     const [invoices] = useState(MOCK_INVOICES);
     const [filter, setFilter] = useState("all");
-    const [showCreate, setShowCreate] = useState(false);
-    const [selectedServices, setSelectedServices] = useState<number[]>([]);
 
     const filtered = invoices.filter((inv) => filter === "all" || inv.status === filter);
     const totalRevenue = invoices.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.paid, 0);
@@ -40,9 +40,7 @@ export default function BillingPage() {
 
     const formatCurrency = (n: number) => n.toLocaleString("vi-VN") + "đ";
 
-    const toggleService = (i: number) => {
-        setSelectedServices((prev) => prev.includes(i) ? prev.filter((x) => x !== i) : [...prev, i]);
-    };
+
 
     return (
         <div className="p-6 md:p-8"><div className="max-w-7xl mx-auto space-y-6">
@@ -52,7 +50,7 @@ export default function BillingPage() {
                     <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Thanh toán & Hóa đơn</h1>
                     <p className="text-sm text-[#687582] mt-1">Quản lý thanh toán viện phí và bảo hiểm</p>
                 </div>
-                <button onClick={() => window.location.href = '/portal/receptionist/billing/new'} className="flex items-center gap-2 px-4 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-medium transition-colors">
+                <button onClick={() => router.push('/portal/receptionist/billing/new')} className="flex items-center gap-2 px-4 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-medium transition-colors">
                     <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>receipt_long</span>Tạo hóa đơn mới
                 </button>
             </div>
@@ -121,52 +119,6 @@ export default function BillingPage() {
                     </table>
                 </div>
             </div>
-
-            {/* Create Invoice Modal */}
-            {showCreate && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowCreate(false)}>
-                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                        <div className="p-6 border-b border-[#dde0e4] dark:border-[#2d353e] flex justify-between sticky top-0 bg-white dark:bg-[#1e242b] z-10">
-                            <h2 className="text-lg font-bold text-[#121417] dark:text-white">Tạo hóa đơn mới</h2>
-                            <button onClick={() => setShowCreate(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><span className="material-symbols-outlined text-[#687582]">close</span></button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Mã bệnh nhân</label>
-                                    <input placeholder="BN001" className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]" /></div>
-                                <div><label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Số BHYT</label>
-                                    <input placeholder="HC4012345678" className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]" /></div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-[#121417] dark:text-white mb-2">Chọn dịch vụ</label>
-                                <div className="space-y-2">
-                                    {SERVICE_PRICES.map((s, i) => (
-                                        <label key={i} className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${selectedServices.includes(i) ? "border-[#3C81C6] bg-blue-50 dark:bg-blue-900/10" : "border-[#dde0e4] dark:border-[#2d353e]"}`}>
-                                            <div className="flex items-center gap-3">
-                                                <input type="checkbox" checked={selectedServices.includes(i)} onChange={() => toggleService(i)} className="rounded" />
-                                                <span className="text-sm text-[#121417] dark:text-white">{s.name}</span>
-                                            </div>
-                                            <span className="text-sm font-semibold text-[#3C81C6]">{formatCurrency(s.price)}</span>
-                                        </label>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="p-4 bg-[#f6f7f8] dark:bg-[#13191f] rounded-lg flex justify-between">
-                                <span className="font-semibold text-[#121417] dark:text-white">Tổng cộng:</span>
-                                <span className="text-lg font-bold text-[#3C81C6]">
-                                    {formatCurrency(selectedServices.reduce((sum, i) => sum + SERVICE_PRICES[i].price, 0))}
-                                </span>
-                            </div>
-                        </div>
-                        <div className="p-6 border-t border-[#dde0e4] dark:border-[#2d353e] flex justify-end gap-3 sticky bottom-0 bg-white dark:bg-[#1e242b]">
-                            <button onClick={() => setShowCreate(false)} className="px-4 py-2 text-sm text-[#687582] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Hủy</button>
-                            <button className="px-4 py-2 bg-[#3C81C6] hover:bg-[#2a6da8] text-white text-sm font-medium rounded-lg flex items-center gap-2">
-                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>receipt_long</span>Tạo hóa đơn
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div></div>
     );
 }

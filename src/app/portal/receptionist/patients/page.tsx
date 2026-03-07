@@ -14,22 +14,10 @@ const MOCK_PATIENTS = [
 
 export default function ReceptionistPatients() {
     const router = useRouter();
-    const [patients, setPatients] = useState(MOCK_PATIENTS);
+    const [patients] = useState(MOCK_PATIENTS);
     const [search, setSearch] = useState("");
-    const [showModal, setShowModal] = useState(false);
-    const [newPatient, setNewPatient] = useState({ name: "", phone: "", dob: "", gender: "Nam", cccd: "", insurance: "", address: "", history: "" });
 
-    const handleRegister = () => {
-        if (!newPatient.name || !newPatient.phone) { alert("Vui lòng nhập họ tên và số điện thoại"); return; }
-        const newId = `BN${String(patients.length + 1).padStart(3, "0")}`;
-        setPatients([...patients, {
-            id: newId, name: newPatient.name, dob: newPatient.dob || "--", gender: newPatient.gender,
-            phone: newPatient.phone, cccd: newPatient.cccd, address: newPatient.address || "--",
-            insurance: newPatient.insurance, visits: 0, lastVisit: "Mới đăng ký"
-        }]);
-        setNewPatient({ name: "", phone: "", dob: "", gender: "Nam", cccd: "", insurance: "", address: "", history: "" });
-        setShowModal(false);
-    };
+
 
     const filtered = useMemo(() => patients.filter((p) =>
         p.name.toLowerCase().includes(search.toLowerCase()) || p.id.includes(search) || p.phone.includes(search) || p.cccd.includes(search)
@@ -43,7 +31,7 @@ export default function ReceptionistPatients() {
                     <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Quản lý Bệnh nhân</h1>
                     <p className="text-sm text-[#687582] mt-1">Đăng ký mới và quản lý thông tin bệnh nhân</p>
                 </div>
-                <button onClick={() => window.location.href = '/portal/receptionist/patients/new'} className="flex items-center gap-2 px-4 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-[#3C81C6]/20">
+                <button onClick={() => router.push('/portal/receptionist/patients/new')} className="flex items-center gap-2 px-4 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-[#3C81C6]/20">
                     <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>person_add</span>Đăng ký BN mới
                 </button>
             </div>
@@ -72,7 +60,15 @@ export default function ReceptionistPatients() {
                         <input type="text" placeholder="Tìm tên, mã BN, SĐT, CCCD..." value={search} onChange={(e) => setSearch(e.target.value)}
                             className="w-full pl-10 pr-4 py-2 bg-[#f6f7f8] dark:bg-[#13191f] border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm outline-none focus:border-[#3C81C6]" />
                     </div>
-                    <button className="px-3 py-2 bg-[#f6f7f8] dark:bg-[#13191f] border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm text-[#687582] hover:text-[#121417] transition-colors flex items-center gap-1.5">
+                    <button onClick={() => {
+                        const headers = ["Mã BN", "Họ tên", "Ngày sinh", "Giới tính", "SĐT", "BHYT", "Số lần khám", "Khám gần nhất"];
+                        const rows = patients.map(p => [p.id, p.name, p.dob, p.gender, p.phone, p.insurance || "Không", p.visits.toString(), p.lastVisit]);
+                        const csv = [headers, ...rows].map(r => r.join(",")).join("\n");
+                        const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a"); a.href = url; a.download = "danh-sach-benh-nhan.csv"; a.click();
+                        URL.revokeObjectURL(url);
+                    }} className="px-3 py-2 bg-[#f6f7f8] dark:bg-[#13191f] border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm text-[#687582] hover:text-[#121417] transition-colors flex items-center gap-1.5">
                         <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>download</span>Xuất Excel
                     </button>
                 </div>
@@ -127,49 +123,6 @@ export default function ReceptionistPatients() {
                 </div>
             </div>
 
-            {/* New Patient Modal */}
-            {showModal && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
-                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                        <div className="p-6 border-b border-[#dde0e4] dark:border-[#2d353e] flex items-center justify-between sticky top-0 bg-white dark:bg-[#1e242b] z-10">
-                            <h2 className="text-lg font-bold text-[#121417] dark:text-white">Đăng ký bệnh nhân mới</h2>
-                            <button onClick={() => setShowModal(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><span className="material-symbols-outlined text-[#687582]">close</span></button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            {[
-                                { l: "Họ và tên *", p: "Nhập họ tên đầy đủ", t: "text", k: "name" },
-                                { l: "Số điện thoại *", p: "0901234567", t: "tel", k: "phone" },
-                            ].map((f) => (
-                                <div key={f.l}><label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">{f.l}</label>
-                                    <input type={f.t} placeholder={f.p} value={newPatient[f.k as keyof typeof newPatient]} onChange={(e) => setNewPatient({ ...newPatient, [f.k]: e.target.value })} className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]" /></div>
-                            ))}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div><label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Ngày sinh *</label>
-                                    <input type="date" value={newPatient.dob} onChange={(e) => setNewPatient({ ...newPatient, dob: e.target.value })} className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]" /></div>
-                                <div><label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Giới tính *</label>
-                                    <select value={newPatient.gender} onChange={(e) => setNewPatient({ ...newPatient, gender: e.target.value })} className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]">
-                                        <option value="Nam">Nam</option><option value="Nữ">Nữ</option></select></div>
-                            </div>
-                            {[
-                                { l: "CCCD/CMND", p: "Số căn cước công dân", k: "cccd" },
-                                { l: "Số BHYT", p: "HC4012345678", k: "insurance" },
-                                { l: "Địa chỉ", p: "Địa chỉ cư trú", k: "address" },
-                            ].map((f) => (
-                                <div key={f.l}><label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">{f.l}</label>
-                                    <input type="text" placeholder={f.p} value={newPatient[f.k as keyof typeof newPatient]} onChange={(e) => setNewPatient({ ...newPatient, [f.k]: e.target.value })} className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]" /></div>
-                            ))}
-                            <div><label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Tiền sử bệnh</label>
-                                <textarea placeholder="Dị ứng, bệnh nền..." value={newPatient.history} onChange={(e) => setNewPatient({ ...newPatient, history: e.target.value })} className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6] resize-none h-16" /></div>
-                        </div>
-                        <div className="p-6 border-t border-[#dde0e4] dark:border-[#2d353e] flex justify-end gap-3 sticky bottom-0 bg-white dark:bg-[#1e242b]">
-                            <button onClick={() => setShowModal(false)} className="px-4 py-2 text-sm font-medium text-[#687582] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">Hủy</button>
-                            <button onClick={handleRegister} className="px-4 py-2 bg-[#3C81C6] hover:bg-[#2a6da8] text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2">
-                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>save</span>Đăng ký & In phiếu
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div></div>
     );
 }

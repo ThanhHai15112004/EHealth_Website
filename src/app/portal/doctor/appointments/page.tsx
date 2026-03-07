@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
 import {
     MOCK_APPOINTMENTS,
@@ -10,13 +11,12 @@ import {
 type ViewMode = "day" | "week" | "month";
 
 export default function AppointmentsPage() {
+    const router = useRouter();
     const [viewMode, setViewMode] = useState<ViewMode>("week");
     const [appointments] = useState(MOCK_APPOINTMENTS);
     const [pendingRequests, setPendingRequests] = useState(
         MOCK_PENDING_APPOINTMENTS
     );
-    const [newAppointmentModal, setNewAppointmentModal] = useState(false);
-    const [manageSlotsModal, setManageSlotsModal] = useState(false);
     const [selectedAppointment, setSelectedAppointment] = useState<typeof MOCK_APPOINTMENTS[0] | null>(null);
 
     const daysOfWeek = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
@@ -53,7 +53,7 @@ export default function AppointmentsPage() {
                     </div>
                     <div className="flex items-center gap-3">
                         <button
-                            onClick={() => setManageSlotsModal(true)}
+                            onClick={() => router.push('/portal/doctor/appointments/manage-slots')}
                             className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-[#1e242b] border border-[#e5e7eb] dark:border-[#2d353e] text-[#121417] dark:text-white rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                         >
                             <span className="material-symbols-outlined text-[20px]">
@@ -62,7 +62,7 @@ export default function AppointmentsPage() {
                             {UI_TEXT.DOCTOR.APPOINTMENTS.MANAGE_SLOTS}
                         </button>
                         <button
-                            onClick={() => window.location.href = '/portal/doctor/appointments/new'}
+                            onClick={() => router.push('/portal/doctor/appointments/new')}
                             className="flex items-center gap-2 px-5 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-bold shadow-md shadow-blue-200 dark:shadow-none transition-all transform hover:-translate-y-0.5"
                         >
                             <span className="material-symbols-outlined text-[20px]">
@@ -334,165 +334,6 @@ export default function AppointmentsPage() {
                     </div>
                 </div>
             </div>
-
-            {/* New Appointment Modal */}
-            {newAppointmentModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white dark:bg-[#1e242b] rounded-xl shadow-xl max-w-lg w-full">
-                        <div className="p-6 border-b border-[#e5e7eb] dark:border-[#2d353e] flex items-center justify-between">
-                            <h3 className="text-lg font-bold text-[#121417] dark:text-white">
-                                Tạo lịch hẹn mới
-                            </h3>
-                            <button
-                                onClick={() => setNewAppointmentModal(false)}
-                                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                            >
-                                <span className="material-symbols-outlined">close</span>
-                            </button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">
-                                    Bệnh nhân
-                                </label>
-                                <select className="w-full px-4 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white">
-                                    <option>Chọn bệnh nhân...</option>
-                                    <option>Nguyễn Văn An</option>
-                                    <option>Trần Thị Bình</option>
-                                    <option>Lê Văn Cường</option>
-                                </select>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">
-                                        Ngày
-                                    </label>
-                                    <input
-                                        type="date"
-                                        className="w-full px-4 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">
-                                        Thời gian
-                                    </label>
-                                    <select className="w-full px-4 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white">
-                                        <option>08:00 - 08:30</option>
-                                        <option>08:30 - 09:00</option>
-                                        <option>09:00 - 09:30</option>
-                                        <option>09:30 - 10:00</option>
-                                        <option>10:00 - 10:30</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">
-                                    Hình thức
-                                </label>
-                                <div className="flex gap-3">
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="type" value="offline" defaultChecked className="text-[#3C81C6]" />
-                                        <span className="text-sm text-[#121417] dark:text-white">Trực tiếp</span>
-                                    </label>
-                                    <label className="flex items-center gap-2 cursor-pointer">
-                                        <input type="radio" name="type" value="online" className="text-[#3C81C6]" />
-                                        <span className="text-sm text-[#121417] dark:text-white">Online</span>
-                                    </label>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">
-                                    Ghi chú
-                                </label>
-                                <textarea
-                                    className="w-full px-4 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white resize-none"
-                                    rows={2}
-                                    placeholder="Ghi chú cho lịch hẹn..."
-                                />
-                            </div>
-                        </div>
-                        <div className="p-6 border-t border-[#e5e7eb] dark:border-[#2d353e] flex justify-end gap-3">
-                            <button
-                                onClick={() => setNewAppointmentModal(false)}
-                                className="px-4 py-2 border border-gray-200 dark:border-gray-700 text-[#687582] hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg text-sm font-medium transition-colors"
-                            >
-                                Hủy
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setNewAppointmentModal(false);
-                                    alert("Đã tạo lịch hẹn mới!");
-                                }}
-                                className="px-4 py-2 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-lg text-sm font-medium transition-colors"
-                            >
-                                Tạo lịch hẹn
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Manage Slots Modal */}
-            {manageSlotsModal && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white dark:bg-[#1e242b] rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                        <div className="p-6 border-b border-[#e5e7eb] dark:border-[#2d353e] flex items-center justify-between">
-                            <h3 className="text-lg font-bold text-[#121417] dark:text-white">
-                                Quản lý khung giờ làm việc
-                            </h3>
-                            <button
-                                onClick={() => setManageSlotsModal(false)}
-                                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                            >
-                                <span className="material-symbols-outlined">close</span>
-                            </button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            {["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7"].map((day, index) => (
-                                <div key={day} className="flex items-center gap-4 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                    <div className="w-20">
-                                        <span className="text-sm font-medium text-[#121417] dark:text-white">{day}</span>
-                                    </div>
-                                    <label className="flex items-center gap-2">
-                                        <input type="checkbox" defaultChecked={index < 5} className="rounded" />
-                                        <span className="text-sm text-[#687582]">Làm việc</span>
-                                    </label>
-                                    <div className="flex items-center gap-2 flex-1">
-                                        <input
-                                            type="time"
-                                            defaultValue="08:00"
-                                            className="px-3 py-1.5 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg dark:text-white"
-                                        />
-                                        <span className="text-[#687582]">-</span>
-                                        <input
-                                            type="time"
-                                            defaultValue="17:00"
-                                            className="px-3 py-1.5 text-sm bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg dark:text-white"
-                                        />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="p-6 border-t border-[#e5e7eb] dark:border-[#2d353e] flex justify-end gap-3">
-                            <button
-                                onClick={() => setManageSlotsModal(false)}
-                                className="px-4 py-2 border border-gray-200 dark:border-gray-700 text-[#687582] hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg text-sm font-medium transition-colors"
-                            >
-                                Hủy
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setManageSlotsModal(false);
-                                    alert("Đã lưu khung giờ làm việc!");
-                                }}
-                                className="px-4 py-2 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-lg text-sm font-medium transition-colors"
-                            >
-                                Lưu thay đổi
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             {/* Appointment Detail Modal */}
             {selectedAppointment && (

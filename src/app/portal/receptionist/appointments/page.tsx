@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 
 // Mock data
 const MOCK_APPOINTMENTS = [
@@ -22,11 +23,11 @@ const STATUS_MAP: Record<string, { label: string; class: string }> = {
 };
 
 export default function ReceptionistAppointments() {
+    const router = useRouter();
     const [appointments] = useState(MOCK_APPOINTMENTS);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [deptFilter, setDeptFilter] = useState("all");
-    const [showNewModal, setShowNewModal] = useState(false);
 
     const filtered = useMemo(() => {
         return appointments.filter((apt) => {
@@ -49,7 +50,7 @@ export default function ReceptionistAppointments() {
                         <p className="text-sm text-[#687582] mt-1">Xem và quản lý lịch hẹn khám bệnh của bệnh nhân</p>
                     </div>
                     <button
-                        onClick={() => window.location.href = '/portal/receptionist/appointments/new'}
+                        onClick={() => router.push('/portal/receptionist/appointments/new')}
                         className="flex items-center gap-2 px-4 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-[#3C81C6]/20"
                     >
                         <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
@@ -181,61 +182,6 @@ export default function ReceptionistAppointments() {
                         <span>Hiển thị {filtered.length}/{appointments.length} lịch hẹn</span>
                     </div>
                 </div>
-
-                {/* New Appointment Modal */}
-                {showNewModal && (
-                    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowNewModal(false)}>
-                        <div className="bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
-                            <div className="p-6 border-b border-[#dde0e4] dark:border-[#2d353e] flex items-center justify-between">
-                                <h2 className="text-lg font-bold text-[#121417] dark:text-white">Tạo lịch hẹn mới</h2>
-                                <button onClick={() => setShowNewModal(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-                                    <span className="material-symbols-outlined text-[#687582]">close</span>
-                                </button>
-                            </div>
-                            <div className="p-6 space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Bệnh nhân</label>
-                                    <input type="text" placeholder="Tìm hoặc nhập tên bệnh nhân..." className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]" />
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Ngày hẹn</label>
-                                        <input type="date" className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]" />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Giờ hẹn</label>
-                                        <input type="time" className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]" />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Chuyên khoa</label>
-                                    <select className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]">
-                                        <option value="">Chọn chuyên khoa</option>
-                                        {departments.map((d) => <option key={d} value={d}>{d}</option>)}
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Bác sĩ</label>
-                                    <select className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6]">
-                                        <option value="">Chọn bác sĩ</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">Ghi chú</label>
-                                    <textarea placeholder="Lý do khám, triệu chứng..." className="w-full px-3 py-2 border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm bg-white dark:bg-[#13191f] outline-none focus:border-[#3C81C6] resize-none h-20" />
-                                </div>
-                            </div>
-                            <div className="p-6 border-t border-[#dde0e4] dark:border-[#2d353e] flex justify-end gap-3">
-                                <button onClick={() => setShowNewModal(false)} className="px-4 py-2 text-sm font-medium text-[#687582] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
-                                    Hủy
-                                </button>
-                                <button className="px-4 py-2 bg-[#3C81C6] hover:bg-[#2a6da8] text-white text-sm font-medium rounded-lg transition-colors">
-                                    Tạo lịch hẹn
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </div>
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
 import { MOCK_DOCTOR_PRESCRIPTIONS } from "@/lib/mock-data/doctor";
 
@@ -9,6 +10,7 @@ type StatusFilter = "all" | "pending" | "completed" | "cancelled";
 type Prescription = typeof MOCK_DOCTOR_PRESCRIPTIONS[0];
 
 export default function PrescriptionsPage() {
+    const router = useRouter();
     const [prescriptions, setPrescriptions] = useState(MOCK_DOCTOR_PRESCRIPTIONS);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -16,7 +18,6 @@ export default function PrescriptionsPage() {
 
     // Modal states
     const [viewModalOpen, setViewModalOpen] = useState(false);
-    const [newModalOpen, setNewModalOpen] = useState(false);
     const [selectedPrescription, setSelectedPrescription] = useState<Prescription | null>(null);
 
     const filteredPrescriptions = useMemo(() => {
@@ -120,7 +121,7 @@ export default function PrescriptionsPage() {
                     </div>
                     <div className="flex items-center gap-3">
                         <button
-                            onClick={() => window.location.href = '/portal/doctor/prescriptions/new'}
+                            onClick={() => router.push('/portal/doctor/prescriptions/new')}
                             className="flex items-center gap-2 px-5 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-bold shadow-md shadow-blue-200 dark:shadow-none transition-all transform hover:-translate-y-0.5"
                         >
                             <span className="material-symbols-outlined text-[20px]">add</span>
@@ -457,85 +458,6 @@ export default function PrescriptionsPage() {
                                 className="px-4 py-2 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-lg text-sm font-medium transition-colors"
                             >
                                 In đơn thuốc
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* New Prescription Modal */}
-            {newModalOpen && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white dark:bg-[#1e242b] rounded-xl shadow-xl max-w-lg w-full">
-                        <div className="p-6 border-b border-[#e5e7eb] dark:border-[#2d353e] flex items-center justify-between">
-                            <h3 className="text-lg font-bold text-[#121417] dark:text-white">
-                                Tạo đơn thuốc mới
-                            </h3>
-                            <button
-                                onClick={() => setNewModalOpen(false)}
-                                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                            >
-                                <span className="material-symbols-outlined">close</span>
-                            </button>
-                        </div>
-                        <div className="p-6 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">
-                                    Bệnh nhân
-                                </label>
-                                <select className="w-full px-4 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white">
-                                    <option>Chọn bệnh nhân...</option>
-                                    <option>Phạm Thị Lan</option>
-                                    <option>Trần Văn Bình</option>
-                                    <option>Lê Thị Mai</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">
-                                    Chẩn đoán
-                                </label>
-                                <input
-                                    type="text"
-                                    className="w-full px-4 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white"
-                                    placeholder="Nhập chẩn đoán..."
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">
-                                    Thuốc kê đơn
-                                </label>
-                                <textarea
-                                    className="w-full px-4 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white resize-none"
-                                    rows={3}
-                                    placeholder="Nhập danh sách thuốc..."
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-[#121417] dark:text-white mb-1">
-                                    Ghi chú
-                                </label>
-                                <textarea
-                                    className="w-full px-4 py-2.5 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white resize-none"
-                                    rows={2}
-                                    placeholder="Ghi chú cho bệnh nhân..."
-                                />
-                            </div>
-                        </div>
-                        <div className="p-6 border-t border-[#e5e7eb] dark:border-[#2d353e] flex justify-end gap-3">
-                            <button
-                                onClick={() => setNewModalOpen(false)}
-                                className="px-4 py-2 border border-gray-200 dark:border-gray-700 text-[#687582] hover:bg-gray-50 dark:hover:bg-gray-800 rounded-lg text-sm font-medium transition-colors"
-                            >
-                                Hủy
-                            </button>
-                            <button
-                                onClick={() => {
-                                    setNewModalOpen(false);
-                                    alert("Đã tạo đơn thuốc mới!");
-                                }}
-                                className="px-4 py-2 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-lg text-sm font-medium transition-colors"
-                            >
-                                Tạo đơn thuốc
                             </button>
                         </div>
                     </div>
