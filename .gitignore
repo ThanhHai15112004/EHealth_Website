@@ -40,3 +40,11 @@ Thumbs.db
 
 # Testing
 coverage/
+
+# AI / Cursor config
+.cursorrules
+cursor/
+project.md
+
+# Gemini
+.gemini/
