@@ -5,6 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ROLES, ROLE_LABELS, type Role } from "@/constants/roles";
 
+const HOSPITALS = [
+    { id: "1", name: "E-Health Quận 1" },
+    { id: "2", name: "E-Health Quận 7" },
+    { id: "3", name: "E-Health Thủ Đức" },
+];
+
+const BLOOD_TYPES = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"];
+
 export default function NewUserPage() {
     const router = useRouter();
     const [formData, setFormData] = useState({
@@ -18,9 +26,19 @@ export default function NewUserPage() {
         dateOfBirth: "",
         department: "",
         address: "",
+        hospitalId: "",
+        // Customer-specific fields
+        insuranceNumber: "",
+        bloodType: "",
+        allergies: "",
+        emergencyContact: "",
+        emergencyPhone: "",
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [saving, setSaving] = useState(false);
+
+    const currentRole = formData.role as string;
+    const isCustomer = currentRole === ROLES.PATIENT;
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
@@ -45,7 +63,6 @@ export default function NewUserPage() {
         e.preventDefault();
         if (!validate()) return;
         setSaving(true);
-        // TODO: Call API
         await new Promise((r) => setTimeout(r, 1000));
         setSaving(false);
         alert("Tạo tài khoản thành công!");
@@ -79,8 +96,33 @@ export default function NewUserPage() {
 
                 <form onSubmit={handleSubmit} className="p-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Thông tin cá nhân */}
+                        {/* Vai trò — đặt đầu tiên để toggle fields */}
                         <div className="md:col-span-2">
+                            <h3 className="text-sm font-bold text-[#121417] dark:text-white mb-4 flex items-center gap-2">
+                                <span className="material-symbols-outlined text-[18px] text-[#3C81C6]">manage_accounts</span>
+                                Loại tài khoản
+                            </h3>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-[#121417] dark:text-gray-300 mb-1.5">Vai trò *</label>
+                            <select name="role" value={formData.role} onChange={handleChange} className="w-full py-2.5 px-4 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white">
+                                {Object.entries(ROLES).map(([key, value]) => (
+                                    <option key={key} value={value}>{ROLE_LABELS[value as Role]}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {isCustomer && (
+                            <div className="md:col-span-2">
+                                <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                                    <span className="material-symbols-outlined text-[18px] text-blue-600">info</span>
+                                    <p className="text-sm text-blue-700 dark:text-blue-400">Tài khoản khách hàng/bệnh nhân — các trường y tế sẽ hiện thêm bên dưới.</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Thông tin cá nhân */}
+                        <div className="md:col-span-2 pt-2">
                             <h3 className="text-sm font-bold text-[#121417] dark:text-white mb-4 flex items-center gap-2">
                                 <span className="material-symbols-outlined text-[18px] text-[#3C81C6]">badge</span>
                                 Thông tin cá nhân
@@ -103,24 +145,66 @@ export default function NewUserPage() {
                         <FormField label="Ngày sinh" name="dateOfBirth" type="date" value={formData.dateOfBirth} onChange={handleChange} icon="cake" />
                         <FormField label="Địa chỉ" name="address" value={formData.address} onChange={handleChange} placeholder="Nhập địa chỉ" icon="location_on" />
 
-                        {/* Thông tin tài khoản */}
+                        {/* Nhân sự — chỉ hiện khi KHÔNG phải customer */}
+                        {!isCustomer && (
+                            <>
+                                <div className="md:col-span-2 pt-4 border-t border-gray-100 dark:border-gray-800">
+                                    <h3 className="text-sm font-bold text-[#121417] dark:text-white mb-4 flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-[18px] text-[#3C81C6]">domain</span>
+                                        Phân công
+                                    </h3>
+                                </div>
+                                <FormField label="Khoa / Phòng ban" name="department" value={formData.department} onChange={handleChange} placeholder="VD: Khoa Nội Tổng Quát" icon="domain" />
+                                <div>
+                                    <label className="block text-sm font-medium text-[#121417] dark:text-gray-300 mb-1.5">Chi nhánh / Cơ sở y tế</label>
+                                    <select name="hospitalId" value={formData.hospitalId} onChange={handleChange} className="w-full py-2.5 px-4 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white">
+                                        <option value="">-- Chọn cơ sở --</option>
+                                        {HOSPITALS.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                                    </select>
+                                </div>
+                            </>
+                        )}
+
+                        {/* Customer-specific fields */}
+                        {isCustomer && (
+                            <>
+                                <div className="md:col-span-2 pt-4 border-t border-gray-100 dark:border-gray-800">
+                                    <h3 className="text-sm font-bold text-[#121417] dark:text-white mb-4 flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-[18px] text-[#3C81C6]">medical_information</span>
+                                        Thông tin y tế
+                                    </h3>
+                                </div>
+                                <FormField label="Số BHYT" name="insuranceNumber" value={formData.insuranceNumber} onChange={handleChange} placeholder="VD: HS4010..." icon="health_and_safety" />
+                                <div>
+                                    <label className="block text-sm font-medium text-[#121417] dark:text-gray-300 mb-1.5">Nhóm máu</label>
+                                    <select name="bloodType" value={formData.bloodType} onChange={handleChange} className="w-full py-2.5 px-4 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white">
+                                        <option value="">-- Chọn nhóm máu --</option>
+                                        {BLOOD_TYPES.map(bt => <option key={bt} value={bt}>{bt}</option>)}
+                                    </select>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-medium text-[#121417] dark:text-gray-300 mb-1.5">Dị ứng thuốc</label>
+                                    <textarea name="allergies" value={formData.allergies} onChange={handleChange} rows={2} placeholder="Liệt kê các loại thuốc hoặc chất gây dị ứng..." className="w-full py-2.5 px-4 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white placeholder:text-gray-400 resize-none" />
+                                </div>
+
+                                <div className="md:col-span-2 pt-4 border-t border-gray-100 dark:border-gray-800">
+                                    <h3 className="text-sm font-bold text-[#121417] dark:text-white mb-4 flex items-center gap-2">
+                                        <span className="material-symbols-outlined text-[18px] text-[#3C81C6]">emergency</span>
+                                        Liên hệ khẩn cấp
+                                    </h3>
+                                </div>
+                                <FormField label="Người liên hệ" name="emergencyContact" value={formData.emergencyContact} onChange={handleChange} placeholder="Họ tên người thân" icon="person" />
+                                <FormField label="SĐT liên hệ" name="emergencyPhone" value={formData.emergencyPhone} onChange={handleChange} placeholder="0901 234 567" icon="phone" />
+                            </>
+                        )}
+
+                        {/* Tài khoản */}
                         <div className="md:col-span-2 pt-4 border-t border-gray-100 dark:border-gray-800">
                             <h3 className="text-sm font-bold text-[#121417] dark:text-white mb-4 flex items-center gap-2">
-                                <span className="material-symbols-outlined text-[18px] text-[#3C81C6]">manage_accounts</span>
-                                Thông tin tài khoản
+                                <span className="material-symbols-outlined text-[18px] text-[#3C81C6]">lock</span>
+                                Bảo mật
                             </h3>
                         </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-[#121417] dark:text-gray-300 mb-1.5">Vai trò *</label>
-                            <select name="role" value={formData.role} onChange={handleChange} className="w-full py-2.5 px-4 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white">
-                                {Object.entries(ROLES).map(([key, value]) => (
-                                    <option key={key} value={value}>{ROLE_LABELS[value as Role]}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <FormField label="Khoa / Phòng ban" name="department" value={formData.department} onChange={handleChange} placeholder="VD: Khoa Nội Tổng Quát" icon="domain" />
                         <FormField label="Mật khẩu *" name="password" type="password" value={formData.password} onChange={handleChange} error={errors.password} placeholder="Tối thiểu 6 ký tự" icon="lock" />
                         <FormField label="Xác nhận mật khẩu *" name="confirmPassword" type="password" value={formData.confirmPassword} onChange={handleChange} error={errors.confirmPassword} placeholder="Nhập lại mật khẩu" icon="lock" />
                     </div>

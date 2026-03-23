@@ -250,14 +250,17 @@ export const getSessions = async () => {
     }
 };
 
-export const logoutAllSessions = async () => {
+export const logoutOtherSessions = async () => {
     try {
-        await axiosClient.post(AUTH_ENDPOINTS.SESSIONS_LOGOUT_ALL);
+        await axiosClient.delete(AUTH_ENDPOINTS.SESSIONS_DELETE_OTHER);
         return { success: true };
     } catch (error: any) {
         return { success: false };
     }
 };
+
+// Backward compatibility
+export const logoutAllSessions = logoutOtherSessions;
 
 export const deleteSession = async (sessionId: string) => {
     try {
@@ -265,6 +268,40 @@ export const deleteSession = async (sessionId: string) => {
         return { success: true };
     } catch (error: any) {
         return { success: false };
+    }
+};
+
+// ============================================
+// 1.3.7 User Context — lấy role/menu/quyền
+// ============================================
+
+/** GET /api/auth/me/roles — Lấy danh sách vai trò của user đang đăng nhập */
+export const getMyRoles = async (): Promise<any> => {
+    try {
+        const response = await axiosClient.get(AUTH_ENDPOINTS.ME_ROLES);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy vai trò thất bại');
+    }
+};
+
+/** GET /api/auth/me/menus — Lấy danh sách menu hiển thị của user đang đăng nhập */
+export const getMyMenus = async (): Promise<any> => {
+    try {
+        const response = await axiosClient.get(AUTH_ENDPOINTS.ME_MENUS);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy menu thất bại');
+    }
+};
+
+/** GET /api/auth/me/permissions — Lấy danh sách quyền thao tác của user đang đăng nhập */
+export const getMyPermissions = async (): Promise<any> => {
+    try {
+        const response = await axiosClient.get(AUTH_ENDPOINTS.ME_PERMISSIONS);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy quyền thất bại');
     }
 };
 

@@ -311,7 +311,7 @@ export default function DepartmentsPage() {
                                             {
                                                 label: "Xem chi tiết",
                                                 icon: "visibility",
-                                                onClick: () => handleViewDepartment(dept),
+                                                onClick: () => router.push(`/admin/departments/${dept.id}`),
                                             },
                                             {
                                                 label: "Chỉnh sửa",

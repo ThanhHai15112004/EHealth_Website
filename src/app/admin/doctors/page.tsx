@@ -360,9 +360,14 @@ export default function DoctorsPage() {
                                                 <DropdownMenu
                                                     items={[
                                                         {
+                                                            label: "Xem chi tiết",
+                                                            icon: "visibility",
+                                                            onClick: () => router.push(`/admin/doctors/${doctor.id}`),
+                                                        },
+                                                        {
                                                             label: "Chỉnh sửa",
                                                             icon: "edit",
-                                                            onClick: () => handleEditDoctor(doctor),
+                                                            onClick: () => router.push(`/admin/doctors/${doctor.id}/edit`),
                                                         },
                                                         {
                                                             label: "Xem lịch trực",

@@ -1,9 +1,19 @@
 /**
- * Permission Service
- * Gọi API quản lý quyền hạn và vai trò
+ * Permission & Role Service
+ * Quản lý vai trò, quyền, modules, menus, API permissions — đồng bộ Swagger API
+ * 
+ * Backend: http://160.250.186.97:3000/api-docs
+ * Sections: 1.3.1–1.3.7
  */
 
 import axiosClient from '@/api/axiosClient';
+import {
+    ROLE_ENDPOINTS,
+    PERMISSION_ENDPOINTS,
+    MODULE_ENDPOINTS,
+    MENU_ENDPOINTS,
+    API_PERMISSION_ENDPOINTS,
+} from '@/api/endpoints';
 
 // ============================================
 // Types
@@ -17,6 +27,7 @@ export interface RoleData {
     permissions: string[];
     userCount: number;
     isSystem: boolean;
+    isActive?: boolean;
     createdAt: string;
     updatedAt: string;
 }
@@ -25,6 +36,7 @@ export interface PermissionData {
     id: string;
     code: string;
     name: string;
+    module: string;
     group: string;
     description: string;
 }
@@ -35,27 +47,32 @@ export interface PermissionGroup {
     permissions: PermissionData[];
 }
 
+export interface MenuData {
+    id: string;
+    name: string;
+    path: string;
+    icon?: string;
+    parentId?: string;
+    order?: number;
+    isVisible?: boolean;
+}
+
+export interface ApiPermissionData {
+    id: string;
+    method: string;
+    path: string;
+    description?: string;
+    module?: string;
+}
+
 // ============================================
-// API Endpoints
+// 1.3.1 Role Management
 // ============================================
 
-const PERMISSION_ENDPOINTS = {
-    ROLES: '/api/roles',
-    ROLE_DETAIL: (id: string) => `/api/roles/${id}`,
-    PERMISSIONS: '/api/permissions',
-    ASSIGN_PERMISSIONS: (roleId: string) => `/api/roles/${roleId}/permissions`,
-};
-
-// ============================================
-// Service Functions
-// ============================================
-
-/**
- * Lấy danh sách vai trò
- */
+/** GET /api/roles — Lấy danh sách vai trò */
 export const getRoles = async (): Promise<RoleData[]> => {
     try {
-        const response = await axiosClient.get(PERMISSION_ENDPOINTS.ROLES);
+        const response = await axiosClient.get(ROLE_ENDPOINTS.LIST);
         return response.data.data || [];
     } catch (error) {
         console.error('Lỗi lấy danh sách vai trò:', error);
@@ -63,25 +80,10 @@ export const getRoles = async (): Promise<RoleData[]> => {
     }
 };
 
-/**
- * Lấy chi tiết vai trò
- */
-export const getRoleDetail = async (id: string): Promise<RoleData | null> => {
-    try {
-        const response = await axiosClient.get(PERMISSION_ENDPOINTS.ROLE_DETAIL(id));
-        return response.data.data || null;
-    } catch (error) {
-        console.error('Lỗi lấy chi tiết vai trò:', error);
-        return null;
-    }
-};
-
-/**
- * Tạo vai trò mới
- */
+/** POST /api/roles — Tạo vai trò mới */
 export const createRole = async (data: Partial<RoleData>): Promise<{ success: boolean; message: string }> => {
     try {
-        const response = await axiosClient.post(PERMISSION_ENDPOINTS.ROLES, data);
+        const response = await axiosClient.post(ROLE_ENDPOINTS.CREATE, data);
         return response.data;
     } catch (error: any) {
         return {
@@ -91,12 +93,21 @@ export const createRole = async (data: Partial<RoleData>): Promise<{ success: bo
     }
 };
 
-/**
- * Cập nhật vai trò
- */
+/** GET /api/roles/{roleId} — Lấy chi tiết vai trò */
+export const getRoleDetail = async (id: string): Promise<RoleData | null> => {
+    try {
+        const response = await axiosClient.get(ROLE_ENDPOINTS.DETAIL(id));
+        return response.data.data || null;
+    } catch (error) {
+        console.error('Lỗi lấy chi tiết vai trò:', error);
+        return null;
+    }
+};
+
+/** PATCH /api/roles/{roleId} — Cập nhật vai trò */
 export const updateRole = async (id: string, data: Partial<RoleData>): Promise<{ success: boolean; message: string }> => {
     try {
-        const response = await axiosClient.put(PERMISSION_ENDPOINTS.ROLE_DETAIL(id), data);
+        const response = await axiosClient.patch(ROLE_ENDPOINTS.UPDATE(id), data);
         return response.data;
     } catch (error: any) {
         return {
@@ -106,12 +117,10 @@ export const updateRole = async (id: string, data: Partial<RoleData>): Promise<{
     }
 };
 
-/**
- * Xóa vai trò
- */
+/** DELETE /api/roles/{roleId} — Xóa vai trò */
 export const deleteRole = async (id: string): Promise<{ success: boolean; message: string }> => {
     try {
-        const response = await axiosClient.delete(PERMISSION_ENDPOINTS.ROLE_DETAIL(id));
+        const response = await axiosClient.delete(ROLE_ENDPOINTS.DELETE(id));
         return response.data;
     } catch (error: any) {
         return {
@@ -121,12 +130,24 @@ export const deleteRole = async (id: string): Promise<{ success: boolean; messag
     }
 };
 
-/**
- * Lấy danh sách tất cả quyền (grouped)
- */
+/** PATCH /api/roles/{roleId}/status — Bật/tắt vai trò */
+export const toggleRoleStatus = async (id: string, data: { isActive: boolean }): Promise<any> => {
+    try {
+        const response = await axiosClient.patch(ROLE_ENDPOINTS.STATUS(id), data);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Cập nhật trạng thái vai trò thất bại');
+    }
+};
+
+// ============================================
+// 1.3.2 Permission Management
+// ============================================
+
+/** GET /api/permissions — Lấy danh sách quyền */
 export const getPermissions = async (): Promise<PermissionGroup[]> => {
     try {
-        const response = await axiosClient.get(PERMISSION_ENDPOINTS.PERMISSIONS);
+        const response = await axiosClient.get(PERMISSION_ENDPOINTS.LIST);
         return response.data.data || [];
     } catch (error) {
         console.error('Lỗi lấy danh sách quyền:', error);
@@ -134,16 +155,68 @@ export const getPermissions = async (): Promise<PermissionGroup[]> => {
     }
 };
 
-/**
- * Gán quyền cho vai trò
- */
+/** POST /api/permissions — Tạo quyền mới */
+export const createPermission = async (data: Partial<PermissionData>): Promise<any> => {
+    try {
+        const response = await axiosClient.post(PERMISSION_ENDPOINTS.CREATE, data);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Tạo quyền thất bại');
+    }
+};
+
+/** GET /api/permissions/{permissionId} — Chi tiết quyền */
+export const getPermissionDetail = async (id: string): Promise<PermissionData | null> => {
+    try {
+        const response = await axiosClient.get(PERMISSION_ENDPOINTS.DETAIL(id));
+        return response.data.data || null;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy chi tiết quyền thất bại');
+    }
+};
+
+/** PATCH /api/permissions/{permissionId} — Cập nhật quyền */
+export const updatePermission = async (id: string, data: Partial<PermissionData>): Promise<any> => {
+    try {
+        const response = await axiosClient.patch(PERMISSION_ENDPOINTS.UPDATE(id), data);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Cập nhật quyền thất bại');
+    }
+};
+
+/** DELETE /api/permissions/{permissionId} — Xóa quyền */
+export const deletePermission = async (id: string): Promise<any> => {
+    try {
+        const response = await axiosClient.delete(PERMISSION_ENDPOINTS.DELETE(id));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Xóa quyền thất bại');
+    }
+};
+
+// ============================================
+// 1.3.3 Gán quyền cho vai trò
+// ============================================
+
+/** GET /api/roles/{roleId}/permissions — Lấy quyền của vai trò */
+export const getRolePermissions = async (roleId: string): Promise<any> => {
+    try {
+        const response = await axiosClient.get(ROLE_ENDPOINTS.PERMISSIONS(roleId));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy quyền của vai trò thất bại');
+    }
+};
+
+/** PUT /api/roles/{roleId}/permissions — Thay thế danh sách quyền */
 export const assignPermissions = async (
     roleId: string,
     permissionIds: string[]
 ): Promise<{ success: boolean; message: string }> => {
     try {
         const response = await axiosClient.put(
-            PERMISSION_ENDPOINTS.ASSIGN_PERMISSIONS(roleId),
+            ROLE_ENDPOINTS.PERMISSIONS(roleId),
             { permissions: permissionIds }
         );
         return response.data;
@@ -155,12 +228,234 @@ export const assignPermissions = async (
     }
 };
 
+/** POST /api/roles/{roleId}/permissions — Gán thêm quyền lẻ */
+export const addRolePermission = async (roleId: string, permissionId: string): Promise<any> => {
+    try {
+        const response = await axiosClient.post(ROLE_ENDPOINTS.PERMISSIONS(roleId), { permissionId });
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Gán quyền thất bại');
+    }
+};
+
+/** DELETE /api/roles/{roleId}/permissions/{permissionId} — Xóa quyền lẻ */
+export const removeRolePermission = async (roleId: string, permissionId: string): Promise<any> => {
+    try {
+        const response = await axiosClient.delete(ROLE_ENDPOINTS.PERMISSION_DELETE(roleId, permissionId));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Xóa quyền thất bại');
+    }
+};
+
+// ============================================
+// 1.3.4 Phân quyền theo module
+// ============================================
+
+/** GET /api/modules — Lấy danh sách modules */
+export const getModules = async (): Promise<any> => {
+    try {
+        const response = await axiosClient.get(MODULE_ENDPOINTS.LIST);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy danh sách modules thất bại');
+    }
+};
+
+/** GET /api/modules/{moduleName}/permissions — Quyền theo module */
+export const getModulePermissions = async (moduleName: string): Promise<any> => {
+    try {
+        const response = await axiosClient.get(MODULE_ENDPOINTS.PERMISSIONS(moduleName));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy quyền theo module thất bại');
+    }
+};
+
+// ============================================
+// 1.3.5 Menu Management
+// ============================================
+
+/** GET /api/menus — Lấy danh sách menu hệ thống */
+export const getMenus = async (): Promise<MenuData[]> => {
+    try {
+        const response = await axiosClient.get(MENU_ENDPOINTS.LIST);
+        return response.data.data || [];
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy danh sách menu thất bại');
+    }
+};
+
+/** POST /api/menus — Tạo menu */
+export const createMenu = async (data: Partial<MenuData>): Promise<any> => {
+    try {
+        const response = await axiosClient.post(MENU_ENDPOINTS.CREATE, data);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Tạo menu thất bại');
+    }
+};
+
+/** PATCH /api/menus/{menuId} — Cập nhật menu */
+export const updateMenu = async (id: string, data: Partial<MenuData>): Promise<any> => {
+    try {
+        const response = await axiosClient.patch(MENU_ENDPOINTS.UPDATE(id), data);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Cập nhật menu thất bại');
+    }
+};
+
+/** DELETE /api/menus/{menuId} — Xóa menu */
+export const deleteMenu = async (id: string): Promise<any> => {
+    try {
+        const response = await axiosClient.delete(MENU_ENDPOINTS.DELETE(id));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Xóa menu thất bại');
+    }
+};
+
+/** GET /api/roles/{roleId}/menus — Menu của vai trò */
+export const getRoleMenus = async (roleId: string): Promise<any> => {
+    try {
+        const response = await axiosClient.get(ROLE_ENDPOINTS.MENUS(roleId));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy menu vai trò thất bại');
+    }
+};
+
+/** POST /api/roles/{roleId}/menus — Gán menu cho vai trò */
+export const addRoleMenu = async (roleId: string, menuId: string): Promise<any> => {
+    try {
+        const response = await axiosClient.post(ROLE_ENDPOINTS.MENUS(roleId), { menuId });
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Gán menu thất bại');
+    }
+};
+
+/** DELETE /api/roles/{roleId}/menus/{menuId} — Xóa menu khỏi vai trò */
+export const removeRoleMenu = async (roleId: string, menuId: string): Promise<any> => {
+    try {
+        const response = await axiosClient.delete(ROLE_ENDPOINTS.MENU_DELETE(roleId, menuId));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Xóa menu khỏi vai trò thất bại');
+    }
+};
+
+// ============================================
+// 1.3.6 API Permissions
+// ============================================
+
+/** GET /api/api-permissions — Lấy danh sách API endpoints */
+export const getApiPermissions = async (): Promise<ApiPermissionData[]> => {
+    try {
+        const response = await axiosClient.get(API_PERMISSION_ENDPOINTS.LIST);
+        return response.data.data || [];
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy API permissions thất bại');
+    }
+};
+
+/** POST /api/api-permissions — Tạo API endpoint */
+export const createApiPermission = async (data: Partial<ApiPermissionData>): Promise<any> => {
+    try {
+        const response = await axiosClient.post(API_PERMISSION_ENDPOINTS.CREATE, data);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Tạo API permission thất bại');
+    }
+};
+
+/** PATCH /api/api-permissions/{id} — Cập nhật API endpoint */
+export const updateApiPermission = async (id: string, data: Partial<ApiPermissionData>): Promise<any> => {
+    try {
+        const response = await axiosClient.patch(API_PERMISSION_ENDPOINTS.UPDATE(id), data);
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Cập nhật API permission thất bại');
+    }
+};
+
+/** DELETE /api/api-permissions/{id} — Xóa API endpoint */
+export const deleteApiPermission = async (id: string): Promise<any> => {
+    try {
+        const response = await axiosClient.delete(API_PERMISSION_ENDPOINTS.DELETE(id));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Xóa API permission thất bại');
+    }
+};
+
+/** GET /api/roles/{roleId}/api-permissions — API của vai trò */
+export const getRoleApiPermissions = async (roleId: string): Promise<any> => {
+    try {
+        const response = await axiosClient.get(ROLE_ENDPOINTS.API_PERMISSIONS(roleId));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy API của vai trò thất bại');
+    }
+};
+
+/** POST /api/roles/{roleId}/api-permissions — Gán API cho vai trò */
+export const addRoleApiPermission = async (roleId: string, apiId: string): Promise<any> => {
+    try {
+        const response = await axiosClient.post(ROLE_ENDPOINTS.API_PERMISSIONS(roleId), { apiId });
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Gán API thất bại');
+    }
+};
+
+/** DELETE /api/roles/{roleId}/api-permissions/{apiId} — Xóa API khỏi vai trò */
+export const removeRoleApiPermission = async (roleId: string, apiId: string): Promise<any> => {
+    try {
+        const response = await axiosClient.delete(ROLE_ENDPOINTS.API_PERMISSION_DELETE(roleId, apiId));
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Xóa API khỏi vai trò thất bại');
+    }
+};
+
 export default {
+    // Roles
     getRoles,
-    getRoleDetail,
     createRole,
+    getRoleDetail,
     updateRole,
     deleteRole,
+    toggleRoleStatus,
+    // Permissions
     getPermissions,
+    createPermission,
+    getPermissionDetail,
+    updatePermission,
+    deletePermission,
+    // Role-Permission
+    getRolePermissions,
     assignPermissions,
+    addRolePermission,
+    removeRolePermission,
+    // Modules
+    getModules,
+    getModulePermissions,
+    // Menus
+    getMenus,
+    createMenu,
+    updateMenu,
+    deleteMenu,
+    getRoleMenus,
+    addRoleMenu,
+    removeRoleMenu,
+    // API Permissions
+    getApiPermissions,
+    createApiPermission,
+    updateApiPermission,
+    deleteApiPermission,
+    getRoleApiPermissions,
+    addRoleApiPermission,
+    removeRoleApiPermission,
 };

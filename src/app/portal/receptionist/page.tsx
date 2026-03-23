@@ -79,10 +79,10 @@ export default function ReceptionistDashboard() {
                                 <span className="material-symbols-outlined text-[18px]">calendar_today</span>
                                 <span>{getCurrentDate()}</span>
                             </div>
-                            <button className="flex items-center gap-2 px-4 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-[#3C81C6]/20">
+                            <Link href="/portal/receptionist/reception" className="flex items-center gap-2 px-4 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-[#3C81C6]/20">
                                 <span className="material-symbols-outlined text-[18px]">person_add</span>
                                 Tiếp nhận BN mới
-                            </button>
+                            </Link>
                         </div>
                     </div>
                 </div>

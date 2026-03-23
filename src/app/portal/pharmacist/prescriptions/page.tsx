@@ -2,112 +2,142 @@
 
 import { useState, useMemo } from "react";
 
+type RxStatus = "pending" | "checking" | "dispensed";
+
 const MOCK_RX = [
-    { id: "DT001", patient: "Nguyễn Văn An", doctor: "BS. Trần Minh", dept: "Nội khoa", date: "25/02/2025", medicines: ["Amoxicillin 500mg x 20 viên", "Paracetamol 500mg x 10 viên", "Omeprazole 20mg x 14 viên"], diagnosis: "Viêm họng cấp", status: "pending" },
-    { id: "DT002", patient: "Lê Thị Bình", doctor: "BS. Phạm Hoa", dept: "Da liễu", date: "25/02/2025", medicines: ["Cetirizine 10mg x 30 viên", "Hydrocortisone cream x 1 tuýp"], diagnosis: "Viêm da dị ứng", status: "pending" },
-    { id: "DT003", patient: "Trần Văn Cường", doctor: "BS. Ngô Đức", dept: "Tim mạch", date: "25/02/2025", medicines: ["Amlodipine 5mg x 30 viên", "Aspirin 81mg x 30 viên", "Atorvastatin 10mg x 30 viên", "Losartan 50mg x 30 viên", "Metformin 500mg x 60 viên"], diagnosis: "Tăng HA, ĐTĐ type 2", status: "dispensed" },
-    { id: "DT004", patient: "Phạm Thị Dung", doctor: "BS. Trần Minh", dept: "Nội khoa", date: "25/02/2025", medicines: ["Vitamin B12 x 30 viên", "Acid folic 5mg x 30 viên"], diagnosis: "Thiếu máu", status: "dispensed" },
-    { id: "DT005", patient: "Hoàng Văn Em", doctor: "BS. Lý Thanh", dept: "Nhi khoa", date: "25/02/2025", medicines: ["Amoxicillin siro x 1 chai", "Paracetamol siro x 1 chai", "Muối biển xịt mũi x 1", "Vitamin C giọt x 1"], diagnosis: "Viêm đường hô hấp", status: "pending" },
-    { id: "DT006", patient: "Vũ Thị Fương", doctor: "BS. Phạm Hoa", dept: "Da liễu", date: "24/02/2025", medicines: ["Tretinoin cream x 1 tuýp", "Sunscreen SPF50 x 1 tuýp"], diagnosis: "Mụn trứng cá", status: "dispensed" },
+    { id: "DT001", patient: "Nguyễn Văn An", doctor: "BS. Trần Minh", dept: "Nội khoa", date: "25/02/2025", medicines: [{ name: "Amoxicillin 500mg", qty: "20 viên", dosage: "2 viên/ngày" }, { name: "Paracetamol 500mg", qty: "10 viên", dosage: "Khi sốt" }, { name: "Omeprazole 20mg", qty: "14 viên", dosage: "1 viên/ngày" }], diagnosis: "Viêm họng cấp", status: "pending" as RxStatus, priority: false },
+    { id: "DT002", patient: "Lê Thị Bình", doctor: "BS. Phạm Hoa", dept: "Da liễu", date: "25/02/2025", medicines: [{ name: "Cetirizine 10mg", qty: "30 viên", dosage: "1 viên/tối" }, { name: "Hydrocortisone cream", qty: "1 tuýp", dosage: "Bôi 2 lần/ngày" }], diagnosis: "Viêm da dị ứng", status: "pending" as RxStatus, priority: false },
+    { id: "DT003", patient: "Trần Văn Cường", doctor: "BS. Ngô Đức", dept: "Tim mạch", date: "25/02/2025", medicines: [{ name: "Amlodipine 5mg", qty: "30 viên", dosage: "1 viên/sáng" }, { name: "Aspirin 81mg", qty: "30 viên", dosage: "1 viên/ngày" }, { name: "Atorvastatin 10mg", qty: "30 viên", dosage: "1 viên/tối" }], diagnosis: "Tăng HA, ĐTĐ type 2", status: "checking" as RxStatus, priority: true },
+    { id: "DT004", patient: "Phạm Thị Dung", doctor: "BS. Trần Minh", dept: "Nội khoa", date: "25/02/2025", medicines: [{ name: "Vitamin B12", qty: "30 viên", dosage: "1 viên/ngày" }, { name: "Acid folic 5mg", qty: "30 viên", dosage: "1 viên/ngày" }], diagnosis: "Thiếu máu", status: "dispensed" as RxStatus, priority: false },
+    { id: "DT005", patient: "Hoàng Văn Em", doctor: "BS. Lý Thanh", dept: "Nhi khoa", date: "25/02/2025", medicines: [{ name: "Amoxicillin siro", qty: "1 chai", dosage: "5ml x 3 lần/ngày" }, { name: "Paracetamol siro", qty: "1 chai", dosage: "Khi sốt" }], diagnosis: "Viêm đường hô hấp", status: "pending" as RxStatus, priority: true },
+    { id: "DT006", patient: "Vũ Thị Fương", doctor: "BS. Phạm Hoa", dept: "Da liễu", date: "24/02/2025", medicines: [{ name: "Tretinoin cream", qty: "1 tuýp", dosage: "Bôi tối" }], diagnosis: "Mụn trứng cá", status: "dispensed" as RxStatus, priority: false },
 ];
 
-const STATUS_MAP: Record<string, { l: string; c: string }> = {
-    pending: { l: "Chờ cấp phát", c: "bg-amber-50 dark:bg-amber-500/10 text-amber-600" },
-    dispensed: { l: "Đã cấp phát", c: "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600" },
-    returned: { l: "Hoàn trả", c: "bg-red-50 dark:bg-red-500/10 text-red-500" },
+const COLUMNS: { key: RxStatus; label: string; icon: string; color: string; bgColor: string }[] = [
+    { key: "pending", label: "Chờ cấp phát", icon: "pending_actions", color: "text-amber-600", bgColor: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800" },
+    { key: "checking", label: "Đang kiểm tra", icon: "fact_check", color: "text-blue-600", bgColor: "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800" },
+    { key: "dispensed", label: "Đã cấp phát", icon: "check_circle", color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" },
+];
+
+const INTERACTION_WARNINGS: Record<string, { drugs: string[]; warning: string; severity: "high" | "medium" }> = {
+    DT003: { drugs: ["Aspirin 81mg", "Amlodipine 5mg"], warning: "Aspirin có thể tăng tác dụng hạ huyết áp của Amlodipine. Theo dõi HA.", severity: "medium" },
+    DT005: { drugs: ["Amoxicillin siro", "Paracetamol siro"], warning: "Lưu ý liều dùng cho trẻ em theo cân nặng.", severity: "high" },
 };
 
 export default function PharmacistPrescriptions() {
     const [rxs, setRxs] = useState(MOCK_RX);
     const [search, setSearch] = useState("");
-    const [filter, setFilter] = useState("all");
     const [detail, setDetail] = useState<string | null>(null);
+    const [pharmacistNote, setPharmacistNote] = useState("");
 
-    const handleDispense = (id: string) => {
-        setRxs((prev) => prev.map((r) => r.id === id ? { ...r, status: "dispensed" } : r));
-        setDetail(null);
-    };
+    const filtered = useMemo(() => rxs.filter(r =>
+        r.patient.toLowerCase().includes(search.toLowerCase()) || r.id.includes(search)
+    ), [rxs, search]);
 
-    const filtered = useMemo(() => rxs.filter((r) => {
-        const ms = r.patient.toLowerCase().includes(search.toLowerCase()) || r.id.includes(search);
-        return ms && (filter === "all" || r.status === filter);
-    }), [rxs, search, filter]);
+    const moveToChecking = (id: string) => setRxs(prev => prev.map(r => r.id === id ? { ...r, status: "checking" as RxStatus } : r));
+    const moveToDispensed = (id: string) => setRxs(prev => prev.map(r => r.id === id ? { ...r, status: "dispensed" as RxStatus } : r));
 
-    const detailRx = rxs.find((r) => r.id === detail);
+    const detailRx = rxs.find(r => r.id === detail);
+    const interactionWarning = detail ? INTERACTION_WARNINGS[detail] : null;
 
     return (
-        <div className="p-6 md:p-8"><div className="max-w-7xl mx-auto space-y-6">
-            <div>
-                <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Quản lý Đơn thuốc</h1>
-                <p className="text-sm text-[#687582] mt-1">Xem và cấp phát đơn thuốc từ bác sĩ</p>
+        <div className="p-6 md:p-8"><div className="max-w-full mx-auto space-y-6">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Quản lý Đơn thuốc</h1>
+                    <p className="text-sm text-[#687582] mt-1">Tiếp nhận, kiểm tra và cấp phát đơn thuốc từ bác sĩ</p>
+                </div>
+                <div className="relative w-full md:w-72">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-[#687582]" style={{ fontSize: "20px" }}>search</span>
+                    <input type="text" placeholder="Tìm mã đơn, tên BN..." value={search} onChange={e => setSearch(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-[#1e242b] border border-[#dde0e4] dark:border-[#2d353e] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white" />
+                </div>
             </div>
 
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {[
-                    { l: "Tổng đơn", v: rxs.length, i: "pill", c: "text-blue-600" },
-                    { l: "Chờ cấp phát", v: rxs.filter((r) => r.status === "pending").length, i: "pending_actions", c: "text-amber-600" },
-                    { l: "Đã cấp", v: rxs.filter((r) => r.status === "dispensed").length, i: "check_circle", c: "text-emerald-600" },
-                ].map((s) => (
-                    <div key={s.l} className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#dde0e4] dark:border-[#2d353e] p-4 flex items-center gap-4">
-                        <span className={`material-symbols-outlined ${s.c}`} style={{ fontSize: "28px" }}>{s.i}</span>
-                        <div><p className="text-xl font-bold text-[#121417] dark:text-white">{s.v}</p><p className="text-xs text-[#687582]">{s.l}</p></div>
-                    </div>
-                ))}
+                {COLUMNS.map(col => {
+                    const count = rxs.filter(r => r.status === col.key).length;
+                    return (
+                        <div key={col.key} className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#dde0e4] dark:border-[#2d353e] p-4 flex items-center gap-4">
+                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${col.bgColor}`}>
+                                <span className={`material-symbols-outlined ${col.color}`}>{col.icon}</span>
+                            </div>
+                            <div><p className="text-xl font-bold text-[#121417] dark:text-white">{count}</p><p className="text-xs text-[#687582]">{col.label}</p></div>
+                        </div>
+                    );
+                })}
             </div>
 
-            {/* Table */}
-            <div className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#dde0e4] dark:border-[#2d353e]">
-                <div className="p-4 border-b border-[#dde0e4] dark:border-[#2d353e] flex flex-col sm:flex-row gap-3 items-center">
-                    <div className="relative flex-1 w-full sm:max-w-xs">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-[#687582]" style={{ fontSize: "20px" }}>search</span>
-                        <input type="text" placeholder="Tìm mã đơn, tên BN..." value={search} onChange={(e) => setSearch(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-[#f6f7f8] dark:bg-[#13191f] border border-[#dde0e4] dark:border-[#2d353e] rounded-lg text-sm outline-none focus:border-[#3C81C6]" />
-                    </div>
-                    <div className="flex gap-2">
-                        {["all", "pending", "dispensed"].map((s) => (
-                            <button key={s} onClick={() => setFilter(s)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filter === s ? "bg-[#3C81C6] text-white" : "bg-[#f6f7f8] dark:bg-[#13191f] text-[#687582]"}`}>
-                                {s === "all" ? "Tất cả" : STATUS_MAP[s]?.l}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                        <thead><tr className="border-b border-[#dde0e4] dark:border-[#2d353e]">
-                            {["Mã đơn", "Bệnh nhân", "Bác sĩ", "Chẩn đoán", "Số thuốc", "Trạng thái", "Thao tác"].map((h) => (
-                                <th key={h} className="px-4 py-3 text-xs font-semibold text-[#687582] uppercase">{h}</th>
-                            ))}
-                        </tr></thead>
-                        <tbody>
-                            {filtered.map((r) => (
-                                <tr key={r.id} className="border-b border-[#dde0e4] dark:border-[#2d353e] hover:bg-gray-50 dark:hover:bg-gray-800/30 transition-colors">
-                                    <td className="px-4 py-3 text-sm font-mono text-[#3C81C6] font-medium">{r.id}</td>
-                                    <td className="px-4 py-3 text-sm font-semibold text-[#121417] dark:text-white">{r.patient}</td>
-                                    <td className="px-4 py-3"><p className="text-sm text-[#121417] dark:text-white">{r.doctor}</p><p className="text-xs text-[#687582]">{r.dept}</p></td>
-                                    <td className="px-4 py-3 text-sm text-[#687582]">{r.diagnosis}</td>
-                                    <td className="px-4 py-3 text-sm font-medium text-[#121417] dark:text-white">{r.medicines.length}</td>
-                                    <td className="px-4 py-3"><span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${STATUS_MAP[r.status]?.c}`}><span className="w-1.5 h-1.5 rounded-full bg-current" />{STATUS_MAP[r.status]?.l}</span></td>
-                                    <td className="px-4 py-3 flex items-center gap-1">
-                                        <button onClick={() => setDetail(r.id)} className="p-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-500/10 text-blue-600 transition-colors"><span className="material-symbols-outlined" style={{ fontSize: "18px" }}>visibility</span></button>
-                                        {r.status === "pending" && <button onClick={() => handleDispense(r.id)} className="p-1.5 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-500/10 text-emerald-600 transition-colors" title="Cấp phát"><span className="material-symbols-outlined" style={{ fontSize: "18px" }}>done_all</span></button>}
-                                        <button className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-[#687582] transition-colors"><span className="material-symbols-outlined" style={{ fontSize: "18px" }}>print</span></button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+            {/* Kanban Board */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                {COLUMNS.map(col => {
+                    const colRxs = filtered.filter(r => r.status === col.key);
+                    return (
+                        <div key={col.key} className="space-y-3">
+                            <div className={`flex items-center gap-2 px-4 py-3 rounded-xl border ${col.bgColor}`}>
+                                <span className={`material-symbols-outlined ${col.color}`}>{col.icon}</span>
+                                <h3 className={`text-sm font-bold ${col.color}`}>{col.label}</h3>
+                                <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full ${col.bgColor} ${col.color}`}>{colRxs.length}</span>
+                            </div>
+                            <div className="space-y-3 min-h-[200px]">
+                                {colRxs.map(rx => {
+                                    const hasWarning = INTERACTION_WARNINGS[rx.id];
+                                    return (
+                                        <div key={rx.id} onClick={() => setDetail(rx.id)}
+                                            className={`bg-white dark:bg-[#1e242b] rounded-xl border ${hasWarning ? "border-red-300 dark:border-red-800" : "border-[#dde0e4] dark:border-[#2d353e]"} p-4 hover:shadow-md transition-all cursor-pointer group`}>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-xs font-mono text-[#3C81C6] font-bold">{rx.id}</span>
+                                                <div className="flex items-center gap-1">
+                                                    {rx.priority && <span className="material-symbols-outlined text-red-500 text-[16px]">priority_high</span>}
+                                                    {hasWarning && <span className="material-symbols-outlined text-orange-500 text-[16px]">warning</span>}
+                                                </div>
+                                            </div>
+                                            <p className="text-sm font-bold text-[#121417] dark:text-white">{rx.patient}</p>
+                                            <p className="text-xs text-[#687582] mt-0.5">{rx.doctor} • {rx.dept}</p>
+                                            <p className="text-xs text-[#687582] mt-1"><strong className="text-[#121417] dark:text-gray-300">CĐ:</strong> {rx.diagnosis}</p>
+                                            <div className="mt-3 flex items-center justify-between">
+                                                <div className="flex items-center gap-1">
+                                                    <span className="material-symbols-outlined text-teal-500 text-[14px]">medication</span>
+                                                    <span className="text-xs text-[#687582]">{rx.medicines.length} thuốc</span>
+                                                </div>
+                                                {col.key === "pending" && (
+                                                    <button onClick={e => { e.stopPropagation(); moveToChecking(rx.id); }}
+                                                        className="text-xs font-medium text-[#3C81C6] hover:text-[#2a6da8] flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                                                        Kiểm tra <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                                                    </button>
+                                                )}
+                                                {col.key === "checking" && (
+                                                    <button onClick={e => { e.stopPropagation(); moveToDispensed(rx.id); }}
+                                                        className="text-xs font-medium text-green-600 hover:text-green-700 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-all">
+                                                        Cấp phát <span className="material-symbols-outlined text-[14px]">check</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {colRxs.length === 0 && (
+                                    <div className="text-center py-8 text-[#b0b8c1]">
+                                        <span className="material-symbols-outlined text-3xl mb-1 block">inbox</span>
+                                        <p className="text-xs">Không có đơn</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
             </div>
 
             {/* Detail Modal */}
             {detailRx && (
-                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setDetail(null)}>
-                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full max-w-lg" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => { setDetail(null); setPharmacistNote(""); }}>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="p-6 border-b border-[#dde0e4] dark:border-[#2d353e] flex items-center justify-between">
-                            <h2 className="text-lg font-bold text-[#121417] dark:text-white">Chi tiết đơn thuốc {detailRx.id}</h2>
-                            <button onClick={() => setDetail(null)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><span className="material-symbols-outlined text-[#687582]">close</span></button>
+                            <h2 className="text-lg font-bold text-[#121417] dark:text-white">Chi tiết đơn {detailRx.id}</h2>
+                            <button onClick={() => { setDetail(null); setPharmacistNote(""); }} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+                                <span className="material-symbols-outlined text-[#687582]">close</span>
+                            </button>
                         </div>
                         <div className="p-6 space-y-4">
                             <div className="grid grid-cols-2 gap-3 text-sm">
@@ -117,21 +147,63 @@ export default function PharmacistPrescriptions() {
                                 <div><span className="text-[#687582]">Ngày:</span><p className="font-medium">{detailRx.date}</p></div>
                             </div>
                             <div><span className="text-sm text-[#687582]">Chẩn đoán:</span><p className="text-sm font-medium text-[#121417] dark:text-white">{detailRx.diagnosis}</p></div>
+
+                            {/* Interaction Warning */}
+                            {interactionWarning && (
+                                <div className={`flex items-start gap-3 p-3.5 rounded-xl border ${interactionWarning.severity === "high" ? "bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800" : "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"}`}>
+                                    <span className={`material-symbols-outlined text-[20px] mt-0.5 ${interactionWarning.severity === "high" ? "text-red-500" : "text-amber-500"}`}>warning</span>
+                                    <div>
+                                        <p className={`text-xs font-bold mb-0.5 ${interactionWarning.severity === "high" ? "text-red-700 dark:text-red-400" : "text-amber-700 dark:text-amber-400"}`}>⚠ Cảnh báo tương tác thuốc</p>
+                                        <p className={`text-xs ${interactionWarning.severity === "high" ? "text-red-600 dark:text-red-300" : "text-amber-600 dark:text-amber-300"}`}>
+                                            <strong>{interactionWarning.drugs.join(" + ")}</strong>: {interactionWarning.warning}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Medicines Checklist */}
                             <div>
                                 <p className="text-sm font-semibold text-[#121417] dark:text-white mb-2">Danh sách thuốc:</p>
                                 <div className="space-y-2">
                                     {detailRx.medicines.map((m, i) => (
                                         <div key={i} className="flex items-center gap-3 p-3 rounded-lg bg-[#f6f7f8] dark:bg-[#13191f]">
                                             <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>medication</span>
-                                            <span className="text-sm text-[#121417] dark:text-white">{m}</span>
+                                            <div className="flex-1">
+                                                <span className="text-sm font-medium text-[#121417] dark:text-white">{m.name}</span>
+                                                <span className="text-xs text-[#687582] ml-2">x {m.qty}</span>
+                                                <p className="text-xs text-[#687582]">{m.dosage}</p>
+                                            </div>
+                                            {detailRx.status !== "dispensed" && (
+                                                <span className="material-symbols-outlined text-green-500 text-[20px]">check_circle</span>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
                             </div>
+
+                            {/* Pharmacist Note */}
+                            {detailRx.status !== "dispensed" && (
+                                <div>
+                                    <label className="block text-sm font-medium text-[#121417] dark:text-gray-300 mb-1.5">Ghi chú dược sĩ</label>
+                                    <textarea value={pharmacistNote} onChange={e => setPharmacistNote(e.target.value)} rows={2} placeholder="Nhập ghi chú nếu cần..."
+                                        className="w-full px-4 py-2.5 text-sm bg-[#f6f7f8] dark:bg-[#13191f] border border-[#dde0e4] dark:border-[#2d353e] rounded-xl outline-none focus:border-[#3C81C6] resize-none dark:text-white" />
+                                </div>
+                            )}
                         </div>
                         <div className="p-6 border-t border-[#dde0e4] dark:border-[#2d353e] flex justify-end gap-3">
-                            <button className="px-4 py-2 text-sm font-medium text-[#687582] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg flex items-center gap-2"><span className="material-symbols-outlined" style={{ fontSize: "18px" }}>print</span>In đơn</button>
-                            {detailRx.status === "pending" && <button onClick={() => handleDispense(detailRx.id)} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg flex items-center gap-2"><span className="material-symbols-outlined" style={{ fontSize: "18px" }}>done_all</span>Xác nhận cấp phát</button>}
+                            <button className="px-4 py-2 text-sm font-medium text-[#687582] hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg flex items-center gap-2">
+                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>print</span>In đơn
+                            </button>
+                            {detailRx.status === "pending" && (
+                                <button onClick={() => { moveToChecking(detailRx.id); setDetail(null); }} className="px-4 py-2 bg-[#3C81C6] hover:bg-[#2a6da8] text-white text-sm font-medium rounded-lg flex items-center gap-2">
+                                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>fact_check</span>Bắt đầu kiểm tra
+                                </button>
+                            )}
+                            {detailRx.status === "checking" && (
+                                <button onClick={() => { moveToDispensed(detailRx.id); setDetail(null); }} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg flex items-center gap-2">
+                                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>done_all</span>Xác nhận cấp phát
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

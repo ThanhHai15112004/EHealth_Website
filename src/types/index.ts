@@ -70,6 +70,7 @@ export interface Doctor extends BaseEntity {
     departmentId: string;
     departmentName: string;
     specialization: string;
+    experience?: number;
     rating: number;
     reviewCount: number;
     status: DoctorStatus;

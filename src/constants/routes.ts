@@ -9,18 +9,27 @@ export const ROUTES = {
     LOGIN: "/login",
     FORGOT_PASSWORD: "/forgot-password",
     OTP: "/otp",
+    LANDING: "/landing",
   },
 
   // Admin routes
   ADMIN: {
     DASHBOARD: "/admin",
+    // Quản lý nhân sự
     USERS: "/admin/users",
     USERS_ROLES: "/admin/users/roles",
     DOCTORS: "/admin/doctors",
+    // Quản lý bệnh viện
     DEPARTMENTS: "/admin/departments",
-    MEDICINES: "/admin/medicines",
-    MEDICINES_INVENTORY: "/admin/medicines/inventory",
+    HOSPITALS: "/admin/hospitals",
+    TIME_SLOTS: "/admin/hospitals/time-slots",
     SCHEDULES: "/admin/schedules",
+    // Kho thuốc
+    MEDICINES: "/admin/medicines",
+    MEDICINES_IMPORT: "/admin/medicines/import",
+    MEDICINES_EXPORT: "/admin/medicines/export",
+    MEDICINES_STOCK: "/admin/medicines/stock",
+    // Thống kê & Khác
     STATISTICS: "/admin/statistics",
     STATISTICS_REVENUE: "/admin/statistics/revenue",
     ACTIVITY_LOGS: "/admin/activity-logs",
@@ -43,11 +52,13 @@ export const ROUTES = {
     PHARMACIST: {
       DASHBOARD: "/portal/pharmacist",
       PRESCRIPTIONS: "/portal/pharmacist/prescriptions",
+      DISPENSING: "/portal/pharmacist/dispensing",
       INVENTORY: "/portal/pharmacist/inventory",
       SETTINGS: "/portal/pharmacist/settings",
     },
     RECEPTIONIST: {
       DASHBOARD: "/portal/receptionist",
+      RECEPTION: "/portal/receptionist/reception",
       APPOINTMENTS: "/portal/receptionist/appointments",
       QUEUE: "/portal/receptionist/queue",
       PATIENTS: "/portal/receptionist/patients",
@@ -133,35 +144,34 @@ export const ADMIN_MENU_ITEMS: AdminMenuItem[] = [
   },
   {
     key: "users",
-    icon: "group",
-    label: "Người dùng & Phân quyền",
+    icon: "badge",
+    label: "Quản lý nhân sự",
     children: [
-      { key: "users-list", href: ROUTES.ADMIN.USERS, label: "Danh sách người dùng" },
+      { key: "users-list", href: ROUTES.ADMIN.USERS, label: "Danh sách nhân sự" },
+      { key: "doctors-list", href: ROUTES.ADMIN.DOCTORS, label: "Danh sách Bác sĩ" },
       { key: "users-roles", href: ROUTES.ADMIN.USERS_ROLES, label: "Phân quyền & Vai trò" },
     ],
   },
   {
-    key: "doctors",
-    icon: "stethoscope",
-    label: "Quản lý Bác sĩ",
+    key: "hospital",
+    icon: "local_hospital",
+    label: "Quản lý bệnh viện",
     children: [
-      { key: "doctors-list", href: ROUTES.ADMIN.DOCTORS, label: "Danh sách Bác sĩ" },
-      { key: "doctors-schedules", href: ROUTES.ADMIN.SCHEDULES, label: "Lịch trực" },
+      { key: "departments", href: ROUTES.ADMIN.DEPARTMENTS, label: "Chuyên khoa" },
+      { key: "hospitals", href: ROUTES.ADMIN.HOSPITALS, label: "Cơ sở y tế" },
+      { key: "time-slots", href: ROUTES.ADMIN.TIME_SLOTS, label: "Cấu hình khung giờ" },
+      { key: "schedules", href: ROUTES.ADMIN.SCHEDULES, label: "Lịch trực" },
     ],
-  },
-  {
-    key: "departments",
-    href: ROUTES.ADMIN.DEPARTMENTS,
-    icon: "category",
-    label: "Chuyên khoa",
   },
   {
     key: "medicines",
     icon: "medication",
-    label: "Danh mục Thuốc",
+    label: "Kho thuốc",
     children: [
-      { key: "medicines-list", href: ROUTES.ADMIN.MEDICINES, label: "Danh sách thuốc" },
-      { key: "medicines-inventory", href: ROUTES.ADMIN.MEDICINES_INVENTORY, label: "Nhập kho / Tồn kho" },
+      { key: "medicines-list", href: ROUTES.ADMIN.MEDICINES, label: "Danh mục thuốc" },
+      { key: "medicines-import", href: ROUTES.ADMIN.MEDICINES_IMPORT, label: "Nhập kho" },
+      { key: "medicines-export", href: ROUTES.ADMIN.MEDICINES_EXPORT, label: "Xuất kho" },
+      { key: "medicines-stock", href: ROUTES.ADMIN.MEDICINES_STOCK, label: "Tồn kho" },
     ],
   },
   {
@@ -194,6 +204,12 @@ export const RECEPTIONIST_MENU_ITEMS = [
     href: ROUTES.PORTAL.RECEPTIONIST.DASHBOARD,
     icon: "home",
     label: "Trang chủ",
+  },
+  {
+    key: "reception",
+    href: ROUTES.PORTAL.RECEPTIONIST.RECEPTION,
+    icon: "how_to_reg",
+    label: "Tiếp nhận BN",
   },
   {
     key: "appointments",
@@ -240,6 +256,12 @@ export const PHARMACIST_MENU_ITEMS = [
     href: ROUTES.PORTAL.PHARMACIST.PRESCRIPTIONS,
     icon: "pill",
     label: "Đơn thuốc",
+  },
+  {
+    key: "dispensing",
+    href: ROUTES.PORTAL.PHARMACIST.DISPENSING,
+    icon: "local_pharmacy",
+    label: "Cấp phát",
   },
   {
     key: "inventory",

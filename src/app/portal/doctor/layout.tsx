@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { DoctorSidebar } from "@/components/shared/doctor-sidebar";
 import { DoctorHeader } from "@/components/shared/doctor-header";
 import { AuthGuard } from "@/components/common/AuthGuard";
+import { SidebarProvider } from "@/contexts/SidebarContext";
 
 export const metadata: Metadata = {
     title: "Cổng thông tin Bác sĩ - E-Health",
@@ -15,13 +16,15 @@ export default function DoctorPortalLayout({
 }) {
     return (
         <AuthGuard allowedRoles={["doctor"]}>
-            <div className="bg-[#f6f7f8] dark:bg-[#13191f] text-[#121417] dark:text-gray-100 font-display overflow-hidden h-screen flex">
-                <DoctorSidebar />
-                <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#f6f7f8] dark:bg-[#13191f] relative">
-                    <DoctorHeader />
-                    <div className="flex-1 overflow-y-auto">{children}</div>
-                </main>
-            </div>
+            <SidebarProvider>
+                <div className="bg-[#f6f7f8] dark:bg-[#13191f] text-[#121417] dark:text-gray-100 font-display overflow-hidden h-screen flex">
+                    <DoctorSidebar />
+                    <main className="flex-1 flex flex-col h-full overflow-hidden bg-[#f6f7f8] dark:bg-[#13191f] relative">
+                        <DoctorHeader />
+                        <div className="flex-1 overflow-y-auto">{children}</div>
+                    </main>
+                </div>
+            </SidebarProvider>
         </AuthGuard>
     );
 }

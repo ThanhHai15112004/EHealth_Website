@@ -249,56 +249,38 @@ export default function QueuePage() {
                         <table className="w-full text-left">
                             <thead className="bg-gray-50/50 dark:bg-gray-800/50 border-b border-[#e5e7eb] dark:border-[#2d353e]">
                                 <tr>
-                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">
-                                        STT
-                                    </th>
-                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">
-                                        Thông tin bệnh nhân
-                                    </th>
-                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">
-                                        Tiếp nhận
-                                    </th>
-                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">
-                                        Lý do khám
-                                    </th>
-                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">
-                                        Trạng thái
-                                    </th>
-                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase text-right">
-                                        Hành động
-                                    </th>
+                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">STT</th>
+                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">Thông tin bệnh nhân</th>
+                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">Nguồn</th>
+                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">Tiếp nhận</th>
+                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">Lý do khám</th>
+                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase">Trạng thái</th>
+                                    <th className="py-4 px-6 text-xs font-semibold text-[#687582] dark:text-gray-400 uppercase text-right">Hành động</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[#e5e7eb] dark:divide-[#2d353e]">
                                 {filteredQueue.length === 0 ? (
                                     <tr>
-                                        <td
-                                            colSpan={6}
-                                            className="py-12 text-center text-[#687582] dark:text-gray-400"
-                                        >
-                                            <span className="material-symbols-outlined text-4xl mb-2 block">
-                                                search_off
-                                            </span>
+                                        <td colSpan={7} className="py-12 text-center text-[#687582] dark:text-gray-400">
+                                            <span className="material-symbols-outlined text-4xl mb-2 block">search_off</span>
                                             Không tìm thấy bệnh nhân
                                         </td>
                                     </tr>
                                 ) : (
                                     filteredQueue.map((patient) => {
                                         const statusStyle = getStatusStyle(patient.status);
+                                        const isPriority = patient.age >= 60 || patient.age <= 6;
+                                        const sources = ["receptionist", "online", "followup"] as const;
+                                        const source = sources[patient.queueNumber % 3];
+                                        const sourceConfig = { receptionist: { icon: "person", label: "Lễ tân", cls: "bg-blue-50 dark:bg-blue-900/20 text-blue-600" }, online: { icon: "language", label: "Online", cls: "bg-purple-50 dark:bg-purple-900/20 text-purple-600" }, followup: { icon: "event_repeat", label: "Tái khám", cls: "bg-teal-50 dark:bg-teal-900/20 text-teal-600" } };
+                                        const src = sourceConfig[source];
                                         return (
-                                            <tr
-                                                key={patient.id}
-                                                className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
-                                            >
+                                            <tr key={patient.id} className={`group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors ${isPriority ? "bg-red-50/30 dark:bg-red-900/5" : ""}`}>
                                                 <td className="py-4 px-6">
-                                                    <span
-                                                        className={`inline-flex items-center justify-center size-8 rounded-full text-sm font-bold ${patient.status === "examining"
-                                                            ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                                                            : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
-                                                            }`}
-                                                    >
-                                                        {patient.queueNumber}
-                                                    </span>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className={`inline-flex items-center justify-center size-8 rounded-full text-sm font-bold ${patient.status === "examining" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"}`}>{patient.queueNumber}</span>
+                                                        {isPriority && <span className="material-symbols-outlined text-red-500 text-[16px]" title={patient.age <= 6 ? "Trẻ em" : "Người cao tuổi"}>priority_high</span>}
+                                                    </div>
                                                 </td>
                                                 <td className="py-4 px-6">
                                                     <div className="flex items-center gap-3">
@@ -330,9 +312,12 @@ export default function QueuePage() {
                                                     </div>
                                                 </td>
                                                 <td className="py-4 px-6">
-                                                    <p className="text-sm text-[#121417] dark:text-gray-200">
-                                                        {patient.checkInTime}
-                                                    </p>
+                                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold ${src.cls}`}>
+                                                        <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>{src.icon}</span>{src.label}
+                                                    </span>
+                                                </td>
+                                                <td className="py-4 px-6">
+                                                    <p className="text-sm text-[#121417] dark:text-gray-200">{patient.checkInTime}</p>
                                                 </td>
                                                 <td className="py-4 px-6">
                                                     <p className="text-sm text-[#687582] dark:text-gray-400 max-w-xs truncate">

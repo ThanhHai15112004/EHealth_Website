@@ -189,6 +189,22 @@ export default function UsersPage() {
                         <span className="material-symbols-outlined text-[20px]">admin_panel_settings</span>
                         {UI_TEXT.ADMIN.USERS.CONFIGURE_PERMISSIONS}
                     </button>
+                    <label className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-[#1e242b] border border-[#dde0e4] dark:border-[#2d353e] text-[#121417] dark:text-white rounded-xl text-sm font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer">
+                        <span className="material-symbols-outlined text-[20px]">upload</span>
+                        Import
+                        <input type="file" accept=".csv,.xlsx" className="hidden" onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) alert(`Đã chọn file: ${file.name}. Chức năng import sẽ được xử lý.`);
+                            e.target.value = "";
+                        }} />
+                    </label>
+                    <button
+                        onClick={handleExport}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-[#1e242b] border border-[#dde0e4] dark:border-[#2d353e] text-[#121417] dark:text-white rounded-xl text-sm font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                        <span className="material-symbols-outlined text-[20px]">download</span>
+                        Export
+                    </button>
                     <button
                         onClick={() => router.push("/admin/users/new")}
                         className="flex items-center gap-2 px-5 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-bold shadow-md shadow-blue-200 dark:shadow-none transition-all transform hover:-translate-y-0.5"
@@ -392,7 +408,7 @@ export default function UsersPage() {
                                                         {
                                                             label: "Chỉnh sửa",
                                                             icon: "edit",
-                                                            onClick: () => handleEditUser(user),
+                                                            onClick: () => router.push(`/admin/users/${user.id}/edit`),
                                                         },
                                                         {
                                                             label: user.status === USER_STATUS.LOCKED ? "Mở khóa" : "Khóa tài khoản",
