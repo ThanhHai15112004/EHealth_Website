@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { billingService } from "@/services/billingService";
 
 const MOCK_INVOICES = [
     { id: "HD001", patient: "Nguyễn Văn An", patientId: "BN001", date: "28/02/2025", services: "Khám Tim mạch + Xét nghiệm máu", total: 850000, insurance: 680000, paid: 170000, status: "paid", method: "Tiền mặt" },
@@ -31,8 +32,17 @@ const statusMap: Record<string, { label: string; style: string }> = {
 
 export default function BillingPage() {
     const router = useRouter();
-    const [invoices] = useState(MOCK_INVOICES);
+    const [invoices, setInvoices] = useState(MOCK_INVOICES);
     const [filter, setFilter] = useState("all");
+
+    useEffect(() => {
+        billingService.getInvoices({ limit: 100 })
+            .then(res => {
+                const items = res?.data?.data || res?.data || [];
+                if (items.length > 0) setInvoices(items);
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
 
     const filtered = invoices.filter((inv) => filter === "all" || inv.status === filter);
     const totalRevenue = invoices.filter((i) => i.status === "paid").reduce((sum, i) => sum + i.paid, 0);

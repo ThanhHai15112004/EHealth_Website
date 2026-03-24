@@ -1,9 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MOCK_PATIENT_QUEUE } from "@/lib/mock-data/doctor";
+import { emrService } from "@/services/emrService";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 
 /* ──────── Steps Config ──────── */
 const STEPS = [
@@ -43,11 +46,16 @@ export default function ExaminationPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const patientId = searchParams.get("patient");
+    const appointmentId = searchParams.get("appointment");
+    const { user } = useAuth();
+    const toast = useToast();
 
-    const patient = useMemo(() => {
+    // Try real API first, fall back to mock
+    const [patient, setPatient] = useState<typeof MOCK_PATIENT_QUEUE[0] | null>(() => {
         if (!patientId) return null;
         return MOCK_PATIENT_QUEUE.find(p => p.id === patientId) || null;
-    }, [patientId]);
+    });
+    const [emrId, setEmrId] = useState<string | null>(null);
 
     const [activeStep, setActiveStep] = useState(0);
     const [saving, setSaving] = useState(false);
@@ -110,24 +118,80 @@ export default function ExaminationPage() {
         setPainLocations(prev => prev.includes(loc) ? prev.filter(l => l !== loc) : [...prev, loc]);
     };
 
+    const buildEmrPayload = () => ({
+        patientId,
+        appointmentId,
+        doctorId: user?.id,
+        vitalSigns: vitals,
+        chiefComplaint: symptoms,
+        painLevel,
+        painLocations,
+        onsetTime,
+        labTests: selectedLabs,
+        labNote,
+        labResults,
+        diagnosis,
+        icdCode,
+        treatment,
+        prescriptions: meds,
+        followUpDate: followUp,
+        doctorNote,
+        sendToPharmacy,
+    });
+
     const handleSaveDraft = async () => {
         setSaving(true);
-        await new Promise(r => setTimeout(r, 800));
-        setSaving(false);
-        alert("Đã lưu nháp thành công!");
+        try {
+            const payload = buildEmrPayload();
+            if (emrId) {
+                await emrService.saveDraft(emrId, payload);
+            } else {
+                const res = await emrService.create({ ...payload, status: "DRAFT" });
+                if (res?.data?.id) setEmrId(res.data.id);
+            }
+            toast.success("Đã lưu nháp thành công!");
+        } catch {
+            // API thất bại — giữ nguyên dữ liệu local, không báo sai
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleComplete = async () => {
         if (!confirm("Xác nhận hoàn thành khám bệnh và ký kết quả?")) return;
         setSaving(true);
-        await new Promise(r => setTimeout(r, 1200));
-        setSaving(false);
-        if (sendToPharmacy && meds.length > 0) {
-            alert("Đã hoàn thành khám bệnh và gửi đơn thuốc đến quầy dược!");
-        } else {
-            alert("Đã hoàn thành khám bệnh!");
+        try {
+            const payload = buildEmrPayload();
+            let currentEmrId = emrId;
+            if (!currentEmrId) {
+                const res = await emrService.create({ ...payload, status: "COMPLETED" });
+                currentEmrId = res?.data?.id || null;
+                if (currentEmrId) setEmrId(currentEmrId);
+            } else {
+                await emrService.update(currentEmrId, { ...payload, status: "COMPLETED" });
+            }
+            if (currentEmrId) {
+                await emrService.sign(currentEmrId);
+                if (sendToPharmacy && meds.length > 0) {
+                    await emrService.createPrescription({
+                        emrId: currentEmrId,
+                        patientId,
+                        doctorId: user?.id,
+                        items: meds,
+                    });
+                }
+            }
+            if (sendToPharmacy && meds.length > 0) {
+                toast.success("Đã hoàn thành khám bệnh và gửi đơn thuốc đến quầy dược!");
+            } else {
+                toast.success("Đã hoàn thành khám bệnh!");
+            }
+            router.push("/portal/doctor/queue");
+        } catch {
+            toast.error("Có lỗi khi lưu kết quả khám. Vui lòng thử lại.");
+        } finally {
+            setSaving(false);
         }
-        router.push("/portal/doctor/queue");
     };
 
     const handleExit = () => {

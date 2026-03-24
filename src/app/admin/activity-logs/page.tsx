@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { UI_TEXT } from "@/constants/ui-text";
+import { auditService } from "@/services/auditService";
 
 interface ActivityLog {
     id: string;
@@ -37,11 +38,17 @@ const STATUS_STYLES = {
 };
 
 export default function ActivityLogsPage() {
-    const [logs] = useState<ActivityLog[]>(MOCK_LOGS);
+    const [logs, setLogs] = useState<ActivityLog[]>(MOCK_LOGS);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<string>("all");
     const [dateFrom, setDateFrom] = useState("");
     const [dateTo, setDateTo] = useState("");
+
+    useEffect(() => {
+        auditService.getLogs({ limit: 100 })
+            .then(res => { if (res?.data?.data) setLogs(res.data.data); })
+            .catch(() => { /* giữ mock data nếu API lỗi */ });
+    }, []);
 
     const filteredLogs = useMemo(() => {
         return logs.filter((log) => {

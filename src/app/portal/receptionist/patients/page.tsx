@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getPatients } from "@/services/patientService";
 
 const MOCK_PATIENTS = [
     { id: "BN001", name: "Nguyễn Văn An", dob: "15/03/1980", gender: "Nam", phone: "0901234567", cccd: "012345678901", address: "Q.1, TP.HCM", insurance: "HC4012345678", visits: 12, lastVisit: "20/02/2025" },
@@ -14,13 +15,22 @@ const MOCK_PATIENTS = [
 
 export default function ReceptionistPatients() {
     const router = useRouter();
-    const [patients] = useState(MOCK_PATIENTS);
+    const [patients, setPatients] = useState(MOCK_PATIENTS);
     const [search, setSearch] = useState("");
+
+    useEffect(() => {
+        getPatients({ limit: 100 })
+            .then(res => {
+                const items = res?.data?.items || (res as any)?.data || [];
+                if (items.length > 0) setPatients(items);
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
 
 
 
     const filtered = useMemo(() => patients.filter((p) =>
-        p.name.toLowerCase().includes(search.toLowerCase()) || p.id.includes(search) || p.phone.includes(search) || p.cccd.includes(search)
+        p.name.toLowerCase().includes(search.toLowerCase()) || p.id.includes(search) || (p.phone ?? "").includes(search) || (p.cccd ?? "").includes(search)
     ), [patients, search]);
 
     return (
@@ -39,9 +49,9 @@ export default function ReceptionistPatients() {
             {/* Stats */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
-                    { l: "Tổng bệnh nhân", v: "10,847", i: "groups", c: "from-blue-500 to-blue-600" },
-                    { l: "Đăng ký hôm nay", v: "8", i: "person_add", c: "from-emerald-500 to-emerald-600" },
-                    { l: "Có BHYT", v: "78%", i: "health_and_safety", c: "from-violet-500 to-violet-600" },
+                    { l: "Tổng bệnh nhân", v: patients.length.toLocaleString("vi-VN"), i: "groups", c: "from-blue-500 to-blue-600" },
+                    { l: "Đăng ký hôm nay", v: "—", i: "person_add", c: "from-emerald-500 to-emerald-600" },
+                    { l: "Có BHYT", v: patients.length > 0 ? Math.round(patients.filter(p => p.insurance).length / patients.length * 100) + "%" : "—", i: "health_and_safety", c: "from-violet-500 to-violet-600" },
                 ].map((s) => (
                     <div key={s.l} className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#dde0e4] dark:border-[#2d353e] p-5 flex items-center gap-4">
                         <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${s.c} flex items-center justify-center`}>

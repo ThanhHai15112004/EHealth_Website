@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { facilityService } from "@/services/facilityService";
 
 interface Hospital {
     id: string;
@@ -38,8 +39,30 @@ const MOCK_HOSPITALS: Hospital[] = [
 ];
 
 export default function HospitalsPage() {
-    const [hospitals] = useState<Hospital[]>(MOCK_HOSPITALS);
+    const [hospitals, setHospitals] = useState<Hospital[]>(MOCK_HOSPITALS);
     const [searchQuery, setSearchQuery] = useState("");
+
+    useEffect(() => {
+        facilityService.getList({ limit: 100 })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    setHospitals(items.map((f: any) => ({
+                        id: f.id,
+                        name: f.name ?? "",
+                        code: f.code ?? f.id,
+                        address: f.address ?? "",
+                        phone: f.phone ?? "",
+                        email: f.email ?? "",
+                        type: f.type ?? "Phòng khám đa khoa",
+                        status: f.status ?? "active",
+                        doctorCount: f.doctorCount ?? 0,
+                        departmentCount: f.departmentCount ?? 0,
+                    })));
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
 
     const filtered = hospitals.filter(
         (h) => h.name.toLowerCase().includes(searchQuery.toLowerCase()) || h.code.toLowerCase().includes(searchQuery.toLowerCase())

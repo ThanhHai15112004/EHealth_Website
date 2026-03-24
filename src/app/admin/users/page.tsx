@@ -1,14 +1,14 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
-import { MOCK_USERS, MOCK_USER_STATS } from "@/lib/mock-data/admin";
 import { ROLES, ROLE_LABELS, ROLE_COLORS, type Role } from "@/constants/roles";
 import { USER_STATUS } from "@/constants/status";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { UserFormModal } from "@/features/users/components/user-form-modal";
 import { PermissionsModal } from "@/features/users/components/permissions-modal";
+import * as userService from "@/services/userService";
 import type { User } from "@/types";
 
 type SortField = "fullName" | "role" | "createdAt" | "lastAccess" | "status";
@@ -17,7 +17,8 @@ type SortOrder = "asc" | "desc";
 export default function UsersPage() {
     // State
     const router = useRouter();
-    const [users, setUsers] = useState<User[]>(MOCK_USERS);
+    const [users, setUsers] = useState<User[]>([]);
+    const [isDataLoading, setIsDataLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [roleFilter, setRoleFilter] = useState<string>("all");
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -26,7 +27,31 @@ export default function UsersPage() {
     const [sortField, setSortField] = useState<SortField>("createdAt");
     const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
-    const stats = MOCK_USER_STATS;
+    // Load users from API
+    useEffect(() => {
+        const fetchUsers = async () => {
+            try {
+                setIsDataLoading(true);
+                const res = await userService.getUsers({ limit: 100 });
+                if (res?.data) {
+                    setUsers(res.data as unknown as User[]);
+                }
+            } catch (err) {
+                console.error('Lỗi tải danh sách người dùng:', err);
+            } finally {
+                setIsDataLoading(false);
+            }
+        };
+        fetchUsers();
+    }, []);
+
+    const stats = {
+        total: users.length,
+        active: users.filter(u => u.status === USER_STATUS.ACTIVE).length,
+        locked: users.filter(u => u.status === USER_STATUS.LOCKED).length,
+        inactive: users.filter(u => u.status !== USER_STATUS.ACTIVE && u.status !== USER_STATUS.LOCKED).length,
+        roles: new Set(users.map(u => u.role)).size,
+    };
 
     // Filtered and sorted users
     const filteredUsers = useMemo(() => {
@@ -97,41 +122,46 @@ export default function UsersPage() {
         setIsModalOpen(true);
     };
 
-    const handleDeleteUser = (userId: string) => {
-        if (confirm("Bạn có chắc chắn muốn xóa người dùng này?")) {
+    const handleDeleteUser = async (userId: string) => {
+        if (!confirm("Bạn có chắc chắn muốn xóa người dùng này?")) return;
+        try {
+            await userService.deleteUser(userId);
             setUsers((prev) => prev.filter((u) => u.id !== userId));
+        } catch (err) {
+            console.error('Xóa người dùng thất bại:', err);
+            alert('Xóa người dùng thất bại. Vui lòng thử lại.');
         }
     };
 
-    const handleLockUser = (userId: string) => {
-        setUsers((prev) =>
-            prev.map((u) =>
-                u.id === userId
-                    ? { ...u, status: u.status === USER_STATUS.LOCKED ? USER_STATUS.ACTIVE : USER_STATUS.LOCKED }
-                    : u
-            )
-        );
+    const handleLockUser = async (userId: string) => {
+        const user = users.find(u => u.id === userId);
+        if (!user) return;
+        const newStatus = user.status === USER_STATUS.LOCKED ? USER_STATUS.ACTIVE : USER_STATUS.LOCKED;
+        try {
+            await userService.updateUserStatus(userId, { status: newStatus });
+            setUsers((prev) =>
+                prev.map((u) => u.id === userId ? { ...u, status: newStatus } : u)
+            );
+        } catch (err) {
+            console.error('Cập nhật trạng thái thất bại:', err);
+            alert('Cập nhật trạng thái thất bại. Vui lòng thử lại.');
+        }
     };
 
-    const handleSubmitUser = (userData: Partial<User>) => {
-        if (editingUser) {
-            // Update existing user
-            setUsers((prev) =>
-                prev.map((u) => (u.id === editingUser.id ? { ...u, ...userData } : u))
-            );
-        } else {
-            // Add new user
-            const newUser: User = {
-                id: String(Date.now()),
-                email: userData.email || "",
-                fullName: userData.fullName || "",
-                role: userData.role || ROLES.RECEPTIONIST,
-                status: USER_STATUS.ACTIVE,
-                lastAccess: "Vừa tạo",
-                createdAt: new Date().toISOString().split("T")[0],
-                updatedAt: new Date().toISOString().split("T")[0],
-            };
-            setUsers((prev) => [newUser, ...prev]);
+    const handleSubmitUser = async (userData: Partial<User>) => {
+        try {
+            if (editingUser) {
+                await userService.updateUser(editingUser.id, userData as any);
+                setUsers((prev) =>
+                    prev.map((u) => (u.id === editingUser.id ? { ...u, ...userData } : u))
+                );
+            } else {
+                const created = await userService.createUser(userData as any);
+                setUsers((prev) => [created as unknown as User, ...prev]);
+            }
+        } catch (err) {
+            console.error('Lưu người dùng thất bại:', err);
+            alert('Lưu người dùng thất bại. Vui lòng thử lại.');
         }
     };
 

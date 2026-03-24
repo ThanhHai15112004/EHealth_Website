@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ROUTES } from "@/constants/routes";
+import { prescriptionService } from "@/services/prescriptionService";
+import { getDrugs } from "@/services/medicineService";
 
 // ==================== MOCK DATA ====================
 const STATS = [
@@ -52,7 +54,37 @@ function getCurrentDate(): string {
 // ==================== PAGE ====================
 export default function PharmacistDashboard() {
     const [filter, setFilter] = useState<"all" | "urgent">("all");
-    const filtered = filter === "urgent" ? PENDING_PRESCRIPTIONS.filter((p) => p.urgent) : PENDING_PRESCRIPTIONS;
+    const [pendingPrescriptions, setPendingPrescriptions] = useState(PENDING_PRESCRIPTIONS);
+    const [lowStock, setLowStock] = useState(LOW_STOCK);
+    const [stats, setStats] = useState(STATS);
+
+    useEffect(() => {
+        prescriptionService.getList({ status: "pending", limit: 20 })
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? [];
+                if (items.length > 0) {
+                    const mapped = items.map((p: any) => ({
+                        id: p.id, patient: p.patientName ?? "", doctor: p.doctorName ?? "",
+                        dept: p.departmentName ?? "", time: p.createdAt?.split("T")[1]?.slice(0, 5) ?? "",
+                        medicines: p.items?.length ?? 0, urgent: p.priority === "urgent",
+                    }));
+                    setPendingPrescriptions(mapped);
+                    setStats(prev => prev.map((s, i) => i === 0 ? { ...s, value: String(items.length) } : s));
+                }
+            })
+            .catch(() => {});
+        getDrugs({ status: "low_stock", limit: 5 })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    setLowStock(items.map((d: any) => ({ name: d.name, stock: d.quantity, min: d.minQuantity, unit: d.unit })));
+                    setStats(prev => prev.map((s, i) => i === 2 ? { ...s, value: String(items.length) } : s));
+                }
+            })
+            .catch(() => {});
+    }, []);
+
+    const filtered = filter === "urgent" ? pendingPrescriptions.filter((p) => p.urgent) : pendingPrescriptions;
 
     return (
         <div className="p-6 md:p-8">

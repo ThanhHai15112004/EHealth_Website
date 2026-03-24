@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UI_TEXT } from "@/constants/ui-text";
+import axiosClient from "@/api/axiosClient";
+import { PROFILE_ENDPOINTS } from "@/api/endpoints";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 
 interface UserProfile {
     fullName: string;
@@ -23,14 +27,51 @@ const MOCK_USER: UserProfile = {
 };
 
 export default function SettingsPage() {
+    const { user: authUser, updateUser } = useAuth();
+    const toast = useToast();
     const [user, setUser] = useState<UserProfile>(MOCK_USER);
     const [isEditing, setIsEditing] = useState(false);
     const [editForm, setEditForm] = useState(MOCK_USER);
     const [activeTab, setActiveTab] = useState<"profile" | "security" | "preferences">("profile");
+    const [saving, setSaving] = useState(false);
 
-    const handleSave = () => {
-        setUser(editForm);
-        setIsEditing(false);
+    useEffect(() => {
+        axiosClient.get(PROFILE_ENDPOINTS.ME)
+            .then(res => {
+                const d = res?.data?.data ?? res?.data;
+                if (d) {
+                    const profile: UserProfile = {
+                        fullName: d.fullName ?? d.full_name ?? MOCK_USER.fullName,
+                        email: d.email ?? MOCK_USER.email,
+                        phone: d.phone ?? MOCK_USER.phone,
+                        avatar: d.avatar,
+                        role: d.roleName ?? d.role ?? MOCK_USER.role,
+                        department: d.departmentName ?? d.department ?? MOCK_USER.department,
+                        createdAt: d.createdAt?.split("T")[0] ?? MOCK_USER.createdAt,
+                    };
+                    setUser(profile);
+                    setEditForm(profile);
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
+
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            await axiosClient.put(PROFILE_ENDPOINTS.ME, {
+                fullName: editForm.fullName,
+                phone: editForm.phone,
+            });
+            setUser(editForm);
+            if (updateUser) updateUser({ fullName: editForm.fullName });
+            toast.success("Đã lưu thông tin thành công!");
+        } catch {
+            toast.error("Có lỗi khi lưu thông tin. Vui lòng thử lại.");
+        } finally {
+            setSaving(false);
+            setIsEditing(false);
+        }
     };
 
     return (
@@ -156,10 +197,11 @@ export default function SettingsPage() {
                                         </button>
                                         <button
                                             onClick={handleSave}
-                                            className="px-5 py-2.5 text-sm font-bold text-white bg-[#3C81C6] hover:bg-[#2a6da8] rounded-xl shadow-md transition-all flex items-center gap-2"
+                                            disabled={saving}
+                                            className="px-5 py-2.5 text-sm font-bold text-white bg-[#3C81C6] hover:bg-[#2a6da8] rounded-xl shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
                                         >
                                             <span className="material-symbols-outlined text-[18px]">save</span>
-                                            {UI_TEXT.COMMON.SAVE}
+                                            {saving ? "Đang lưu..." : UI_TEXT.COMMON.SAVE}
                                         </button>
                                     </>
                                 ) : (

@@ -1,20 +1,87 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UI_TEXT } from "@/constants/ui-text";
 import { ROUTES } from "@/constants/routes";
 import { MOCK_PATIENT_QUEUE, MOCK_QUEUE_STATS } from "@/lib/mock-data/doctor";
+import { getAppointments } from "@/services/appointmentService";
+import { appointmentStatusService } from "@/services/appointmentStatusService";
+import { useAuth } from "@/contexts/AuthContext";
 
 type QueueStatus = "all" | "waiting" | "examining" | "completed" | "cancelled";
 
 export default function QueuePage() {
     const router = useRouter();
+    const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<QueueStatus>("all");
     const [queue, setQueue] = useState(MOCK_PATIENT_QUEUE);
-    const stats = MOCK_QUEUE_STATS;
+    const [stats, setStats] = useState(MOCK_QUEUE_STATS);
+
+    useEffect(() => {
+        if (!user?.id) return;
+        // Ưu tiên dùng /api/appointment-status/queue/today (đúng Swagger)
+        appointmentStatusService.getQueueToday({ doctorId: user.id })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    const mapped = items.map((a: any) => ({
+                        id: a.id,
+                        fullName: a.patientName ?? a.patient?.fullName ?? "",
+                        phone: a.phone ?? a.patient?.phone ?? "",
+                        gender: a.gender ?? a.patient?.gender ?? "",
+                        dob: a.dob ?? a.patient?.dob ?? "",
+                        reason: a.reason ?? a.visitReason ?? "",
+                        status: a.queueStatus === "WAITING" ? "waiting" :
+                                a.queueStatus === "IN_PROGRESS" ? "examining" :
+                                a.queueStatus === "COMPLETED" ? "completed" :
+                                a.queueStatus === "CANCELLED" ? "cancelled" : "waiting",
+                        priority: a.priority ?? "normal",
+                        waitTime: a.waitTime ?? "—",
+                        appointmentTime: a.appointmentTime ?? a.time ?? "",
+                        queueNumber: a.queueNumber,
+                        checkInTime: a.checkInTime,
+                    }));
+                    setQueue(mapped.map((m: any) => ({ ...MOCK_PATIENT_QUEUE[0], ...m })) as typeof MOCK_PATIENT_QUEUE);
+                    const w = mapped.filter((q: any) => q.status === "waiting").length;
+                    const e = mapped.filter((q: any) => q.status === "examining").length;
+                    const c = mapped.filter((q: any) => q.status === "completed").length;
+                    const x = mapped.filter((q: any) => q.status === "cancelled").length;
+                    setStats({ ...MOCK_QUEUE_STATS, waiting: w, examining: e, completed: c, cancelled: x, total: mapped.length, remaining: w + e });
+                }
+            })
+            .catch(() => {
+                // Fallback: dùng appointments API
+                const today = new Date().toISOString().split("T")[0];
+                getAppointments({ doctorId: user.id, date: today, limit: 100 })
+                    .then(res => {
+                        const items = res?.data ?? [];
+                        if (items.length > 0) {
+                            const mapped = items.map((a: any) => ({
+                                id: a.id,
+                                fullName: a.patientName ?? "",
+                                phone: a.phone ?? "",
+                                gender: a.gender ?? "",
+                                dob: a.dob ?? "",
+                                reason: a.reason ?? "",
+                                status: a.status === "confirmed" ? "waiting" : a.status === "in_progress" ? "examining" : a.status,
+                                priority: a.priority ?? "normal",
+                                waitTime: a.waitTime ?? "—",
+                                appointmentTime: a.time ?? "",
+                            }));
+                            setQueue(mapped.map((m: any) => ({ ...MOCK_PATIENT_QUEUE[0], ...m })) as typeof MOCK_PATIENT_QUEUE);
+                            const w = mapped.filter((q: any) => q.status === "waiting").length;
+                            const e = mapped.filter((q: any) => q.status === "examining").length;
+                            const c = mapped.filter((q: any) => q.status === "completed").length;
+                            const x = mapped.filter((q: any) => q.status === "cancelled").length;
+                            setStats({ ...MOCK_QUEUE_STATS, waiting: w, examining: e, completed: c, cancelled: x, total: mapped.length, remaining: w + e });
+                        }
+                    })
+                    .catch(() => {/* keep mock */});
+            });
+    }, [user?.id]);
 
     const filteredQueue = useMemo(() => {
         return queue.filter((patient) => {

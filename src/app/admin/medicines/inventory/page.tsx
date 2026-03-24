@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { inventoryService } from "@/services/inventoryService";
 
 // Mock data — Kho thuốc
 const INVENTORY_STATS = [
@@ -35,8 +36,62 @@ export default function InventoryPage() {
     const router = useRouter();
     const [tab, setTab] = useState<"history" | "low">("history");
     const [typeFilter, setTypeFilter] = useState<"all" | "import" | "export">("all");
+    const [stats, setStats] = useState(INVENTORY_STATS);
+    const [lowStockItems, setLowStockItems] = useState(LOW_STOCK_ITEMS);
+    const [history, setHistory] = useState(INVENTORY_HISTORY);
 
-    const filteredHistory = typeFilter === "all" ? INVENTORY_HISTORY : INVENTORY_HISTORY.filter((h) => h.type === typeFilter);
+    useEffect(() => {
+        inventoryService.getLowStock()
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? res ?? [];
+                if (Array.isArray(items) && items.length > 0) {
+                    setLowStockItems(items.map((d: any) => ({
+                        name: d.drugName ?? d.name ?? "",
+                        stock: d.quantity ?? d.currentStock ?? 0,
+                        min: d.minQuantity ?? d.reorderPoint ?? 0,
+                        unit: d.unit ?? "",
+                        category: d.category ?? "",
+                    })));
+                }
+            })
+            .catch(() => {/* keep mock */});
+        inventoryService.getList({ limit: 10 })
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? res ?? [];
+                if (Array.isArray(items) && items.length > 0) {
+                    const total = items.length;
+                    const low = items.filter((d: any) => (d.quantity ?? 0) < (d.minQuantity ?? 50)).length;
+                    const out = items.filter((d: any) => (d.quantity ?? 0) === 0).length;
+                    setStats(prev => prev.map((s, i) => {
+                        if (i === 0) return { ...s, value: String(total) };
+                        if (i === 2) return { ...s, value: String(low) };
+                        if (i === 3) return { ...s, value: String(out) };
+                        return s;
+                    }));
+                }
+            })
+            .catch(() => {/* keep mock */});
+        inventoryService.getStockInList({ limit: 20 })
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? res ?? [];
+                if (Array.isArray(items) && items.length > 0) {
+                    setHistory(items.map((d: any) => ({
+                        id: d.id,
+                        date: d.createdAt?.split("T")[0] ?? "",
+                        type: "import",
+                        name: d.drugName ?? d.note ?? "",
+                        qty: d.quantity ?? 0,
+                        unit: d.unit ?? "viên",
+                        supplier: d.supplierName ?? "",
+                        note: d.note ?? "",
+                        user: d.createdBy ?? "",
+                    })));
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
+
+    const filteredHistory = typeFilter === "all" ? history : history.filter((h) => h.type === typeFilter);
 
     return (
         <div className="space-y-6">
@@ -59,7 +114,7 @@ export default function InventoryPage() {
                         <button
                             onClick={() => {
                                 const headers = ["Mã", "Ngày", "Loại", "Tên thuốc", "Số lượng", "Đơn vị", "Nhà cung cấp", "Ghi chú", "Người thực hiện"];
-                                const rows = INVENTORY_HISTORY.map((h) => [h.id, h.date, h.type === "import" ? "Nhập" : "Xuất", h.name, h.qty.toString(), h.unit, h.supplier || "-", h.note, h.user]);
+                                const rows = history.map((h) => [h.id, h.date, h.type === "import" ? "Nhập" : "Xuất", h.name, h.qty.toString(), h.unit, h.supplier || "-", h.note, h.user]);
                                 const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
                                 const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
                                 const url = URL.createObjectURL(blob);
@@ -85,7 +140,7 @@ export default function InventoryPage() {
 
             {/* Stats */}
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-                {INVENTORY_STATS.map((s) => (
+                {stats.map((s) => (
                     <div key={s.label} className="bg-white dark:bg-[#1e242b] p-4 rounded-2xl border border-[#dde0e4] dark:border-[#2d353e] shadow-sm flex items-center gap-4">
                         <div className={`p-2.5 ${s.bg} rounded-xl`}>
                             <span className={`material-symbols-outlined ${s.color} text-[22px]`}>{s.icon}</span>
@@ -168,7 +223,7 @@ export default function InventoryPage() {
             ) : (
                 <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#dde0e4] dark:border-[#2d353e] shadow-sm">
                     <div className="divide-y divide-[#f0f1f3] dark:divide-[#2d353e]">
-                        {LOW_STOCK_ITEMS.map((med) => (
+                        {lowStockItems.map((med) => (
                             <div key={med.name} className="px-5 py-4 flex items-center justify-between hover:bg-[#f6f7f8] dark:hover:bg-[#13191f] transition-colors">
                                 <div className="flex-1">
                                     <div className="flex items-center gap-2 mb-1">

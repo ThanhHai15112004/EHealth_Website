@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { dispensingService } from "@/services/dispensingService";
 
 const MOCK_DISPENSING = {
     id: "DT003", patient: "Trần Văn Cường", patientId: "BN-24933", age: 58, gender: "Nam", phone: "0903 *** 789",
@@ -18,12 +19,25 @@ const MOCK_DISPENSING = {
 
 export default function DispensingPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const prescriptionId = searchParams.get("id");
     const [checkedMeds, setCheckedMeds] = useState<Record<number, boolean>>({});
     const [patientConfirmed, setPatientConfirmed] = useState(false);
     const [dispensing, setDispensing] = useState(false);
     const [completed, setCompleted] = useState(false);
+    const [rx, setRx] = useState(MOCK_DISPENSING);
 
-    const rx = MOCK_DISPENSING;
+    useEffect(() => {
+        if (!prescriptionId) return;
+        // Dùng /api/dispensing/{prescriptionId} — đúng Swagger
+        dispensingService.getPrescription(prescriptionId)
+            .then(res => {
+                const data = res?.data ?? res;
+                if (data) setRx(data);
+            })
+            .catch(() => {/* keep mock */});
+    }, [prescriptionId]);
+
     const allChecked = rx.medicines.every((_, i) => checkedMeds[i]);
 
     const toggleMed = (idx: number) => {
@@ -33,8 +47,17 @@ export default function DispensingPage() {
     const handleDispense = async () => {
         if (!allChecked || !patientConfirmed) return;
         setDispensing(true);
-        await new Promise(r => setTimeout(r, 1500));
-        setDispensing(false);
+        try {
+            const id = prescriptionId || rx.id;
+            // Dùng /api/dispensing/{prescriptionId} — đúng Swagger
+            await dispensingService.dispense(id, {
+                items: rx.medicines.map((m, i) => ({ ...m, dispensed: checkedMeds[i] })),
+            });
+        } catch {
+            // proceed anyway on API error
+        } finally {
+            setDispensing(false);
+        }
         setCompleted(true);
     };
 

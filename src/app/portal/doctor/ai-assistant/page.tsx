@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { aiService } from "@/services/aiService";
 
 type Message = { id: number; role: "user" | "ai"; text: string; time: string };
 
@@ -142,9 +143,15 @@ export default function AIAssistantPage() {
         setInput("");
         setTyping(true);
 
-        await new Promise(r => setTimeout(r, 1200 + Math.random() * 800));
+        let responseText = "";
+        try {
+            const res = await aiService.chat({ message: text.trim() });
+            responseText = res?.data?.message || res?.data?.reply || res?.data?.content || getAIResponse(text);
+        } catch {
+            responseText = getAIResponse(text);
+        }
 
-        const aiReply: Message = { id: Date.now() + 1, role: "ai", text: getAIResponse(text), time: getTime() };
+        const aiReply: Message = { id: Date.now() + 1, role: "ai", text: responseText, time: getTime() };
         setMessages(prev => [...prev, aiReply]);
         setTyping(false);
     };

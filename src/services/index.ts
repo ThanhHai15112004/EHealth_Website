@@ -32,3 +32,24 @@ export * from './systemConfigService';
 
 // Notifications (mới)
 export * from './notificationService';
+
+// EMR — Electronic Medical Records
+export * from './emrService';
+
+// Prescriptions
+export * from './prescriptionService';
+
+// Billing & Invoices
+export * from './billingService';
+
+// Audit Logs
+export * from './auditService';
+
+// Reports & Statistics
+export * from './reportService';
+
+// AI Assistant
+export * from './aiService';
+
+// EHR — Electronic Health Records
+export * from './ehrService';

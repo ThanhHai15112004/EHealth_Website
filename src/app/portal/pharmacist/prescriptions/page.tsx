@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { prescriptionService } from "@/services/prescriptionService";
 
 type RxStatus = "pending" | "checking" | "dispensed";
 
@@ -26,6 +27,24 @@ const INTERACTION_WARNINGS: Record<string, { drugs: string[]; warning: string; s
 
 export default function PharmacistPrescriptions() {
     const [rxs, setRxs] = useState(MOCK_RX);
+
+    useEffect(() => {
+        prescriptionService.search({ limit: 100 })
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? res ?? [];
+                if (Array.isArray(items) && items.length > 0) {
+                    const mapped = items.map((p: any) => ({
+                        id: p.id, patient: p.patientName ?? "", doctor: p.doctorName ?? "",
+                        dept: p.departmentName ?? "", date: p.createdAt?.split("T")[0] ?? "",
+                        medicines: p.items ?? p.medicines ?? [], diagnosis: p.diagnosis ?? "",
+                        status: (p.status === "PENDING" ? "pending" : p.status === "DISPENSED" ? "dispensed" : "checking") as RxStatus,
+                        priority: p.priority === "urgent" || p.priority === true,
+                    }));
+                    setRxs(mapped);
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
     const [search, setSearch] = useState("");
     const [detail, setDetail] = useState<string | null>(null);
     const [pharmacistNote, setPharmacistNote] = useState("");

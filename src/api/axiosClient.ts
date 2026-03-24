@@ -30,8 +30,8 @@ const axiosClient = axios.create({
 
 axiosClient.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
-        // Lấy token từ localStorage
-        const token = localStorage.getItem('accessToken');
+        // Lấy token từ localStorage (guard SSR Next.js)
+        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
 
         if (token && config.headers) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -62,8 +62,8 @@ axiosClient.interceptors.response.use(
             originalRequest._retry = true;
 
             try {
-                // Thử refresh token
-                const refreshToken = localStorage.getItem('refreshToken');
+                // Thử refresh token (guard SSR Next.js)
+                const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
 
                 if (refreshToken) {
                     const response = await axios.post(
@@ -86,12 +86,14 @@ axiosClient.interceptors.response.use(
                 }
             } catch (refreshError) {
                 // Refresh token thất bại - Đăng xuất user
-                localStorage.removeItem('accessToken');
-                localStorage.removeItem('refreshToken');
-                localStorage.removeItem('user');
-
-                // Chuyển về trang login
-                window.location.href = '/login';
+                if (typeof window !== 'undefined') {
+                    localStorage.removeItem('accessToken');
+                    localStorage.removeItem('refreshToken');
+                    localStorage.removeItem('user');
+                    // Thông báo cho AuthContext reset state trước khi redirect
+                    window.dispatchEvent(new CustomEvent('auth:logout'));
+                    window.location.href = '/login';
+                }
                 return Promise.reject(refreshError);
             }
         }

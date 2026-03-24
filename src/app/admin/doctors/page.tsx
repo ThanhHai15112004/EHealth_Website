@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
 import { MOCK_DOCTORS, MOCK_DOCTOR_STATS, MOCK_DEPARTMENTS } from "@/lib/mock-data/admin";
@@ -8,6 +8,8 @@ import { DOCTOR_STATUS } from "@/constants/status";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { DoctorFormModal } from "@/features/doctors/components/doctor-form-modal";
 import { TimeSlotModal } from "@/features/doctors/components/time-slot-modal";
+import { staffService } from "@/services/staffService";
+import { getDepartments } from "@/services/departmentService";
 import type { Doctor } from "@/types";
 
 type SortField = "fullName" | "departmentName" | "rating" | "status";
@@ -25,8 +27,42 @@ export default function DoctorsPage() {
     const [sortField, setSortField] = useState<SortField>("fullName");
     const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
-    const stats = MOCK_DOCTOR_STATS;
-    const departments = MOCK_DEPARTMENTS;
+    const [stats, setStats] = useState(MOCK_DOCTOR_STATS);
+    const [departments, setDepartments] = useState(MOCK_DEPARTMENTS);
+
+    useEffect(() => {
+        // Dùng /api/staff?role=DOCTOR — endpoint chính xác từ Swagger
+        staffService.getList({ role: "DOCTOR", limit: 200 })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    setDoctors(items.map((d: any) => ({
+                        ...MOCK_DOCTORS[0],
+                        id: d.id,
+                        code: d.code ?? d.id,
+                        fullName: d.fullName ?? d.name ?? "",
+                        departmentId: d.departmentId ?? "",
+                        departmentName: d.departmentName ?? "",
+                        specialization: d.specialization ?? "",
+                        phone: d.phone ?? "",
+                        email: d.email ?? "",
+                        rating: d.rating ?? 0,
+                        status: (d.status === "ACTIVE" ? "active" : d.status === "INACTIVE" ? "inactive" : d.status ?? "active"),
+                        avatar: d.avatar,
+                        experience: d.experience ?? 0,
+                    })) as typeof MOCK_DOCTORS);
+                    const active = items.filter((d: any) => d.status === "ACTIVE" || d.status === "active").length;
+                    setStats(prev => ({ ...prev, totalDoctors: items.length, activeDoctors: active }));
+                }
+            })
+            .catch(() => {/* keep mock */});
+        getDepartments()
+            .then(res => {
+                const items: any[] = (res as any)?.data ?? res ?? [];
+                if (Array.isArray(items) && items.length > 0) setDepartments(items.map((d: any) => ({ ...MOCK_DEPARTMENTS[0], id: d.id, name: d.name })) as typeof MOCK_DEPARTMENTS);
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
 
     // Filtered and sorted doctors
     const filteredDoctors = useMemo(() => {

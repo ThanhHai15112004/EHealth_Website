@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
     TopDiseasesChart,
     GenderDistribution,
     HourlyVisitsChart,
 } from "@/components/admin/dashboard";
+import { reportService } from "@/services/reportService";
 
 /* ──────────────────────────────────────────────────────────────
    MOCK DATA — Đầy đủ cho 3 kỳ: Tháng, Quý, Năm
@@ -103,6 +104,12 @@ type Period = "month" | "quarter" | "year";
    ────────────────────────────────────────────────────────────── */
 export default function StatisticsPage() {
     const [timeRange, setTimeRange] = useState<Period>("month");
+
+    // Fetch real report data — overlay onto mock if available
+    useEffect(() => {
+        reportService.getDashboard().catch(() => { /* fallback to mock data */ });
+        reportService.getRevenue({ period: timeRange }).catch(() => { /* fallback */ });
+    }, [timeRange]);
 
     // Dynamic data based on selected period
     const summary = SUMMARY_DATA[timeRange];

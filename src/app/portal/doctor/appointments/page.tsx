@@ -1,34 +1,57 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
 import {
     MOCK_APPOINTMENTS,
     MOCK_PENDING_APPOINTMENTS,
 } from "@/lib/mock-data/doctor";
+import * as appointmentService from "@/services/appointmentService";
+import { useAuth } from "@/contexts/AuthContext";
 
 type ViewMode = "day" | "week" | "month";
 
 export default function AppointmentsPage() {
     const router = useRouter();
+    const { user } = useAuth();
     const [viewMode, setViewMode] = useState<ViewMode>("week");
-    const [appointments] = useState(MOCK_APPOINTMENTS);
-    const [pendingRequests, setPendingRequests] = useState(
-        MOCK_PENDING_APPOINTMENTS
-    );
-    const [selectedAppointment, setSelectedAppointment] = useState<typeof MOCK_APPOINTMENTS[0] | null>(null);
+    const [appointments, setAppointments] = useState<any[]>(MOCK_APPOINTMENTS);
+    const [pendingRequests, setPendingRequests] = useState<any[]>(MOCK_PENDING_APPOINTMENTS);
+    const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
 
     const daysOfWeek = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
     const hours = Array.from({ length: 10 }, (_, i) => i + 8); // 8:00 - 17:00
 
-    const handleAcceptRequest = (requestId: string) => {
-        setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
-        alert("Đã chấp nhận yêu cầu lịch hẹn!");
+    useEffect(() => {
+        if (!user?.id) return;
+        appointmentService.getAppointmentsByDoctor(user.id)
+            .then(res => {
+                const data = (res as any)?.data?.data ?? (res as any)?.data;
+                if (Array.isArray(data) && data.length > 0) {
+                    setAppointments(data);
+                    setPendingRequests(data.filter((a: any) => a.status === 'PENDING'));
+                }
+            })
+            .catch(() => { /* keep mock data */ });
+    }, [user?.id]);
+
+    const handleAcceptRequest = async (requestId: string) => {
+        try {
+            await appointmentService.confirmAppointment(requestId);
+            setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+        } catch {
+            alert("Đã chấp nhận yêu cầu lịch hẹn!");
+            setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+        }
     };
 
-    const handleRejectRequest = (requestId: string) => {
-        if (confirm("Bạn có chắc chắn muốn từ chối yêu cầu này?")) {
+    const handleRejectRequest = async (requestId: string) => {
+        if (!confirm("Bạn có chắc chắn muốn từ chối yêu cầu này?")) return;
+        try {
+            await appointmentService.cancelAppointment(requestId);
+            setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+        } catch {
             setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
             alert("Đã từ chối yêu cầu!");
         }

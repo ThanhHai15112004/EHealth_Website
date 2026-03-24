@@ -1,5 +1,8 @@
 "use client";
 
+"use client";
+
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ROUTES } from "@/constants/routes";
 import {
@@ -9,6 +12,8 @@ import {
     MOCK_HOSPITAL_ANNOUNCEMENTS,
     MOCK_PATIENT_QUEUE,
 } from "@/lib/mock-data/doctor";
+import { getAppointments } from "@/services/appointmentService";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Import dashboard components
 import {
@@ -28,11 +33,40 @@ const QUICK_ACTIONS = [
 ];
 
 export default function DoctorDashboard() {
-    const stats = MOCK_DOCTOR_DASHBOARD_STATS;
+    const { user } = useAuth();
+    const [stats, setStats] = useState(MOCK_DOCTOR_DASHBOARD_STATS);
     const weeklyStats = MOCK_WEEKLY_EXAM_STATS;
     const schedule = MOCK_TODAY_SCHEDULE;
     const announcements = MOCK_HOSPITAL_ANNOUNCEMENTS;
-    const waitingPatients = MOCK_PATIENT_QUEUE.filter((p) => p.status === "waiting");
+    const [waitingPatients, setWaitingPatients] = useState(MOCK_PATIENT_QUEUE.filter((p) => p.status === "waiting"));
+
+    useEffect(() => {
+        if (!user?.id) return;
+        const today = new Date().toISOString().split("T")[0];
+        getAppointments({ doctorId: user.id, date: today, limit: 100 })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    const waiting = items.filter((a: any) => a.status === "confirmed" || a.status === "pending");
+                    const completed = items.filter((a: any) => a.status === "completed");
+                    setStats(prev => ({
+                        ...prev,
+                        todayExams: completed.length,
+                        totalExamsToday: items.length,
+                        waitingPatients: waiting.length,
+                    }));
+                    setWaitingPatients(waiting.map((a: any) => ({
+                        ...MOCK_PATIENT_QUEUE[0],
+                        id: a.id, fullName: a.patientName ?? "", status: "waiting",
+                        phone: a.phone ?? "", gender: a.gender ?? "", dob: a.dob ?? "",
+                        reason: a.reason ?? "", priority: "normal", waitTime: "—",
+                        appointmentTime: a.time ?? "",
+                    })) as typeof MOCK_PATIENT_QUEUE);
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, [user?.id]);
+
     const nextPatient = waitingPatients[0];
     const dayProgress = stats.todayExams;
     const dayTotal = stats.totalExamsToday;

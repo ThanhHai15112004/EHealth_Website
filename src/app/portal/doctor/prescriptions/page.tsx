@@ -1,9 +1,11 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
 import { MOCK_DOCTOR_PRESCRIPTIONS } from "@/lib/mock-data/doctor";
+import { prescriptionService } from "@/services/prescriptionService";
+import { useAuth } from "@/contexts/AuthContext";
 
 type StatusFilter = "all" | "pending" | "completed" | "cancelled";
 
@@ -11,7 +13,29 @@ type Prescription = typeof MOCK_DOCTOR_PRESCRIPTIONS[0];
 
 export default function PrescriptionsPage() {
     const router = useRouter();
+    const { user } = useAuth();
     const [prescriptions, setPrescriptions] = useState(MOCK_DOCTOR_PRESCRIPTIONS);
+
+    useEffect(() => {
+        if (!user?.id) return;
+        // Dùng /api/prescriptions/by-doctor/{doctorId} — đúng Swagger
+        prescriptionService.getByDoctor(user.id)
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? res ?? [];
+                if (Array.isArray(items) && items.length > 0) {
+                    setPrescriptions(items.map((p: any) => ({
+                        ...MOCK_DOCTOR_PRESCRIPTIONS[0],
+                        id: p.id ?? p.prescriptionId,
+                        patientName: p.patientName ?? p.patient?.fullName ?? "",
+                        medicines: Array.isArray(p.items) ? p.items.map((m: any) => m.drugName ?? m.name ?? "").join(", ") : p.medicines ?? "",
+                        status: p.status?.toLowerCase() ?? "pending",
+                        date: p.createdAt?.split("T")[0] ?? p.date ?? "",
+                        diagnosis: p.diagnosis ?? "",
+                    })) as typeof MOCK_DOCTOR_PRESCRIPTIONS);
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, [user?.id]);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
     const [selectedMonth, setSelectedMonth] = useState("this_month");

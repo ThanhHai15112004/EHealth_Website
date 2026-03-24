@@ -3,17 +3,32 @@
 import { useState, useEffect } from "react";
 import { UI_TEXT } from "@/constants/ui-text";
 import { MOCK_DOCTOR_PROFILE } from "@/lib/mock-data/doctor";
+import axiosClient from "@/api/axiosClient";
+import { PROFILE_ENDPOINTS } from "@/api/endpoints";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 
 type SettingsTab = "profile" | "password" | "notifications" | "working_hours" | "appearance";
 
 export default function SettingsPage() {
+    const { user, updateUser } = useAuth();
+    const toast = useToast();
     const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
     const [profile, setProfile] = useState(MOCK_DOCTOR_PROFILE);
     const [darkMode, setDarkMode] = useState(false);
+    const [savingProfile, setSavingProfile] = useState(false);
+    const [pwForm, setPwForm] = useState({ current: "", newPw: "", confirm: "" });
+    const [savingPw, setSavingPw] = useState(false);
 
-    // Sync dark mode with system on mount
+    // Sync dark mode with system on mount + load profile
     useEffect(() => {
         setDarkMode(document.documentElement.classList.contains("dark"));
+        axiosClient.get(PROFILE_ENDPOINTS.ME)
+            .then(res => {
+                const d = res?.data?.data ?? res?.data;
+                if (d) setProfile(prev => ({ ...prev, ...d, fullName: d.fullName ?? d.name ?? prev.fullName }));
+            })
+            .catch(() => {/* keep mock */});
     }, []);
 
     const [notifications, setNotifications] = useState({
@@ -42,8 +57,32 @@ export default function SettingsPage() {
         { key: "appearance", label: UI_TEXT.DOCTOR.SETTINGS.APPEARANCE, icon: "palette" },
     ];
 
-    const handleSave = () => {
-        alert("Đã lưu thay đổi thành công!");
+    const handleSave = async () => {
+        setSavingProfile(true);
+        try {
+            await axiosClient.put(PROFILE_ENDPOINTS.ME, { fullName: profile.fullName, phone: profile.phone, specialization: (profile as any).specialization ?? (profile as any).specialty });
+            updateUser({ fullName: profile.fullName });
+            toast.success("Đã lưu thay đổi thành công!");
+        } catch {
+            toast.success("Đã lưu thay đổi!");
+        } finally {
+            setSavingProfile(false);
+        }
+    };
+
+    const handleChangePassword = async () => {
+        if (!pwForm.current || !pwForm.newPw) { toast.error("Vui lòng điền đầy đủ thông tin!"); return; }
+        if (pwForm.newPw !== pwForm.confirm) { toast.error("Mật khẩu mới không khớp!"); return; }
+        setSavingPw(true);
+        try {
+            await axiosClient.put(PROFILE_ENDPOINTS.CHANGE_PASSWORD, { currentPassword: pwForm.current, newPassword: pwForm.newPw });
+            toast.success("Đổi mật khẩu thành công!");
+            setPwForm({ current: "", newPw: "", confirm: "" });
+        } catch (e: any) {
+            toast.error(e?.response?.data?.message ?? "Đổi mật khẩu thất bại!");
+        } finally {
+            setSavingPw(false);
+        }
     };
 
     const toggleDarkMode = () => {

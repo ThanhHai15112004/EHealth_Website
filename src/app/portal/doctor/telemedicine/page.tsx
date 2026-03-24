@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { telemedicineService } from "@/services/telemedicineService";
+import { useAuth } from "@/contexts/AuthContext";
 
 const MOCK_SESSIONS = [
     { id: "TM001", patient: "Nguyễn Văn An", patientId: "BN001", doctor: "BS. Trần Văn Minh", date: "28/02/2025", time: "14:00", status: "scheduled", department: "Tim mạch", reason: "Tái khám tăng huyết áp" },
@@ -18,9 +20,31 @@ const statusMap: Record<string, { label: string; style: string }> = {
 };
 
 export default function TelemedicinePage() {
-    const [sessions] = useState(MOCK_SESSIONS);
+    const { user } = useAuth();
+    const [sessions, setSessions] = useState(MOCK_SESSIONS);
     const [filter, setFilter] = useState("all");
     const [showRoom, setShowRoom] = useState<string | null>(null);
+
+    useEffect(() => {
+        telemedicineService.getList({ doctorId: user?.id, limit: 50 })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    setSessions(items.map((s: any) => ({
+                        id: s.id,
+                        patient: s.patientName ?? s.patient ?? "",
+                        patientId: s.patientId ?? "",
+                        doctor: s.doctorName ?? s.doctor ?? "",
+                        date: s.date ?? s.scheduledDate ?? s.createdAt?.split("T")[0] ?? "",
+                        time: s.time ?? s.scheduledTime ?? "",
+                        status: s.status ?? "scheduled",
+                        department: s.department ?? s.departmentName ?? "",
+                        reason: s.reason ?? s.chiefComplaint ?? "",
+                    })));
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, [user?.id]);
     const [chatInput, setChatInput] = useState("");
     const [chatMessages, setChatMessages] = useState([
         { id: 1, sender: "doctor", text: "Xin chào, tôi là BS. Trần Văn Minh. Hôm nay bạn cảm thấy thế nào?", time: "15:30" },

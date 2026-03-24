@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
 import { MOCK_MEDICINES, MOCK_MEDICINE_STATS } from "@/lib/mock-data/admin";
+import { getDrugs } from "@/services/medicineService";
 import { MEDICINE_STATUS } from "@/constants/status";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { MedicineFormModal } from "@/features/medicines/components/medicine-form-modal";
@@ -44,7 +45,37 @@ export default function MedicinesPage() {
     const [sortField, setSortField] = useState<SortField>("name");
     const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
-    const stats = MOCK_MEDICINE_STATS;
+    const [stats, setStats] = useState(MOCK_MEDICINE_STATS);
+
+    useEffect(() => {
+        getDrugs({ limit: 200 })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    setMedicines(items.map((d: any) => ({
+                        ...MOCK_MEDICINES[0],
+                        id: d.id,
+                        code: d.code ?? d.id,
+                        name: d.name ?? "",
+                        category: d.category ?? "",
+                        unit: d.unit ?? "",
+                        price: d.price ?? 0,
+                        stock: d.quantity ?? d.stock ?? 0,
+                        minStock: d.minQuantity ?? d.minStock ?? 0,
+                        manufacturer: d.manufacturer ?? "",
+                        expiryDate: d.expiryDate ?? d.expiry_date ?? "",
+                        activeIngredient: d.activeIngredient ?? d.active_ingredient ?? "",
+                        status: d.status ?? "available",
+                        description: d.description ?? "",
+                    })) as Medicine[]);
+                    const total = items.length;
+                    const lowStock = items.filter((d: any) => d.status === "low_stock").length;
+                    const outOfStock = items.filter((d: any) => d.status === "out_of_stock").length;
+                    setStats(prev => ({ ...prev, totalMedicines: total, lowStockCount: lowStock, outOfStockCount: outOfStock }));
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
 
     // Filtered and sorted medicines
     const filteredMedicines = useMemo(() => {

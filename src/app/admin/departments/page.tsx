@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
-import { MOCK_DEPARTMENTS } from "@/lib/mock-data/admin";
+import * as departmentService from "@/services/departmentService";
 import { DEPARTMENT_STATUS } from "@/constants/status";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { DepartmentFormModal } from "@/features/departments/components/department-form-modal";
@@ -15,8 +15,24 @@ type SortOrder = "asc" | "desc";
 
 export default function DepartmentsPage() {
     // State
-    const [departments, setDepartments] = useState<Department[]>(MOCK_DEPARTMENTS);
+    const [departments, setDepartments] = useState<Department[]>([]);
+    const [isDataLoading, setIsDataLoading] = useState(true);
     const router = useRouter();
+
+    useEffect(() => {
+        const fetchDepts = async () => {
+            try {
+                setIsDataLoading(true);
+                const res = await departmentService.getDepartments({ limit: 100 });
+                if (res?.data) setDepartments(res.data as unknown as Department[]);
+            } catch (err) {
+                console.error('Lỗi tải danh sách khoa:', err);
+            } finally {
+                setIsDataLoading(false);
+            }
+        };
+        fetchDepts();
+    }, []);
     const [searchQuery, setSearchQuery] = useState("");
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -83,34 +99,31 @@ export default function DepartmentsPage() {
         setIsDetailModalOpen(true);
     };
 
-    const handleDeleteDepartment = (departmentId: string) => {
-        if (confirm("Bạn có chắc chắn muốn xóa khoa này?")) {
+    const handleDeleteDepartment = async (departmentId: string) => {
+        if (!confirm("Bạn có chắc chắn muốn xóa khoa này?")) return;
+        try {
+            await departmentService.deleteDepartment(departmentId);
             setDepartments((prev) => prev.filter((d) => d.id !== departmentId));
+        } catch (err) {
+            console.error('Xóa khoa thất bại:', err);
+            alert('Xóa khoa thất bại. Vui lòng thử lại.');
         }
     };
 
-    const handleSubmitDepartment = (deptData: Partial<Department>) => {
-        if (editingDepartment) {
-            setDepartments((prev) =>
-                prev.map((d) => (d.id === editingDepartment.id ? { ...d, ...deptData } : d))
-            );
-        } else {
-            const newDepartment: Department = {
-                id: String(Date.now()),
-                code: `DEPT-${String(departments.length + 1).padStart(3, "0")}`,
-                name: deptData.name || "",
-                description: deptData.description,
-                icon: deptData.icon || "local_hospital",
-                doctorCount: 0,
-                patientCount: 0,
-                appointmentToday: 0,
-                location: deptData.location,
-                capacity: deptData.capacity || 50,
-                status: DEPARTMENT_STATUS.ACTIVE,
-                createdAt: new Date().toISOString().split("T")[0],
-                updatedAt: new Date().toISOString().split("T")[0],
-            };
-            setDepartments((prev) => [newDepartment, ...prev]);
+    const handleSubmitDepartment = async (deptData: Partial<Department>) => {
+        try {
+            if (editingDepartment) {
+                await departmentService.updateDepartment(editingDepartment.id, deptData as any);
+                setDepartments((prev) =>
+                    prev.map((d) => (d.id === editingDepartment.id ? { ...d, ...deptData } : d))
+                );
+            } else {
+                const created = await departmentService.createDepartment(deptData as any);
+                setDepartments((prev) => [created as unknown as Department, ...prev]);
+            }
+        } catch (err) {
+            console.error('Lưu khoa thất bại:', err);
+            alert('Lưu khoa thất bại. Vui lòng thử lại.');
         }
     };
 

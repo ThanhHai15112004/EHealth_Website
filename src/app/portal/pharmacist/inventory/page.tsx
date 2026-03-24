@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { getDrugs } from "@/services/medicineService";
+import { inventoryService } from "@/services/inventoryService";
 
 type RequestType = "import" | "export" | "transfer" | "cancel";
 type RequestStatus = "pending" | "approved" | "rejected";
@@ -39,8 +41,44 @@ const STATUS_CONFIG: Record<RequestStatus, { label: string; cls: string; icon: s
 };
 
 export default function PharmacistInventory() {
-    const [inventory] = useState(MOCK_INVENTORY);
+    const [inventory, setInventory] = useState(MOCK_INVENTORY);
     const [requests, setRequests] = useState(MOCK_REQUESTS);
+
+    useEffect(() => {
+        // Thử lấy dữ liệu tồn kho thực từ /api/inventory trước
+        inventoryService.getList({ limit: 500 })
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? res ?? [];
+                if (Array.isArray(items) && items.length > 0) {
+                    setInventory(items.map((d: any) => ({
+                        id: d.id ?? d.drugId,
+                        name: d.drugName ?? d.name ?? "",
+                        group: d.category ?? d.drugCategory ?? "",
+                        unit: d.unit ?? "",
+                        stock: d.quantity ?? d.currentStock ?? 0,
+                        min: d.minQuantity ?? d.reorderPoint ?? 50,
+                        price: d.price ?? d.unitPrice ?? 0,
+                        expiry: d.expiryDate ?? d.nearestExpiry ?? "",
+                        supplier: d.supplierName ?? d.manufacturer ?? "",
+                    })));
+                }
+            })
+            .catch(() => {
+                // Fallback về danh mục thuốc từ /api/pharmacy/drugs
+                getDrugs({ limit: 200 })
+                    .then(res => {
+                        const data = res?.data ?? [];
+                        if (Array.isArray(data) && data.length > 0) {
+                            setInventory(data.map((d: any) => ({
+                                id: d.id, name: d.name, group: d.category,
+                                unit: d.unit, stock: d.quantity, min: d.minQuantity,
+                                price: d.price, expiry: d.expiryDate, supplier: d.manufacturer,
+                            })));
+                        }
+                    })
+                    .catch(() => {/* keep mock */});
+            });
+    }, []);
     const [search, setSearch] = useState("");
     const [groupFilter, setGroupFilter] = useState("all");
     const [stockFilter, setStockFilter] = useState("all");
@@ -60,6 +98,15 @@ export default function PharmacistInventory() {
 
     const lowCount = inventory.filter((i) => i.stock < i.min).length;
     const pendingCount = requests.filter(r => r.status === "pending").length;
+    const expiringCount = inventory.filter((i) => {
+        if (!i.expiry) return false;
+        // Hỗ trợ cả định dạng "MM/YYYY" (mock) và "YYYY-MM-DD" (API)
+        const parts = i.expiry.includes("-") ? i.expiry.split("-") : i.expiry.split("/").reverse();
+        const expDate = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, 1);
+        const threeMonthsLater = new Date();
+        threeMonthsLater.setMonth(threeMonthsLater.getMonth() + 3);
+        return expDate <= threeMonthsLater;
+    }).length;
     const fmt = (n: number) => n.toLocaleString("vi-VN") + "đ";
 
     const handleCreateRequest = () => {
@@ -111,7 +158,7 @@ export default function PharmacistInventory() {
                     { l: "Tổng danh mục", v: inventory.length.toString(), i: "medication", c: "text-blue-600" },
                     { l: "Tồn kho đủ", v: (inventory.length - lowCount).toString(), i: "check_circle", c: "text-emerald-600" },
                     { l: "Sắp hết", v: lowCount.toString(), i: "warning", c: "text-amber-600" },
-                    { l: "Sắp hết hạn", v: "3", i: "event_busy", c: "text-red-500" },
+                    { l: "Sắp hết hạn", v: expiringCount.toString(), i: "event_busy", c: "text-red-500" },
                     { l: "YC chờ duyệt", v: pendingCount.toString(), i: "hourglass_top", c: "text-orange-600" },
                 ].map((s) => (
                     <div key={s.l} className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#dde0e4] dark:border-[#2d353e] p-4 flex items-center gap-3">

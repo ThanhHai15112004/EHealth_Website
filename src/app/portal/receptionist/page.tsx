@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ROUTES } from "@/constants/routes";
+import { getAppointments } from "@/services/appointmentService";
+import { getPatients } from "@/services/patientService";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ==================== MOCK DATA ====================
 const STATS = [
@@ -53,8 +56,44 @@ function getCurrentDate(): string {
 
 // ==================== PAGE ====================
 export default function ReceptionistDashboard() {
+    const { user } = useAuth();
     const [filter, setFilter] = useState<"all" | "waiting" | "checked_in">("all");
-    const filtered = filter === "all" ? APPOINTMENTS : APPOINTMENTS.filter((a) => a.status === filter);
+    const [appointments, setAppointments] = useState(APPOINTMENTS);
+    const [stats, setStats] = useState(STATS);
+
+    useEffect(() => {
+        const today = new Date().toISOString().split("T")[0];
+        getAppointments({ date: today, limit: 100 })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    const mapped = items.map((a: any) => ({
+                        id: a.id, patient: a.patientName ?? "", time: a.time ?? "",
+                        doctor: a.doctorName ?? "", dept: a.departmentName ?? "",
+                        status: a.status === "confirmed" ? "waiting" : a.status,
+                        phone: a.phone ?? "",
+                    }));
+                    setAppointments(mapped);
+                    const waiting = mapped.filter((a: any) => a.status === "waiting").length;
+                    const checkedIn = mapped.filter((a: any) => a.status === "checked_in").length;
+                    setStats(prev => prev.map((s, i) => {
+                        if (i === 0) return { ...s, value: String(items.length) };
+                        if (i === 1) return { ...s, value: String(checkedIn) };
+                        if (i === 2) return { ...s, value: String(waiting) };
+                        return s;
+                    }));
+                }
+            })
+            .catch(() => {/* keep mock */});
+        getPatients({ limit: 1 })
+            .then(res => {
+                const total = res?.data?.pagination?.total_items;
+                if (total) setStats(prev => prev.map((s, i) => i === 3 ? { ...s, value: String(total) } : s));
+            })
+            .catch(() => {});
+    }, []);
+
+    const filtered = filter === "all" ? appointments : appointments.filter((a) => a.status === filter);
 
     return (
         <div className="p-6 md:p-8">

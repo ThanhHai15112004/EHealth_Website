@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { inventoryService } from "@/services/inventoryService";
 
 interface StockItem {
     id: string;
@@ -25,9 +26,36 @@ const MOCK_STOCK: StockItem[] = [
 ];
 
 export default function MedicineStockPage() {
-    const [stock] = useState<StockItem[]>(MOCK_STOCK);
+    const [stock, setStock] = useState<StockItem[]>(MOCK_STOCK);
     const [searchQuery, setSearchQuery] = useState("");
     const [levelFilter, setLevelFilter] = useState("all");
+
+    useEffect(() => {
+        inventoryService.getList({ limit: 500 })
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? res ?? [];
+                if (Array.isArray(items) && items.length > 0) {
+                    setStock(items.map((d: any) => {
+                        const qty = d.quantity ?? d.currentStock ?? 0;
+                        const min = d.minQuantity ?? d.reorderPoint ?? 0;
+                        const level: StockItem["stockLevel"] = qty === 0 ? "OUT" : qty < min ? "LOW" : qty > min * 3 ? "HIGH" : "NORMAL";
+                        return {
+                            id: d.id ?? d.drugId,
+                            code: d.drugCode ?? d.code ?? "",
+                            name: d.drugName ?? d.name ?? "",
+                            unit: d.unit ?? "",
+                            currentStock: qty,
+                            minStock: min,
+                            maxStock: d.maxQuantity ?? min * 5,
+                            batchNumber: d.batchNumber ?? d.lotNumber ?? "",
+                            expiryDate: d.expiryDate ?? d.nearestExpiry ?? "",
+                            stockLevel: level,
+                        };
+                    }));
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
 
     const filtered = stock.filter((s) => {
         const matchesSearch = s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.code.toLowerCase().includes(searchQuery.toLowerCase());

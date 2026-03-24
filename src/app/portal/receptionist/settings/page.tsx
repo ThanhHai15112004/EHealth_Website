@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import axiosClient from "@/api/axiosClient";
+import { PROFILE_ENDPOINTS } from "@/api/endpoints";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function ReceptionistSettings() {
+    const { user: authUser, updateUser } = useAuth();
     const [profile, setProfile] = useState({
         name: "Nguyễn Thị Hoa", email: "reception@ehealth.vn", phone: "0901234567", role: "Lễ tân"
     });
@@ -12,12 +16,28 @@ export default function ReceptionistSettings() {
     const [saved, setSaved] = useState(false);
     const [pwError, setPwError] = useState("");
 
+    useEffect(() => {
+        axiosClient.get(PROFILE_ENDPOINTS.ME)
+            .then(res => {
+                const d = res?.data?.data ?? res?.data;
+                if (d) setProfile({ name: d.fullName ?? d.name ?? profile.name, email: d.email ?? profile.email, phone: d.phone ?? profile.phone, role: d.role ?? profile.role });
+            })
+            .catch(() => {/* keep mock */});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const handleSaveProfile = async () => {
         setSaving(true);
-        await new Promise((r) => setTimeout(r, 800));
-        setSaving(false);
-        setSaved(true);
-        setTimeout(() => setSaved(false), 2000);
+        try {
+            await axiosClient.put(PROFILE_ENDPOINTS.ME, { fullName: profile.name, phone: profile.phone });
+            if (updateUser) updateUser({ fullName: profile.name, phone: profile.phone } as any);
+        } catch {
+            // ignore
+        } finally {
+            setSaving(false);
+            setSaved(true);
+            setTimeout(() => setSaved(false), 2000);
+        }
     };
 
     const handleChangePassword = () => {

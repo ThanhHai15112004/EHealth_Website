@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import Link from "next/link";
+import { getAppointments } from "@/services/appointmentService";
+import { appointmentStatusService } from "@/services/appointmentStatusService";
 
 const MOCK_QUEUE = [
     { id: 1, number: "A001", patient: "Nguyễn Văn An", age: 45, checkInTime: "08:25", doctor: "BS. Trần Minh", dept: "Nội khoa", room: "P.101", status: "examining", waitTime: "5p" },
@@ -27,6 +29,56 @@ const DEPTS_LIST = ["Nội khoa", "Da liễu", "Tim mạch", "Nhi khoa", "Tai m�
 export default function ReceptionistQueue() {
     const [queue, setQueue] = useState(MOCK_QUEUE);
     const [search, setSearch] = useState("");
+
+    useEffect(() => {
+        const mapStatus = (s: string) => {
+            if (s === "WAITING") return "waiting";
+            if (s === "IN_PROGRESS" || s === "EXAMINING") return "examining";
+            if (s === "COMPLETED" || s === "DONE") return "completed";
+            if (s === "CHECKED_IN" || s === "confirmed") return "checked_in";
+            return "waiting";
+        };
+        appointmentStatusService.getQueueToday()
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? res ?? [];
+                if (Array.isArray(items) && items.length > 0) {
+                    setQueue(items.map((a: any, idx: number) => ({
+                        id: a.id ?? idx + 1,
+                        number: a.queueNumber ?? `A${String(idx + 1).padStart(3, "0")}`,
+                        patient: a.patientName ?? a.patient?.fullName ?? "",
+                        age: a.age ?? a.patient?.age ?? 0,
+                        checkInTime: a.checkInTime ?? a.scheduledTime ?? "",
+                        doctor: a.doctorName ?? a.doctor?.fullName ?? "",
+                        dept: a.departmentName ?? a.department?.name ?? "",
+                        room: a.roomName ?? a.room?.name ?? "—",
+                        status: mapStatus(a.status ?? ""),
+                        waitTime: a.waitTime ?? "—",
+                    })));
+                }
+            })
+            .catch(() => {
+                const today = new Date().toISOString().split("T")[0];
+                getAppointments({ date: today, status: "confirmed", limit: 100 })
+                    .then(res => {
+                        const items: any[] = res?.data ?? [];
+                        if (items.length > 0) {
+                            setQueue(items.map((a: any, idx: number) => ({
+                                id: a.id ?? idx + 1,
+                                number: `A${String(idx + 1).padStart(3, "0")}`,
+                                patient: a.patientName ?? "",
+                                age: a.age ?? 0,
+                                checkInTime: a.checkInTime ?? a.time ?? "",
+                                doctor: a.doctorName ?? "",
+                                dept: a.departmentName ?? "",
+                                room: a.room ?? "—",
+                                status: a.status === "confirmed" ? "checked_in" : a.status,
+                                waitTime: "—",
+                            })));
+                        }
+                    })
+                    .catch(() => {/* keep mock */});
+            });
+    }, []);
     const [filter, setFilter] = useState("all");
     const [transferModal, setTransferModal] = useState<{ id: number; type: "doctor" | "dept" } | null>(null);
     const [transferTarget, setTransferTarget] = useState("");

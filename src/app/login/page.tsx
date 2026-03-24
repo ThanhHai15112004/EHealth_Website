@@ -1,9 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { ROUTES } from "@/constants/routes";
-import { AUTH_CONFIG } from "@/config";
+import { useAuth } from "@/contexts/AuthContext";
 
 // Các vai trò đăng nhập
 const ROLE_OPTIONS = [
@@ -14,35 +13,20 @@ const ROLE_OPTIONS = [
 ];
 
 export default function LoginPage() {
-    const router = useRouter();
+    const { login, isLoading } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [selectedRole, setSelectedRole] = useState("doctor");
     const [showPassword, setShowPassword] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
+    const [error, setError] = useState("");
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
-        setIsLoading(true);
-
-        // Giả lập gọi API
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-
-        const role = ROLE_OPTIONS.find((r) => r.value === selectedRole);
-        if (role) {
-            // Lưu token + user vào localStorage để AuthGuard cho phép truy cập
-            const userData = {
-                id: "demo-" + role.value,
-                email: email || role.value + "@ehealth.vn",
-                fullName: email ? email.split("@")[0] : role.label,
-                role: role.value,
-            };
-            localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, "demo-token-" + role.value);
-            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, "demo-refresh-" + role.value);
-            localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(userData));
-
-            router.push(role.route);
+        setError("");
+        const result = await login(email, password);
+        if (!result.success) {
+            setError(result.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.");
         }
     };
 
@@ -284,6 +268,14 @@ export default function LoginPage() {
                                     Quên mật khẩu?
                                 </a>
                             </div>
+
+                            {/* Error message */}
+                            {error && (
+                                <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+                                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>error</span>
+                                    <span>{error}</span>
+                                </div>
+                            )}
 
                             {/* Login button */}
                             <button

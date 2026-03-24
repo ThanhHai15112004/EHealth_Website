@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { scheduleService } from "@/services/scheduleService";
 
 interface Schedule {
     id: string;
@@ -105,6 +106,34 @@ export default function SchedulesPage() {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<"week" | "month">("week");
     const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
+
+    useEffect(() => {
+        const from = new Date();
+        from.setDate(from.getDate() - 7);
+        const to = new Date();
+        to.setDate(to.getDate() + 14);
+        scheduleService.getList({
+            from: from.toISOString().split("T")[0],
+            to: to.toISOString().split("T")[0],
+            limit: 500,
+        })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    setSchedules(items.map((s: any) => ({
+                        id: s.id,
+                        doctorId: s.doctorId ?? "",
+                        doctorName: s.doctorName ?? "",
+                        department: s.department ?? s.departmentName ?? "",
+                        shift: s.shift ?? "MORNING",
+                        date: s.date ?? s.workDate ?? "",
+                        status: s.status ?? "SCHEDULED",
+                        avatar: s.avatar,
+                    })));
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
 
     const todayStr = new Date().toISOString().split("T")[0];
 

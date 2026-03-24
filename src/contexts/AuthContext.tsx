@@ -81,6 +81,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
         };
 
         initAuth();
+
+        // Lắng nghe sự kiện force-logout từ axiosClient (refresh token thất bại)
+        const handleForceLogout = () => setUser(null);
+        window.addEventListener('auth:logout', handleForceLogout);
+        return () => window.removeEventListener('auth:logout', handleForceLogout);
     }, []);
 
     // ============================================

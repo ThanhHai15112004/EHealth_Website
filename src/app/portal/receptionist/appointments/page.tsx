@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { getAppointments } from "@/services/appointmentService";
 
 // Mock data
 const MOCK_APPOINTMENTS = [
@@ -24,7 +25,24 @@ const STATUS_MAP: Record<string, { label: string; class: string }> = {
 
 export default function ReceptionistAppointments() {
     const router = useRouter();
-    const [appointments] = useState(MOCK_APPOINTMENTS);
+    const [appointments, setAppointments] = useState(MOCK_APPOINTMENTS);
+
+    useEffect(() => {
+        getAppointments({ limit: 100 })
+            .then(res => {
+                const items: any[] = res?.data ?? [];
+                if (items.length > 0) {
+                    const mapped = items.map((a: any) => ({
+                        id: a.id, patient: a.patientName ?? "", phone: a.phone ?? "",
+                        doctor: a.doctorName ?? "", dept: a.departmentName ?? "",
+                        date: a.date ?? "", time: a.time ?? "",
+                        type: a.type ?? "", status: a.status ?? "pending", note: a.reason ?? "",
+                    }));
+                    setAppointments(mapped);
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, []);
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [deptFilter, setDeptFilter] = useState("all");

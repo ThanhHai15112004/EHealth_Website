@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { emrService } from "@/services/emrService";
+import { useAuth } from "@/contexts/AuthContext";
 
 const MOCK_TIMELINE = [
     { id: 1, date: "20/02/2025", type: "visit", title: "Khám Tim mạch", doctor: "BS. Trần Văn Minh", department: "Tim mạch", details: "Tăng huyết áp - I10. Điều chỉnh liều thuốc.", vitalSigns: { bp: "140/90", hr: "78" } },
@@ -23,16 +25,40 @@ const typeConfig: Record<string, { icon: string; color: string; label: string }>
 
 export default function MedicalRecordsPage() {
     const router = useRouter();
+    const { user } = useAuth();
     const [filterType, setFilterType] = useState("all");
+    const [timeline, setTimeline] = useState(MOCK_TIMELINE);
 
-    const filtered = MOCK_TIMELINE.filter((item) => filterType === "all" || item.type === filterType);
+    useEffect(() => {
+        if (!user?.id) return;
+        emrService.getList({ doctorId: user.id, limit: 50 })
+            .then(res => {
+                const items: any[] = res?.data?.data ?? res?.data ?? [];
+                if (items.length > 0) {
+                    const mapped = items.map((e: any) => ({
+                        id: e.id,
+                        date: e.visitDate ?? e.createdAt?.split("T")[0] ?? "",
+                        type: "visit",
+                        title: `Khám ${e.departmentName ?? ""}`,
+                        doctor: e.doctorName ?? "",
+                        department: e.departmentName ?? "",
+                        details: e.diagnosis ?? e.chiefComplaint ?? "",
+                        vitalSigns: e.vitalSigns,
+                    }));
+                    setTimeline(mapped);
+                }
+            })
+            .catch(() => {/* keep mock */});
+    }, [user?.id]);
+
+    const filtered = timeline.filter((item) => filterType === "all" || item.type === filterType);
 
     // Group by date
     const grouped = filtered.reduce((acc, item) => {
         if (!acc[item.date]) acc[item.date] = [];
         acc[item.date].push(item);
         return acc;
-    }, {} as Record<string, typeof MOCK_TIMELINE>);
+    }, {} as Record<string, typeof timeline>);
 
     return (
         <div className="p-6 md:p-8"><div className="max-w-5xl mx-auto space-y-6">

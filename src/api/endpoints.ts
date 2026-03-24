@@ -328,6 +328,19 @@ export const AUDIT_LOG_ENDPOINTS = {
 };
 
 // ============================================
+// 1.1.x Staff Management Endpoints (Nhân sự y tế)
+// ✅ Swagger: GET /api/staff — trả về bác sĩ, y tá, dược sĩ, v.v. (KHÔNG bao gồm PATIENT)
+// ============================================
+export const STAFF_ENDPOINTS = {
+    LIST: '/api/staff',                               // GET: danh sách nhân sự (loại trừ PATIENT)
+    DETAIL: (id: string) => `/api/staff/${id}`,       // GET: chi tiết nhân sự
+    CREATE: '/api/staff',                             // POST: thêm nhân sự mới
+    UPDATE: (id: string) => `/api/staff/${id}`,       // PUT: cập nhật
+    DELETE: (id: string) => `/api/staff/${id}`,       // DELETE: xóa
+    STATUS: (id: string) => `/api/staff/${id}/status`, // PATCH: bật/tắt
+};
+
+// ============================================
 // Các endpoint chưa có trong Swagger — giữ nguyên cho tương lai
 // ============================================
 
@@ -378,20 +391,39 @@ export const DEPARTMENT_ENDPOINTS = {
     DELETE: (id: string) => `/api/departments/${id}`,
 };
 
+// ✅ Corrected từ Swagger thực tế
 export const PRESCRIPTION_ENDPOINTS = {
-    LIST: '/api/prescriptions',
-    DETAIL: (id: string) => `/api/prescriptions/${id}`,
+    // Lấy đơn thuốc theo encounter (phiên khám)
+    BY_ENCOUNTER: (encounterId: string) => `/api/prescriptions/${encounterId}`,
+    SUMMARY: (encounterId: string) => `/api/prescriptions/${encounterId}/summary`,
+    BY_DOCTOR: (doctorId: string) => `/api/prescriptions/by-doctor/${doctorId}`,
+    BY_PATIENT: (patientId: string) => `/api/prescriptions/by-patient/${patientId}`,
+    SEARCH: '/api/prescriptions/search',
+    SEARCH_DRUGS: '/api/prescriptions/search-drugs',
+    DETAILS: (prescriptionId: string) => `/api/prescriptions/${prescriptionId}/details`,
+    UPDATE: (prescriptionId: string) => `/api/prescriptions/${prescriptionId}/update`,
+    CANCEL: (prescriptionId: string) => `/api/prescriptions/${prescriptionId}/cancel`,
+    CONFIRM: (prescriptionId: string) => `/api/prescriptions/${prescriptionId}/confirm`,
+    // Backward compat — các endpoint cũ giữ lại
+    LIST: '/api/prescriptions/by-doctor',
     CREATE: '/api/prescriptions',
-    UPDATE: (id: string) => `/api/prescriptions/${id}`,
-    DISPENSE: (id: string) => `/api/prescriptions/${id}/dispense`,
+    DETAIL: (id: string) => `/api/prescriptions/${id}`,
+    DISPENSE: (id: string) => `/api/dispensing/${id}`,  // ✅ FIX: dùng /api/dispensing
 };
 
+// ✅ Corrected: /api/schedules không tồn tại — dùng /api/staff-schedules
 export const SCHEDULE_ENDPOINTS = {
-    LIST: '/api/schedules',
-    CREATE: '/api/schedules',
-    UPDATE: (id: string) => `/api/schedules/${id}`,
-    DELETE: (id: string) => `/api/schedules/${id}`,
-    BY_DOCTOR: (doctorId: string) => `/api/schedules/doctor/${doctorId}`,
+    LIST: '/api/staff-schedules',
+    CREATE: '/api/staff-schedules',
+    UPDATE: (id: string) => `/api/staff-schedules/${id}`,
+    DELETE: (id: string) => `/api/staff-schedules/${id}`,
+    BY_STAFF: (staffId: string) => `/api/staff-schedules/staff/${staffId}`,
+    BY_DATE: (date: string) => `/api/staff-schedules/date/${date}`,
+    CALENDAR: '/api/staff-schedules/calendar',
+    SUSPEND: (id: string) => `/api/staff-schedules/${id}/suspend`,
+    RESUME: (id: string) => `/api/staff-schedules/${id}/resume`,
+    // Backward compat
+    BY_DOCTOR: (doctorId: string) => `/api/staff-schedules/staff/${doctorId}`,
 };
 
 export const REPORT_ENDPOINTS = {
@@ -403,17 +435,24 @@ export const REPORT_ENDPOINTS = {
     EXPORT_PDF: '/api/reports/export/pdf',
 };
 
+// ✅ Corrected: /api/emr không tồn tại — dùng /api/encounters + /api/medical-records
 export const EMR_ENDPOINTS = {
-    LIST: '/api/emr',
-    DETAIL: (id: string) => `/api/emr/${id}`,
-    CREATE: '/api/emr',
-    UPDATE: (id: string) => `/api/emr/${id}`,
-    SIGN: (id: string) => `/api/emr/${id}/sign`,
-    LOCK: (id: string) => `/api/emr/${id}/lock`,
-    SAVE_DRAFT: (id: string) => `/api/emr/${id}/draft`,
-    BY_PATIENT: (patientId: string) => `/api/emr/patient/${patientId}`,
-    VITAL_SIGNS: (emrId: string) => `/api/emr/${emrId}/vital-signs`,
-    DIAGNOSES: (emrId: string) => `/api/emr/${emrId}/diagnoses`,
+    // Encounter (phiên khám)
+    LIST: '/api/encounters',
+    DETAIL: (id: string) => `/api/encounters/${id}`,
+    CREATE: '/api/encounters',
+    UPDATE: (id: string) => `/api/encounters/${id}`,
+    BY_PATIENT: (patientId: string) => `/api/encounters/by-patient/${patientId}`,
+    BY_APPOINTMENT: (appointmentId: string) => `/api/encounters/by-appointment/${appointmentId}`,
+    STATUS: (id: string) => `/api/encounters/${id}/status`,
+    // Medical records
+    SIGN: (encounterId: string) => `/api/medical-records/${encounterId}/sign`,
+    LOCK: (encounterId: string) => `/api/medical-records/${encounterId}/finalize`,
+    SAVE_DRAFT: (encounterId: string) => `/api/medical-records/${encounterId}`,
+    // Clinical examination (vitals, diagnosis)
+    VITAL_SIGNS: (encounterId: string) => `/api/clinical-examinations/${encounterId}/vitals`,
+    DIAGNOSES: (encounterId: string) => `/api/diagnoses/${encounterId}`,
+    FINALIZE: (encounterId: string) => `/api/clinical-examinations/${encounterId}/finalize`,
 };
 
 export const DOCUMENT_ENDPOINTS = {
@@ -424,15 +463,27 @@ export const DOCUMENT_ENDPOINTS = {
     VERSIONS: (patientId: string, docId: string) => `/api/patients/${patientId}/documents/${docId}/versions`,
 };
 
+// ✅ Corrected: PAY sử dụng /api/billing/payments, không phải /api/billing/invoices/{id}/pay
 export const BILLING_ENDPOINTS = {
+    // Invoices
     LIST: '/api/billing/invoices',
     DETAIL: (id: string) => `/api/billing/invoices/${id}`,
     CREATE: '/api/billing/invoices',
-    PAY: (id: string) => `/api/billing/invoices/${id}/pay`,
-    REFUND: (id: string) => `/api/billing/invoices/${id}/refund`,
-    SERVICES: '/api/billing/services',
-    RECONCILIATION: '/api/billing/reconciliation',
-    TRANSACTIONS: '/api/billing/transactions',
+    BY_PATIENT: (patientId: string) => `/api/billing/invoices/by-patient/${patientId}`,
+    BY_ENCOUNTER: (encounterId: string) => `/api/billing/invoices/by-encounter/${encounterId}`,
+    GENERATE: (encounterId: string) => `/api/billing/invoices/generate/${encounterId}`,
+    CANCEL: (id: string) => `/api/billing/invoices/${id}/cancel`,
+    ITEMS: (id: string) => `/api/billing/invoices/${id}/items`,
+    // Payments ✅ FIX
+    PAY: '/api/billing/offline/pay',
+    PAY_ONLINE: '/api/billing/payments',
+    PAYMENTS: '/api/billing/payments',
+    PAYMENT_DETAIL: (id: string) => `/api/billing/payments/${id}`,
+    REFUND: (id: string) => `/api/billing/payments/${id}/refund`,
+    // Transactions
+    TRANSACTIONS: '/api/billing/offline/transactions',
+    // Reconciliation
+    RECONCILIATION: '/api/billing/reconciliation/sessions',
 };
 
 export const AI_ENDPOINTS = {
@@ -444,20 +495,287 @@ export const AI_ENDPOINTS = {
     LOGS: '/api/ai/logs',
 };
 
+// ✅ Corrected: /api/telemedicine không tồn tại — dùng /api/teleconsultation
 export const TELEMEDICINE_ENDPOINTS = {
-    LIST: '/api/telemedicine/sessions',
-    DETAIL: (id: string) => `/api/telemedicine/sessions/${id}`,
-    CREATE: '/api/telemedicine/sessions',
-    START: (id: string) => `/api/telemedicine/sessions/${id}/start`,
-    END: (id: string) => `/api/telemedicine/sessions/${id}/end`,
-    CHAT: (sessionId: string) => `/api/telemedicine/sessions/${sessionId}/chat`,
-    SHARE_DOCUMENT: (sessionId: string) => `/api/telemedicine/sessions/${sessionId}/documents`,
+    // Booking
+    LIST: '/api/teleconsultation/booking/my-bookings',
+    BOOK: '/api/teleconsultation/booking',
+    DETAIL: (id: string) => `/api/teleconsultation/booking/${id}`,
+    CANCEL: (id: string) => `/api/teleconsultation/booking/${id}/cancel`,
+    CONFIRM: (id: string) => `/api/teleconsultation/booking/${id}/confirm`,
+    DOCTORS: '/api/teleconsultation/booking/doctors',
+    SLOTS: '/api/teleconsultation/booking/slots',
+    // Room
+    ROOM: (id: string) => `/api/teleconsultation/room/${id}`,
+    JOIN: (id: string) => `/api/teleconsultation/room/${id}/join`,
+    LEAVE: (id: string) => `/api/teleconsultation/room/${id}/leave`,
+    CLOSE_ROOM: (id: string) => `/api/teleconsultation/room/${id}/close`,
+    ROOM_MESSAGES: (id: string) => `/api/teleconsultation/room/${id}/messages`,
+    // Backward compat aliases
+    CREATE: '/api/teleconsultation/booking',
+    START: (id: string) => `/api/teleconsultation/room/${id}/join`,
+    END: (id: string) => `/api/teleconsultation/room/${id}/leave`,
+    CHAT: (id: string) => `/api/teleconsultation/room/${id}/messages`,
+    SHARE_DOCUMENT: (id: string) => `/api/teleconsultation/room/${id}/files`,
+    // Stats
+    STATS: '/api/teleconsultation/stats',
+    TYPES: '/api/teleconsultation/types',
 };
 
+// ✅ Corrected: /api/ehr/{patientId}/... → /api/ehr/patients/{patientId}/...
 export const EHR_ENDPOINTS = {
-    SUMMARY: (patientId: string) => `/api/ehr/${patientId}/summary`,
-    VITAL_HISTORY: (patientId: string) => `/api/ehr/${patientId}/vitals`,
-    TREATMENT_HISTORY: (patientId: string) => `/api/ehr/${patientId}/treatments`,
-    TIMELINE: (patientId: string) => `/api/ehr/${patientId}/timeline`,
-    MEDICAL_HISTORY: (patientId: string) => `/api/ehr/${patientId}/history`,
+    SUMMARY: (patientId: string) => `/api/ehr/patients/${patientId}/health-summary`,
+    VITAL_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/vitals`,
+    VITALS_LATEST: (patientId: string) => `/api/ehr/patients/${patientId}/vitals/latest`,
+    VITALS_TRENDS: (patientId: string) => `/api/ehr/patients/${patientId}/vitals/trends`,
+    TREATMENT_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/treatment-records`,
+    TIMELINE: (patientId: string) => `/api/ehr/patients/${patientId}/timeline`,
+    MEDICAL_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/medical-histories`,
+    ALLERGIES: (patientId: string) => `/api/ehr/patients/${patientId}/allergies`,
+    CURRENT_MEDICATIONS: (patientId: string) => `/api/ehr/patients/${patientId}/current-medications`,
+    DIAGNOSIS_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/diagnosis-history`,
+    PROFILE: (patientId: string) => `/api/ehr/patients/${patientId}/profile`,
+    RISK_FACTORS: (patientId: string) => `/api/ehr/patients/${patientId}/risk-factors`,
+    NOTES: (patientId: string) => `/api/ehr/patients/${patientId}/notes`,
+};
+
+// ============================================
+// Encounter (Phiên khám bệnh)
+// ✅ Swagger: /api/encounters/*
+// ============================================
+export const ENCOUNTER_ENDPOINTS = {
+    LIST: '/api/encounters',
+    ACTIVE: '/api/encounters/active',
+    DETAIL: (id: string) => `/api/encounters/${id}`,
+    CREATE: '/api/encounters',
+    CREATE_FROM_APPOINTMENT: (appointmentId: string) => `/api/encounters/from-appointment/${appointmentId}`,
+    BY_APPOINTMENT: (appointmentId: string) => `/api/encounters/by-appointment/${appointmentId}`,
+    BY_PATIENT: (patientId: string) => `/api/encounters/by-patient/${patientId}`,
+    STATUS: (id: string) => `/api/encounters/${id}/status`,
+    ASSIGN_DOCTOR: (id: string) => `/api/encounters/${id}/assign-doctor`,
+    ASSIGN_ROOM: (id: string) => `/api/encounters/${id}/assign-room`,
+};
+
+// ============================================
+// Clinical Examination (Khám lâm sàng)
+// ✅ Swagger: /api/clinical-examinations/*
+// ============================================
+export const CLINICAL_EXAM_ENDPOINTS = {
+    BY_PATIENT: (patientId: string) => `/api/clinical-examinations/by-patient/${patientId}`,
+    DETAIL: (encounterId: string) => `/api/clinical-examinations/${encounterId}`,
+    VITALS: (encounterId: string) => `/api/clinical-examinations/${encounterId}/vitals`,
+    SUMMARY: (encounterId: string) => `/api/clinical-examinations/${encounterId}/summary`,
+    FINALIZE: (encounterId: string) => `/api/clinical-examinations/${encounterId}/finalize`,
+};
+
+// ============================================
+// Diagnoses (Chẩn đoán)
+// ✅ Swagger: /api/diagnoses/*
+// ============================================
+export const DIAGNOSIS_ENDPOINTS = {
+    BY_ENCOUNTER: (encounterId: string) => `/api/diagnoses/${encounterId}`,
+    BY_PATIENT: (patientId: string) => `/api/diagnoses/by-patient/${patientId}`,
+    DETAIL: (diagnosisId: string) => `/api/diagnoses/${diagnosisId}`,
+    UPDATE_TYPE: (diagnosisId: string) => `/api/diagnoses/${diagnosisId}/type`,
+    CONCLUSION: (encounterId: string) => `/api/diagnoses/${encounterId}/conclusion`,
+    SEARCH_ICD: '/api/diagnoses/search-icd',
+};
+
+// ============================================
+// Medical Orders (Chỉ định xét nghiệm/dịch vụ)
+// ✅ Swagger: /api/medical-orders/*
+// ============================================
+export const MEDICAL_ORDER_ENDPOINTS = {
+    BY_ENCOUNTER: (encounterId: string) => `/api/medical-orders/${encounterId}`,
+    BY_PATIENT: (patientId: string) => `/api/medical-orders/by-patient/${patientId}`,
+    PENDING: '/api/medical-orders/pending',
+    DETAIL: (orderId: string) => `/api/medical-orders/detail/${orderId}`,
+    SUMMARY: (encounterId: string) => `/api/medical-orders/${encounterId}/summary`,
+    UPDATE: (orderId: string) => `/api/medical-orders/${orderId}`,
+    CANCEL: (orderId: string) => `/api/medical-orders/${orderId}/cancel`,
+    START: (orderId: string) => `/api/medical-orders/${orderId}/start`,
+    RESULT: (orderId: string) => `/api/medical-orders/${orderId}/result`,
+    SEARCH_SERVICES: '/api/medical-orders/search-services',
+};
+
+// ============================================
+// Medical Records (Hồ sơ bệnh án)
+// ✅ Swagger: /api/medical-records/*
+// ============================================
+export const MEDICAL_RECORD_ENDPOINTS = {
+    BY_PATIENT: (patientId: string) => `/api/medical-records/by-patient/${patientId}`,
+    TIMELINE: (patientId: string) => `/api/medical-records/by-patient/${patientId}/timeline`,
+    STATS: (patientId: string) => `/api/medical-records/by-patient/${patientId}/statistics`,
+    DETAIL: (encounterId: string) => `/api/medical-records/${encounterId}`,
+    SNAPSHOT: (encounterId: string) => `/api/medical-records/snapshot/${encounterId}`,
+    FINALIZE: (encounterId: string) => `/api/medical-records/${encounterId}/finalize`,
+    SIGN: (encounterId: string) => `/api/medical-records/${encounterId}/sign`,
+    EXPORT: (encounterId: string) => `/api/medical-records/export/${encounterId}`,
+    COMPLETENESS: (encounterId: string) => `/api/medical-records/${encounterId}/completeness`,
+    SEARCH: '/api/medical-records/search',
+};
+
+// ============================================
+// Dispensing (Cấp phát thuốc)
+// ✅ Swagger: /api/dispensing/*
+// ============================================
+export const DISPENSING_ENDPOINTS = {
+    DISPENSE: (prescriptionId: string) => `/api/dispensing/${prescriptionId}`,
+    CANCEL: (dispenseOrderId: string) => `/api/dispensing/${dispenseOrderId}/cancel`,
+    HISTORY: '/api/dispensing/history',
+    BY_PHARMACIST: (pharmacistId: string) => `/api/dispensing/by-pharmacist/${pharmacistId}`,
+    INVENTORY_CHECK: (drugId: string) => `/api/dispensing/inventory/${drugId}/check`,
+    INVENTORY: (drugId: string) => `/api/dispensing/inventory/${drugId}`,
+};
+
+// ============================================
+// Inventory (Tồn kho dược)
+// ✅ Swagger: /api/inventory/*
+// ============================================
+export const INVENTORY_ENDPOINTS = {
+    LIST: '/api/inventory',
+    DETAIL: (batchId: string) => `/api/inventory/${batchId}`,
+    LOW_STOCK: '/api/inventory/alerts/low-stock',
+    EXPIRING: '/api/inventory/alerts/expiring',
+};
+
+// ============================================
+// Stock In / Stock Out (Nhập/Xuất kho)
+// ✅ Swagger: /api/stock-in/* /api/stock-out/*
+// ============================================
+export const STOCK_IN_ENDPOINTS = {
+    LIST: '/api/stock-in',
+    DETAIL: (orderId: string) => `/api/stock-in/${orderId}`,
+    CONFIRM: (orderId: string) => `/api/stock-in/${orderId}/confirm`,
+    RECEIVE: (orderId: string) => `/api/stock-in/${orderId}/receive`,
+    CANCEL: (orderId: string) => `/api/stock-in/${orderId}/cancel`,
+    ITEMS: (orderId: string) => `/api/stock-in/${orderId}/items`,
+};
+
+export const STOCK_OUT_ENDPOINTS = {
+    LIST: '/api/stock-out',
+    DETAIL: (orderId: string) => `/api/stock-out/${orderId}`,
+    CONFIRM: (orderId: string) => `/api/stock-out/${orderId}/confirm`,
+    CANCEL: (orderId: string) => `/api/stock-out/${orderId}/cancel`,
+    ITEMS: (orderId: string) => `/api/stock-out/${orderId}/items`,
+};
+
+// ============================================
+// Appointment Status / Queue (Hàng đợi khám)
+// ✅ Swagger: /api/appointment-status/*
+// ============================================
+export const APPOINTMENT_STATUS_ENDPOINTS = {
+    QUEUE_TODAY: '/api/appointment-status/queue/today',
+    DASHBOARD_TODAY: '/api/appointment-status/dashboard/today',
+    DASHBOARD_DATE: (date: string) => `/api/appointment-status/dashboard/${date}`,
+    ROOM_STATUS: '/api/appointment-status/room-status',
+    SETTINGS: '/api/appointment-status/settings',
+    CHECK_IN: (id: string) => `/api/appointment-status/${id}/check-in`,
+    START_EXAM: (id: string) => `/api/appointment-status/${id}/start-exam`,
+    COMPLETE_EXAM: (id: string) => `/api/appointment-status/${id}/complete-exam`,
+    NO_SHOW: (id: string) => `/api/appointment-status/${id}/no-show`,
+    SKIP: (id: string) => `/api/appointment-status/${id}/skip`,
+    RECALL: (id: string) => `/api/appointment-status/${id}/recall`,
+    GENERATE_QR: (id: string) => `/api/appointment-status/generate-qr/${id}`,
+    CHECK_IN_QR: '/api/appointment-status/check-in-qr',
+};
+
+// ============================================
+// Appointment Confirmations (Xác nhận lịch hẹn)
+// ✅ Swagger: /api/appointment-confirmations/*
+// ============================================
+export const APPOINTMENT_CONFIRMATION_ENDPOINTS = {
+    CONFIRM: (id: string) => `/api/appointment-confirmations/${id}/confirm`,
+    CHECK_IN: (id: string) => `/api/appointment-confirmations/${id}/check-in`,
+    SEND_REMINDER: (id: string) => `/api/appointment-confirmations/${id}/send-reminder`,
+    BATCH_CONFIRM: '/api/appointment-confirmations/batch-confirm',
+    BATCH_REMINDER: '/api/appointment-confirmations/batch-send-reminder',
+    REMINDER_SETTINGS: '/api/appointment-confirmations/reminder-settings',
+};
+
+// ============================================
+// Branches (Chi nhánh)
+// ✅ Swagger: /api/branches/*
+// ============================================
+export const BRANCH_ENDPOINTS = {
+    LIST: '/api/branches',
+    DROPDOWN: '/api/branches/dropdown',
+    DETAIL: (id: string) => `/api/branches/${id}`,
+    STATUS: (id: string) => `/api/branches/${id}/status`,
+};
+
+// ============================================
+// Medical Rooms (Phòng khám)
+// ✅ Swagger: /api/medical-rooms/*
+// ============================================
+export const MEDICAL_ROOM_ENDPOINTS = {
+    LIST: '/api/medical-rooms',
+    DROPDOWN: '/api/medical-rooms/dropdown',
+    DETAIL: (id: string) => `/api/medical-rooms/${id}`,
+    STATUS: (id: string) => `/api/medical-rooms/${id}/status`,
+    SERVICES: (roomId: string) => `/api/medical-rooms/${roomId}/services`,
+};
+
+// ============================================
+// Patient Insurance (Bảo hiểm bệnh nhân)
+// ✅ Swagger: /api/patient-insurances/*
+// ============================================
+export const PATIENT_INSURANCE_ENDPOINTS = {
+    LIST: '/api/patient-insurances',
+    ACTIVE: '/api/patient-insurances/active',
+    DETAIL: (id: string) => `/api/patient-insurances/${id}`,
+    HISTORY: (id: string) => `/api/patient-insurances/${id}/history`,
+};
+
+// ============================================
+// Leaves (Nghỉ phép nhân sự)
+// ✅ Swagger: /api/leaves/*
+// ============================================
+export const LEAVE_ENDPOINTS = {
+    LIST: '/api/leaves',
+    DETAIL: (id: string) => `/api/leaves/${id}`,
+    APPROVE: (id: string) => `/api/leaves/${id}/approve`,
+    REJECT: (id: string) => `/api/leaves/${id}/reject`,
+};
+
+// ============================================
+// Warehouses + Suppliers (Kho + Nhà cung cấp)
+// ✅ Swagger: /api/warehouses/* /api/suppliers/*
+// ============================================
+export const WAREHOUSE_ENDPOINTS = {
+    LIST: '/api/warehouses',
+    DETAIL: (id: string) => `/api/warehouses/${id}`,
+    TOGGLE: (id: string) => `/api/warehouses/${id}/toggle`,
+};
+
+export const SUPPLIER_ENDPOINTS = {
+    LIST: '/api/suppliers',
+    DETAIL: (id: string) => `/api/suppliers/${id}`,
+};
+
+// ============================================
+// Treatment Plans (Kế hoạch điều trị)
+// ✅ Swagger: /api/treatment-plans/*
+// ============================================
+export const TREATMENT_PLAN_ENDPOINTS = {
+    LIST: '/api/treatment-plans',
+    BY_PATIENT: (patientId: string) => `/api/treatment-plans/by-patient/${patientId}`,
+    DETAIL: (planId: string) => `/api/treatment-plans/${planId}`,
+    STATUS: (planId: string) => `/api/treatment-plans/${planId}/status`,
+    SUMMARY: (planId: string) => `/api/treatment-plans/${planId}/summary`,
+};
+
+// ============================================
+// Sign Off (Ký duyệt hồ sơ)
+// ✅ Swagger: /api/sign-off/*
+// ============================================
+export const SIGN_OFF_ENDPOINTS = {
+    PENDING: '/api/sign-off/by-doctor/pending',
+    DRAFT_SIGN: (encounterId: string) => `/api/sign-off/${encounterId}/draft-sign`,
+    OFFICIAL_SIGN: (encounterId: string) => `/api/sign-off/${encounterId}/official-sign`,
+    COMPLETE: (encounterId: string) => `/api/sign-off/${encounterId}/complete`,
+    REVOKE: (encounterId: string) => `/api/sign-off/${encounterId}/revoke`,
+    VERIFY: (encounterId: string) => `/api/sign-off/${encounterId}/verify`,
+    SIGNATURES: (encounterId: string) => `/api/sign-off/${encounterId}/signatures`,
+    AUDIT_LOG: (encounterId: string) => `/api/sign-off/${encounterId}/audit-log`,
 };
