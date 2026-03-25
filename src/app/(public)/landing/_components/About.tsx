@@ -1,51 +1,89 @@
-import { IMG } from "./data";
+import { IMG, MILESTONES } from "./data";
 import { SafeImage } from "./SafeImage";
 import { ScrollReveal } from "./ScrollReveal";
 
 export function AboutSection({ scrollTo }: { scrollTo: (id: string) => void }) {
     return (
         <section id="about" className="py-20 px-6 bg-slate-50" aria-label="Giới thiệu bệnh viện">
-            <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+            <div className="max-w-7xl mx-auto">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center mb-20">
+                    <ScrollReveal>
+                        <div className="relative">
+                            <div className="rounded-3xl overflow-hidden shadow-2xl aspect-[4/3] relative ring-1 ring-black/5">
+                                <SafeImage src={IMG.about} alt="Bệnh viện EHealth" fill className="object-cover" />
+                            </div>
+                            {/* ISO badge */}
+                            <div className="absolute -bottom-6 -right-6 bg-white rounded-2xl shadow-xl p-5 border border-gray-100">
+                                <div className="flex items-center gap-4">
+                                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3C81C6] to-[#1d4ed8] flex items-center justify-center shadow-lg">
+                                        <span className="material-symbols-outlined text-white text-[28px]">verified</span>
+                                    </div>
+                                    <div>
+                                        <p className="text-2xl font-black text-[#121417]">ISO 9001</p>
+                                        <p className="text-xs text-[#687582]">Chứng nhận chất lượng</p>
+                                    </div>
+                                </div>
+                            </div>
+                            {/* Experience badge */}
+                            <div className="absolute -top-4 -left-4 bg-white rounded-2xl shadow-xl p-4 border border-gray-100">
+                                <p className="text-3xl font-black text-[#3C81C6]">15<span className="text-base">+</span></p>
+                                <p className="text-xs text-[#687582] font-medium">Năm kinh nghiệm</p>
+                            </div>
+                        </div>
+                    </ScrollReveal>
+                    <ScrollReveal delay={200}>
+                        <p className="text-sm font-bold text-[#3C81C6] uppercase tracking-widest mb-3">Về chúng tôi</p>
+                        <h2 className="text-3xl md:text-4xl font-black text-[#121417] mb-6 leading-tight">Bệnh viện Đa khoa<br />hàng đầu Việt Nam</h2>
+                        <p className="text-[#4a5568] leading-relaxed mb-4">
+                            Với hơn <strong className="text-[#121417]">15 năm kinh nghiệm</strong>, EHealth Hospital tự hào là một trong những bệnh viện đa khoa hàng đầu tại Việt Nam. Chúng tôi không ngừng đầu tư công nghệ hiện đại và phát triển đội ngũ y bác sĩ chuyên môn cao.
+                        </p>
+                        <p className="text-[#4a5568] leading-relaxed mb-8">
+                            Được <strong className="text-[#121417]">JCI quốc tế chứng nhận</strong>, chúng tôi cam kết tiêu chuẩn an toàn và chất lượng điều trị ngang tầm quốc tế.
+                        </p>
+
+                        {/* Credential badges */}
+                        <div className="grid grid-cols-2 gap-3 mb-8">
+                            {[
+                                { icon: "verified_user", label: "Bộ Y tế cấp phép", sub: "Giấy phép hành nghề" },
+                                { icon: "workspace_premium", label: "JCI Accreditation", sub: "Tiêu chuẩn quốc tế" },
+                                { icon: "groups", label: "120+ Bác sĩ", sub: "Chuyên khoa hàng đầu" },
+                                { icon: "hotel", label: "300+ Giường bệnh", sub: "Đầy đủ tiện nghi" },
+                            ].map(item => (
+                                <div key={item.label} className="flex items-center gap-3 p-3.5 bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-100 transition-all">
+                                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0">
+                                        <span className="material-symbols-outlined text-[#3C81C6] text-[20px]">{item.icon}</span>
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-[#121417]">{item.label}</p>
+                                        <p className="text-[10px] text-[#687582]">{item.sub}</p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={() => scrollTo("booking")} className="inline-flex items-center gap-2 px-6 py-3.5 bg-gradient-to-r from-[#3C81C6] to-[#1d4ed8] text-white rounded-xl text-sm font-bold transition-all hover:-translate-y-0.5 shadow-lg shadow-blue-500/20 active:scale-95" aria-label="Đặt lịch khám bệnh">
+                            <span className="material-symbols-outlined text-[18px]">arrow_forward</span>Đặt lịch khám
+                        </button>
+                    </ScrollReveal>
+                </div>
+
+                {/* Milestones timeline */}
                 <ScrollReveal>
                     <div className="relative">
-                        <div className="rounded-3xl overflow-hidden shadow-2xl aspect-[4/3] relative">
-                            <SafeImage src={IMG.about} alt="Bệnh viện EHealth" fill className="object-cover" />
-                        </div>
-                        <div className="absolute -bottom-6 -right-6 bg-white rounded-2xl shadow-xl p-5 border border-gray-100">
-                            <div className="flex items-center gap-4">
-                                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3C81C6] to-[#1d4ed8] flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-white text-[28px]">verified</span>
+                        <h3 className="text-center text-xl font-bold text-[#121417] mb-10">Hành trình phát triển</h3>
+                        <div className="hidden md:block absolute top-[68px] left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#3C81C6]/30 to-transparent" />
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
+                            {MILESTONES.map((m, i) => (
+                                <div key={m.year} className="text-center relative group">
+                                    <div className="hidden md:block w-4 h-4 rounded-full bg-[#3C81C6] border-4 border-white shadow-md mx-auto mb-4 group-hover:scale-125 transition-transform" />
+                                    <div className="bg-white rounded-xl p-4 border border-gray-100 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all">
+                                        <p className="text-xl font-black text-[#3C81C6] mb-1">{m.year}</p>
+                                        <p className="text-sm font-bold text-[#121417] mb-1">{m.title}</p>
+                                        <p className="text-xs text-[#687582] leading-relaxed">{m.desc}</p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="text-2xl font-black text-[#121417]">ISO 9001</p>
-                                    <p className="text-xs text-[#687582]">Chứng nhận chất lượng</p>
-                                </div>
-                            </div>
+                            ))}
                         </div>
                     </div>
-                </ScrollReveal>
-                <ScrollReveal delay={200}>
-                    <p className="text-sm font-bold text-[#3C81C6] uppercase tracking-widest mb-3">Về chúng tôi</p>
-                    <h2 className="text-3xl md:text-4xl font-black text-[#121417] mb-6 leading-tight">Hệ thống Y tế<br />hàng đầu Việt Nam</h2>
-                    <p className="text-[#687582] leading-relaxed mb-6">
-                        Với hơn 15 năm kinh nghiệm, EHealth Hospital tự hào là một trong những bệnh viện đa khoa hàng đầu tại Việt Nam. Chúng tôi không ngừng đầu tư công nghệ hiện đại và phát triển đội ngũ y bác sĩ chuyên môn cao.
-                    </p>
-                    <div className="grid grid-cols-2 gap-4 mb-8">
-                        {[
-                            { icon: "verified_user", label: "Bộ Y tế cấp phép" },
-                            { icon: "workspace_premium", label: "JCI quốc tế" },
-                            { icon: "groups", label: "120+ bác sĩ" },
-                            { icon: "hotel", label: "200+ giường bệnh" },
-                        ].map(item => (
-                            <div key={item.label} className="flex items-center gap-3 p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
-                                <span className="material-symbols-outlined text-[#3C81C6] text-[22px]">{item.icon}</span>
-                                <span className="text-sm font-semibold text-[#121417]">{item.label}</span>
-                            </div>
-                        ))}
-                    </div>
-                    <button onClick={() => scrollTo("booking")} className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3C81C6] to-[#1d4ed8] text-white rounded-xl text-sm font-bold transition-all hover:-translate-y-0.5 shadow-lg shadow-blue-500/20 active:scale-95" aria-label="Đặt lịch khám bệnh">
-                        <span className="material-symbols-outlined text-[18px]">arrow_forward</span>Đặt lịch khám
-                    </button>
                 </ScrollReveal>
             </div>
         </section>

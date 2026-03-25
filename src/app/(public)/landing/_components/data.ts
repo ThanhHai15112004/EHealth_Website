@@ -1,5 +1,6 @@
 /* ===================================================================
    Landing page — shared data constants
+   Inspired by tamanhhospital.vn, ump.edu.vn
    =================================================================== */
 
 export const IMG = {
@@ -7,31 +8,39 @@ export const IMG = {
     heroBg: "/img/general/hero-bg.png",
     about: "/img/general/about-hospital.png",
     ctaBg: "/img/general/cta-bg.png",
+    equipment: "/img/general/equipment.png",
+    labRoom: "/img/general/lab-room.png",
+    surgeryRoom: "/img/general/surgery-room.png",
+    lobby: "/img/general/lobby.png",
     doctors: ["/img/doctors/doctor-1.png", "/img/doctors/doctor-2.png", "/img/doctors/doctor-3.png", "/img/doctors/doctor-4.png"],
-    services: ["/img/services/cardiology.png", "/img/services/neurology.png", "/img/services/dermatology.png", "/img/services/pediatrics.png", "/img/services/ophthalmology.png", "/img/services/dentistry.png"],
+    services: ["/img/services/cardiology.png", "/img/services/neurology.png", "/img/services/dermatology.png", "/img/services/pediatrics.png", "/img/services/ophthalmology.png", "/img/services/dentistry.png", "/img/services/orthopedics.png", "/img/services/obstetrics.png"],
     testimonials: ["/img/testimonials/patient-1.png", "/img/testimonials/patient-2.png", "/img/testimonials/patient-3.png"],
+    partners: ["/img/partners/bhxh.png", "/img/partners/baolong.png", "/img/partners/baoviet.png", "/img/partners/manulife.png", "/img/partners/prudential.png", "/img/partners/aia.png"],
+    news: ["/img/news/news-1.png", "/img/news/news-2.png", "/img/news/news-3.png"],
 };
 
 export const SERVICES = [
-    { icon: "cardiology", title: "Tim mạch", desc: "Khám, chẩn đoán và điều trị toàn diện bệnh lý tim mạch với trang thiết bị hiện đại nhất.", color: "from-red-500 to-rose-600", img: IMG.services[0] },
-    { icon: "neurology", title: "Thần kinh", desc: "Điều trị đau đầu, đột quỵ, Parkinson, và các rối loạn thần kinh phức tạp.", color: "from-violet-500 to-purple-600", img: IMG.services[1] },
-    { icon: "dermatology", title: "Da liễu", desc: "Chăm sóc da, điều trị mụn, nám, và các bệnh lý da liễu bằng công nghệ laser.", color: "from-amber-500 to-orange-600", img: IMG.services[2] },
-    { icon: "child_care", title: "Nhi khoa", desc: "Chăm sóc sức khoẻ toàn diện cho trẻ em từ sơ sinh đến 16 tuổi.", color: "from-cyan-500 to-teal-600", img: IMG.services[3] },
-    { icon: "visibility", title: "Nhãn khoa", desc: "Khám mắt, phẫu thuật laser LASIK, điều trị tật khúc xạ chuyên sâu.", color: "from-blue-500 to-indigo-600", img: IMG.services[4] },
-    { icon: "dentistry", title: "Răng hàm mặt", desc: "Nha khoa tổng hợp: nhổ răng, trồng Implant, niềng răng, thẩm mỹ cười.", color: "from-emerald-500 to-green-600", img: IMG.services[5] },
+    { icon: "cardiology", title: "Tim mạch", desc: "Khám, chẩn đoán và điều trị toàn diện bệnh lý tim mạch với trang thiết bị hiện đại nhất.", color: "from-red-500 to-rose-600", img: IMG.services[0], doctorCount: 18, features: ["Siêu âm tim", "Đặt stent", "Điện tâm đồ"] },
+    { icon: "neurology", title: "Thần kinh", desc: "Điều trị đau đầu, đột quỵ, Parkinson, và các rối loạn thần kinh phức tạp.", color: "from-violet-500 to-purple-600", img: IMG.services[1], doctorCount: 12, features: ["Đo điện não", "MRI não", "Phẫu thuật TK"] },
+    { icon: "dermatology", title: "Da liễu", desc: "Chăm sóc da, điều trị mụn, nám, và các bệnh lý da liễu bằng công nghệ laser.", color: "from-amber-500 to-orange-600", img: IMG.services[2], doctorCount: 8, features: ["Laser trị nám", "PRP trị rụng tóc", "Trị sẹo"] },
+    { icon: "child_care", title: "Nhi khoa", desc: "Chăm sóc sức khoẻ toàn diện cho trẻ em từ sơ sinh đến 16 tuổi.", color: "from-cyan-500 to-teal-600", img: IMG.services[3], doctorCount: 15, features: ["Tiêm chủng", "Dinh dưỡng", "Hô hấp nhi"] },
+    { icon: "visibility", title: "Nhãn khoa", desc: "Khám mắt, phẫu thuật laser LASIK, điều trị tật khúc xạ chuyên sâu.", color: "from-blue-500 to-indigo-600", img: IMG.services[4], doctorCount: 6, features: ["LASIK", "Phaco", "Glaucoma"] },
+    { icon: "dentistry", title: "Răng hàm mặt", desc: "Nha khoa tổng hợp: nhổ răng, trồng Implant, niềng răng, thẩm mỹ cười.", color: "from-emerald-500 to-green-600", img: IMG.services[5], doctorCount: 10, features: ["Implant", "Niềng răng", "Tẩy trắng"] },
+    { icon: "orthopedics", title: "Chấn thương chỉnh hình", desc: "Phẫu thuật và điều trị xương khớp, thay khớp nhân tạo, chấn thương thể thao.", color: "from-sky-500 to-blue-600", img: IMG.services[6], doctorCount: 9, features: ["Thay khớp gối", "Nội soi khớp", "Vật lý trị liệu"] },
+    { icon: "pregnant_woman", title: "Sản phụ khoa", desc: "Theo dõi thai kỳ, sinh đẻ an toàn, khám phụ khoa, hỗ trợ sinh sản.", color: "from-pink-500 to-rose-600", img: IMG.services[7], doctorCount: 14, features: ["IVF", "Sinh thường", "Sinh mổ"] },
 ];
 
 export const DOCTORS = [
-    { name: "PGS.TS. Trần Văn Minh", title: "Trưởng khoa Tim mạch", exp: "25 năm kinh nghiệm", specialties: ["Can thiệp mạch vành", "Suy tim", "Rối loạn nhịp"], img: IMG.doctors[0] },
-    { name: "TS.BS. Nguyễn Thị Hoa", title: "Chuyên gia Da liễu", exp: "18 năm kinh nghiệm", specialties: ["Laser trị nám", "Trị mụn", "Thẩm mỹ da"], img: IMG.doctors[1] },
-    { name: "BS.CK2. Phạm Đức Long", title: "Trưởng khoa Nhi", exp: "20 năm kinh nghiệm", specialties: ["Hô hấp nhi", "Tiêu hoá nhi", "Dinh dưỡng"], img: IMG.doctors[2] },
-    { name: "TS.BS. Lê Hoàng Anh", title: "Chuyên gia Thần kinh", exp: "15 năm kinh nghiệm", specialties: ["Đột quỵ", "Parkinson", "Đau đầu mạn"], img: IMG.doctors[3] },
+    { name: "PGS.TS. Trần Văn Minh", title: "Trưởng khoa Tim mạch", exp: "25 năm kinh nghiệm", specialties: ["Can thiệp mạch vành", "Suy tim", "Rối loạn nhịp"], img: IMG.doctors[0], rating: 4.9, reviews: 320, available: true, fee: "500.000đ" },
+    { name: "TS.BS. Nguyễn Thị Hoa", title: "Chuyên gia Da liễu", exp: "18 năm kinh nghiệm", specialties: ["Laser trị nám", "Trị mụn", "Thẩm mỹ da"], img: IMG.doctors[1], rating: 4.8, reviews: 285, available: true, fee: "400.000đ" },
+    { name: "BS.CK2. Phạm Đức Long", title: "Trưởng khoa Nhi", exp: "20 năm kinh nghiệm", specialties: ["Hô hấp nhi", "Tiêu hoá nhi", "Dinh dưỡng"], img: IMG.doctors[2], rating: 4.9, reviews: 410, available: false, fee: "450.000đ" },
+    { name: "TS.BS. Lê Hoàng Anh", title: "Chuyên gia Thần kinh", exp: "15 năm kinh nghiệm", specialties: ["Đột quỵ", "Parkinson", "Đau đầu mạn"], img: IMG.doctors[3], rating: 4.7, reviews: 198, available: true, fee: "500.000đ" },
 ];
 
 export const TESTIMONIALS = [
-    { name: "Chị Nguyễn Thị Mai", age: 45, text: "Tôi rất hài lòng với dịch vụ tại EHealth. Bác sĩ Minh đã giúp tôi phát hiện và điều trị kịp thời bệnh tim. Quy trình đặt lịch rất thuận tiện.", rating: 5, img: IMG.testimonials[0] },
-    { name: "Anh Trần Đức Hùng", age: 38, text: "Đưa con đi khám nhi ở đây rất yên tâm. BS. Long rất tận tình, giải thích cặn kẽ cho ba mẹ. Sẽ quay lại lần tới.", rating: 5, img: IMG.testimonials[1] },
-    { name: "Chị Lê Phương Thảo", age: 32, text: "Điều trị da liễu tại đây hiệu quả ngoài mong đợi. Sau 3 tháng da đã cải thiện rõ rệt. Cảm ơn BS. Hoa rất nhiều!", rating: 5, img: IMG.testimonials[2] },
+    { name: "Chị Nguyễn Thị Mai", age: 45, dept: "Tim mạch", text: "Tôi rất hài lòng với dịch vụ tại EHealth. Bác sĩ Minh đã giúp tôi phát hiện và điều trị kịp thời bệnh tim. Quy trình đặt lịch rất thuận tiện, không phải chờ đợi lâu.", rating: 5, img: IMG.testimonials[0], date: "15/02/2026" },
+    { name: "Anh Trần Đức Hùng", age: 38, dept: "Nhi khoa", text: "Đưa con đi khám nhi ở đây rất yên tâm. BS. Long rất tận tình, giải thích cặn kẽ cho ba mẹ. Cơ sở vật chất sạch sẽ, hiện đại. Sẽ quay lại lần tới.", rating: 5, img: IMG.testimonials[1], date: "08/03/2026" },
+    { name: "Chị Lê Phương Thảo", age: 32, dept: "Da liễu", text: "Điều trị da liễu tại đây hiệu quả ngoài mong đợi. Sau 3 tháng da đã cải thiện rõ rệt. Công nghệ laser hiện đại, bác sĩ tận tâm. Cảm ơn BS. Hoa rất nhiều!", rating: 5, img: IMG.testimonials[2], date: "20/03/2026" },
 ];
 
 export const COUNTER_STATS = [
@@ -49,10 +58,12 @@ export const PROCESS_STEPS = [
 ];
 
 export const NAV_ITEMS = [
-    { id: "services", label: "Dịch vụ" },
-    { id: "doctors", label: "Bác sĩ" },
+    { id: "services", label: "Chuyên khoa" },
     { id: "about", label: "Giới thiệu" },
+    { id: "doctors", label: "Đội ngũ bác sĩ" },
+    { id: "equipment", label: "Trang thiết bị" },
     { id: "testimonials", label: "Đánh giá" },
+    { id: "news", label: "Tin tức" },
     { id: "faq", label: "FAQ" },
     { id: "contact", label: "Liên hệ" },
 ];
@@ -64,4 +75,33 @@ export const FAQ_DATA = [
     { q: "Bệnh viện làm việc vào Chủ nhật không?", a: "Bệnh viện làm việc từ Thứ 2 — Thứ 7 (7:00 — 20:00). Chủ nhật chỉ tiếp nhận cấp cứu 24/7. Các dịch vụ đặc biệt có thể hẹn riêng ngoài giờ hành chính." },
     { q: "Tôi có thể xem kết quả xét nghiệm online không?", a: "Có. Sau khi đăng ký tài khoản trên hệ thống EHealth, bạn có thể xem kết quả xét nghiệm, lịch sử khám bệnh, đơn thuốc trực tuyến bất cứ lúc nào." },
     { q: "Bệnh viện có dịch vụ tư vấn từ xa không?", a: "Có. Chúng tôi cung cấp dịch vụ Telemedicine — tư vấn sức khoẻ trực tuyến qua video call với bác sĩ chuyên khoa. Đặt lịch tư vấn từ xa tại mục \"Đặt lịch khám\" và chọn hình thức \"Tư vấn online\"." },
+];
+
+export const PARTNERS = [
+    { name: "Bảo hiểm Xã hội Việt Nam", img: IMG.partners[0] },
+    { name: "Bảo Long", img: IMG.partners[1] },
+    { name: "Bảo Việt", img: IMG.partners[2] },
+    { name: "Manulife", img: IMG.partners[3] },
+    { name: "Prudential", img: IMG.partners[4] },
+    { name: "AIA", img: IMG.partners[5] },
+];
+
+export const EQUIPMENT_LIST = [
+    { name: "Máy MRI 3.0 Tesla", desc: "Chụp cộng hưởng từ độ phân giải cao, nhập khẩu từ Siemens (Đức)", icon: "mri", img: IMG.equipment },
+    { name: "Phòng mổ Hybrid", desc: "Tích hợp hệ thống DSA, cho phép can thiệp tim mạch & phẫu thuật đồng thời", icon: "surgical", img: IMG.surgeryRoom },
+    { name: "Phòng xét nghiệm tự động", desc: "Hệ thống xét nghiệm Roche cobas 8000, trả kết quả trong 2 giờ", icon: "biotech", img: IMG.labRoom },
+];
+
+export const NEWS_DATA = [
+    { title: "EHealth ứng dụng AI trong chẩn đoán ung thư sớm", excerpt: "Hệ thống AI mới giúp phát hiện tế bào ung thư với độ chính xác 97%, rút ngắn thời gian chẩn đoán từ 2 tuần xuống còn 2 ngày.", date: "20/03/2026", category: "Công nghệ", img: IMG.news[0] },
+    { title: "Mổ thay khớp gối bằng Robot thành công ca thứ 500", excerpt: "Robot phẫu thuật MAKO giúp thay khớp gối chính xác tuyệt đối, bệnh nhân phục hồi nhanh hơn 40% so với phương pháp truyền thống.", date: "15/03/2026", category: "Thành tựu", img: IMG.news[1] },
+    { title: "5 dấu hiệu cảnh báo bệnh tim mạch cần khám ngay", excerpt: "PGS.TS. Trần Văn Minh chia sẻ những dấu hiệu quan trọng mà nhiều người thường bỏ qua, có thể dẫn đến đột quỵ hoặc nhồi máu cơ tim.", date: "10/03/2026", category: "Sức khoẻ", img: IMG.news[2] },
+];
+
+export const MILESTONES = [
+    { year: "2011", title: "Thành lập", desc: "Khởi đầu với 50 giường bệnh và 20 bác sĩ" },
+    { year: "2015", title: "ISO 9001:2015", desc: "Đạt chứng nhận quản lý chất lượng quốc tế" },
+    { year: "2019", title: "JCI Accreditation", desc: "Chứng nhận chất lượng bệnh viện quốc tế" },
+    { year: "2022", title: "Smart Hospital", desc: "Triển khai hệ thống bệnh viện thông minh toàn diện" },
+    { year: "2025", title: "50.000+ bệnh nhân", desc: "Cột mốc phục vụ 50.000 bệnh nhân/năm" },
 ];
