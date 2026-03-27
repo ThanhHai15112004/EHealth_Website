@@ -274,7 +274,7 @@ export const getSessions = async () => {
 
 export const logoutOtherSessions = async () => {
     try {
-        await axiosClient.delete(AUTH_ENDPOINTS.SESSIONS_DELETE_OTHER);
+        await axiosClient.post(AUTH_ENDPOINTS.SESSIONS_LOGOUT_ALL);
         return { success: true };
     } catch (error: any) {
         return { success: false };

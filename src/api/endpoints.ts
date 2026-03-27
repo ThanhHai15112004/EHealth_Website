@@ -26,7 +26,7 @@ export const AUTH_ENDPOINTS = {
     // 1.2.2 Session management
     SESSIONS: '/api/auth/sessions',
     SESSION_DELETE: (sessionId: string) => `/api/auth/sessions/${sessionId}`,
-    SESSIONS_DELETE_OTHER: '/api/auth/sessions/other',       // DELETE: đăng xuất thiết bị khác
+    SESSIONS_LOGOUT_ALL: '/api/auth/sessions/logout-all',    // POST: đăng xuất tất cả phiên
 
     // 1.3.7 User context — lấy role/menu/quyền sau khi đăng nhập
     ME_ROLES: '/api/auth/me/roles',

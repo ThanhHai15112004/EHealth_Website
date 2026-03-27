@@ -81,9 +81,14 @@ export const getRoles = async (): Promise<RoleData[]> => {
 };
 
 /** POST /api/roles — Tạo vai trò mới */
-export const createRole = async (data: Partial<RoleData>): Promise<{ success: boolean; message: string }> => {
+export const createRole = async (data: Partial<RoleData> & { code?: string }): Promise<{ success: boolean; message: string }> => {
     try {
-        const response = await axiosClient.post(ROLE_ENDPOINTS.CREATE, data);
+        // Swagger: { code, name, description }
+        const response = await axiosClient.post(ROLE_ENDPOINTS.CREATE, {
+            code: data.code ?? data.name?.toUpperCase().replace(/\s+/g, '_'),
+            name: data.displayName ?? data.name,
+            description: data.description,
+        });
         return response.data;
     } catch (error: any) {
         return {
@@ -131,9 +136,11 @@ export const deleteRole = async (id: string): Promise<{ success: boolean; messag
 };
 
 /** PATCH /api/roles/{roleId}/status — Bật/tắt vai trò */
-export const toggleRoleStatus = async (id: string, data: { isActive: boolean }): Promise<any> => {
+export const toggleRoleStatus = async (id: string, data: { status: 'ACTIVE' | 'INACTIVE' } | { isActive: boolean }): Promise<any> => {
     try {
-        const response = await axiosClient.patch(ROLE_ENDPOINTS.STATUS(id), data);
+        // Swagger: { status: "INACTIVE" }
+        const payload = 'status' in data ? data : { status: data.isActive ? 'ACTIVE' : 'INACTIVE' };
+        const response = await axiosClient.patch(ROLE_ENDPOINTS.STATUS(id), payload);
         return response.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Cập nhật trạng thái vai trò thất bại');
@@ -158,7 +165,12 @@ export const getPermissions = async (): Promise<PermissionGroup[]> => {
 /** POST /api/permissions — Tạo quyền mới */
 export const createPermission = async (data: Partial<PermissionData>): Promise<any> => {
     try {
-        const response = await axiosClient.post(PERMISSION_ENDPOINTS.CREATE, data);
+        // Swagger: { code, module, description }
+        const response = await axiosClient.post(PERMISSION_ENDPOINTS.CREATE, {
+            code: data.code,
+            module: data.module,
+            description: data.description,
+        });
         return response.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Tạo quyền thất bại');
@@ -178,7 +190,11 @@ export const getPermissionDetail = async (id: string): Promise<PermissionData | 
 /** PATCH /api/permissions/{permissionId} — Cập nhật quyền */
 export const updatePermission = async (id: string, data: Partial<PermissionData>): Promise<any> => {
     try {
-        const response = await axiosClient.patch(PERMISSION_ENDPOINTS.UPDATE(id), data);
+        // Swagger: { module, description }
+        const response = await axiosClient.patch(PERMISSION_ENDPOINTS.UPDATE(id), {
+            module: data.module,
+            description: data.description,
+        });
         return response.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Cập nhật quyền thất bại');
@@ -231,7 +247,8 @@ export const assignPermissions = async (
 /** POST /api/roles/{roleId}/permissions — Gán thêm quyền lẻ */
 export const addRolePermission = async (roleId: string, permissionId: string): Promise<any> => {
     try {
-        const response = await axiosClient.post(ROLE_ENDPOINTS.PERMISSIONS(roleId), { permissionId });
+        // Swagger: { permission_id: "PATIENT_VIEW" }
+        const response = await axiosClient.post(ROLE_ENDPOINTS.PERMISSIONS(roleId), { permission_id: permissionId });
         return response.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Gán quyền thất bại');
