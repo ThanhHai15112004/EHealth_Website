@@ -97,23 +97,25 @@ export function AuthProvider({ children }: AuthProviderProps) {
             const response = await authService.login({ email, password });
 
             if (response.success && response.data) {
-                // Backend trả về: { access_token, refresh_token, account_id, role }
+                // Swagger: { accessToken, refreshToken, user: { userId, name, avatar, email, phone, roles[] } }
+                const { accessToken, refreshToken, user: apiUser } = response.data;
+                const primaryRole = (apiUser.roles?.[0] || 'staff').toLowerCase();
+
                 const userData: User = {
-                    id: response.data.account_id,
-                    email: email,
-                    fullName: email.split('@')[0],
-                    role: response.data.role.toLowerCase() as User['role'],
+                    id: apiUser.userId,
+                    email: apiUser.email || email,
+                    fullName: apiUser.name || email.split('@')[0],
+                    role: primaryRole as User['role'],
+                    avatar: apiUser.avatar,
                 };
 
-                // Lưu token + user vào localStorage (AuthGuard cần đọc)
-                localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, response.data.access_token || '');
-                localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, response.data.refresh_token || '');
+                localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, accessToken || '');
+                localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refreshToken || '');
                 localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify(userData));
 
                 setUser(userData);
 
-                // Chuyển hướng dựa theo role
-                const redirectUrl = getRedirectUrl(userData.role);
+                const redirectUrl = getRedirectUrl(primaryRole);
                 router.push(redirectUrl);
 
                 return { success: true, message: 'Đăng nhập thành công!' };

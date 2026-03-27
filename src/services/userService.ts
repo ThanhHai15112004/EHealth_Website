@@ -234,20 +234,23 @@ export const getUserStatusHistory = async (id: string): Promise<any> => {
 // ============================================
 
 /** POST /api/users/{userId}/reset-password — Admin reset mật khẩu */
-export const adminResetPassword = async (id: string): Promise<{ success: boolean; message: string }> => {
+export const adminResetPassword = async (id: string, newPassword?: string): Promise<{ success: boolean; message: string }> => {
     try {
-        const response = await axiosClient.post(USER_ENDPOINTS.RESET_PASSWORD(id));
+        const response = await axiosClient.post(USER_ENDPOINTS.RESET_PASSWORD(id), {
+            newPassword: newPassword || 'EHealth@123',
+        });
         return response.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Reset mật khẩu thất bại');
     }
 };
 
-/** POST /api/users/{userId}/change-password — Admin đổi mật khẩu */
-export const adminChangePassword = async (id: string, data: { newPassword: string }): Promise<any> => {
+/** POST /api/users/{userId}/change-password — User tự đổi mật khẩu */
+export const adminChangePassword = async (id: string, data: { oldPassword: string; newPassword: string }): Promise<any> => {
     try {
         const response = await axiosClient.post(USER_ENDPOINTS.CHANGE_PASSWORD(id), {
-            new_password: data.newPassword,
+            oldPassword: data.oldPassword,
+            newPassword: data.newPassword,
         });
         return response.data;
     } catch (error: any) {
@@ -270,9 +273,9 @@ export const getUserRoles = async (id: string): Promise<any> => {
 };
 
 /** POST /api/users/{userId}/roles — Gán vai trò cho user */
-export const assignUserRole = async (id: string, data: { roleId: string }): Promise<any> => {
+export const assignUserRole = async (id: string, data: { role: string }): Promise<any> => {
     try {
-        const response = await axiosClient.post(USER_ENDPOINTS.ROLES(id), data);
+        const response = await axiosClient.post(USER_ENDPOINTS.ROLES(id), { role: data.role.toUpperCase() });
         return response.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Gán vai trò thất bại');
@@ -303,8 +306,8 @@ export const getUserFacilities = async (id: string): Promise<any> => {
     }
 };
 
-/** POST /api/users/{userId}/facilities — Gán cơ sở y tế */
-export const assignUserFacility = async (id: string, data: { facilityId: string }): Promise<any> => {
+/** POST /api/users/{userId}/facilities — Gán nhân sự vào Chi nhánh/Phòng ban */
+export const assignUserFacility = async (id: string, data: { branchId: string; departmentId?: string; roleTitle?: string }): Promise<any> => {
     try {
         const response = await axiosClient.post(USER_ENDPOINTS.FACILITIES(id), data);
         return response.data;

@@ -44,15 +44,24 @@ export interface RegisterPhoneData {
     password: string;
 }
 
-// Backend trả về: { success, data: { access_token, refresh_token, account_id, role } }
+// Backend trả về (theo Swagger):
+// { success, data: { accessToken, refreshToken, expiresIn, user: { userId, name, avatar, email, phone, roles[] } } }
 export interface AuthResponse {
     success: boolean;
     message?: string;
+    code?: string;
     data?: {
-        access_token: string;
-        refresh_token: string;
-        account_id: string;
-        role: string;
+        accessToken: string;
+        refreshToken: string;
+        expiresIn?: number;
+        user: {
+            userId: string;
+            name: string;
+            avatar?: string;
+            email?: string;
+            phone?: string;
+            roles: string[];
+        };
     };
 }
 
@@ -61,27 +70,29 @@ export interface AuthResponse {
 // ============================================
 export const login = async (credentials: LoginCredentials): Promise<AuthResponse> => {
     try {
-        // Backend yêu cầu device_id (not-null constraint trên user_sessions)
+        // Swagger: clientInfo là object nested, không phải top-level fields
         const deviceId = credentials.clientInfo?.deviceId
-            || `web_${navigator?.userAgent?.slice(0, 32).replace(/\s/g, '_') || 'browser'}_${Date.now()}`;
+            || `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const response = await axiosClient.post(AUTH_ENDPOINTS.LOGIN_EMAIL, {
             email: credentials.email,
             password: credentials.password,
-            device_id: deviceId,
-            device_name: credentials.clientInfo?.deviceName || 'Web Browser',
-            user_agent: credentials.clientInfo?.userAgent || (typeof navigator !== 'undefined' ? navigator.userAgent : ''),
+            clientInfo: {
+                deviceId,
+                deviceName: credentials.clientInfo?.deviceName || 'Web Browser',
+            },
         });
 
         if (response.data.success && response.data.data) {
-            const { access_token, refresh_token, account_id, role } = response.data.data;
+            const { accessToken, refreshToken, user } = response.data.data;
 
-            localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, access_token);
-            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refresh_token);
+            localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, accessToken);
+            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
             localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify({
-                id: account_id,
-                email: credentials.email,
-                fullName: credentials.email.split('@')[0], // Backend chưa trả fullName
-                role: role.toLowerCase(),
+                id: user.userId,
+                email: user.email || credentials.email,
+                fullName: user.name || credentials.email.split('@')[0],
+                avatar: user.avatar,
+                role: (user.roles?.[0] || 'staff').toLowerCase(),
             }));
         }
 
@@ -100,24 +111,27 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
 export const loginByPhone = async (credentials: LoginPhoneCredentials): Promise<AuthResponse> => {
     try {
         const deviceId = credentials.clientInfo?.deviceId
-            || `web_${navigator?.userAgent?.slice(0, 32).replace(/\s/g, '_') || 'browser'}_${Date.now()}`;
+            || `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
         const response = await axiosClient.post(AUTH_ENDPOINTS.LOGIN_PHONE, {
             phone: credentials.phone,
             password: credentials.password,
-            device_id: deviceId,
-            device_name: credentials.clientInfo?.deviceName || 'Web Browser',
+            clientInfo: {
+                deviceId,
+                deviceName: credentials.clientInfo?.deviceName || 'Web Browser',
+            },
         });
 
         if (response.data.success && response.data.data) {
-            const { access_token, refresh_token, account_id, role } = response.data.data;
+            const { accessToken, refreshToken, user } = response.data.data;
 
-            localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, access_token);
-            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refresh_token);
+            localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, accessToken);
+            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
             localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify({
-                id: account_id,
-                phone: credentials.phone,
-                fullName: credentials.phone,
-                role: role.toLowerCase(),
+                id: user.userId,
+                phone: user.phone || credentials.phone,
+                fullName: user.name || credentials.phone,
+                avatar: user.avatar,
+                role: (user.roles?.[0] || 'staff').toLowerCase(),
             }));
         }
 
@@ -219,9 +233,9 @@ export const forgotPassword = async (email: string): Promise<{ success: boolean;
 // ============================================
 // Đặt lại mật khẩu
 // ============================================
-export const resetPassword = async (token: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
+export const resetPassword = async (otp: string, newPassword: string): Promise<{ success: boolean; message: string }> => {
     try {
-        const response = await axiosClient.post(AUTH_ENDPOINTS.RESET_PASSWORD, { token, newPassword });
+        const response = await axiosClient.post(AUTH_ENDPOINTS.RESET_PASSWORD, { otp, newPassword });
         return { success: true, message: response.data?.message || 'Đặt lại mật khẩu thành công' };
     } catch (error: any) {
         return {
@@ -234,9 +248,9 @@ export const resetPassword = async (token: string, newPassword: string): Promise
 // ============================================
 // Mở khóa tài khoản
 // ============================================
-export const unlockAccount = async (email: string): Promise<{ success: boolean; message?: string }> => {
+export const unlockAccount = async (accountId: string): Promise<{ success: boolean; message?: string }> => {
     try {
-        const response = await axiosClient.post(AUTH_ENDPOINTS.UNLOCK_ACCOUNT, { email });
+        const response = await axiosClient.post(AUTH_ENDPOINTS.UNLOCK_ACCOUNT, { accountId });
         return { success: true, message: response.data?.message };
     } catch (error: any) {
         return {
