@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ToastProvider } from "@/contexts/ToastContext";
+import { FloatingChatBox } from "@/components/shared/FloatingChatBox";
 
 export const metadata: Metadata = {
     title: "E-Health Admin",
@@ -29,6 +30,7 @@ export default function RootLayout({
                 <ToastProvider>
                     <AuthProvider>
                         {children}
+                        <FloatingChatBox />
                     </AuthProvider>
                 </ToastProvider>
             </body>
