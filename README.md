@@ -8,6 +8,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev/)
+[![Node.js](https://img.shields.io/badge/Node.js-22-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 
 [Features](#-key-features) · [Tech Stack](#-tech-stack) · [Getting Started](#-getting-started) · [Architecture](#-architecture) · [Contributing](#-contributing)
 
@@ -78,8 +79,27 @@ The platform supports **4 distinct user roles**, each with a tailored dashboard 
 
 ### Prerequisites
 
-- **Node.js** ≥ 18.x
-- **npm** ≥ 9.x (or yarn / pnpm)
+- **Node.js** v22.x (required — see setup below)
+- **npm** ≥ 11.x
+- **nvm** ([Node Version Manager](https://github.com/nvm-sh/nvm)) — recommended for managing Node versions
+
+> **⚠️ Important:** This project requires **Node.js v22.x** and **npm ≥ 11**. Using a different version may cause build errors. The repository includes a `.nvmrc` file and an `engines` field in `package.json` to enforce this.
+
+#### Installing the correct Node.js version
+
+**Option 1 — Using nvm (recommended):**
+
+```bash
+# Install Node.js v22 (one-time setup)
+nvm install 22
+
+# Switch to the project's required version (reads .nvmrc automatically)
+nvm use
+```
+
+**Option 2 — Manual installation:**
+
+Download and install Node.js v22.x from the [official website](https://nodejs.org/).
 
 ### Installation
 
@@ -88,14 +108,17 @@ The platform supports **4 distinct user roles**, each with a tailored dashboard 
 git clone https://github.com/minhquan2504/EHealth_Website.git
 cd EHealth_Website
 
-# 2. Install dependencies
+# 2. Activate the correct Node.js version (if using nvm)
+nvm use
+
+# 3. Install dependencies
 npm install
 
-# 3. Set up environment variables
+# 4. Set up environment variables
 cp .env.example .env.local
 # Edit .env.local with your configuration
 
-# 4. Start the development server
+# 5. Start the development server
 npm run dev
 ```
 
