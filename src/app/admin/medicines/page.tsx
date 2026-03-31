@@ -82,9 +82,9 @@ export default function MedicinesPage() {
         let result = medicines.filter((medicine) => {
             const matchesSearch =
                 searchQuery === "" ||
-                medicine.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                medicine.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                medicine.activeIngredient.toLowerCase().includes(searchQuery.toLowerCase());
+                (medicine.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (medicine.code || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (medicine.activeIngredient || "").toLowerCase().includes(searchQuery.toLowerCase());
             const matchesCategory =
                 categoryFilter === "all" || medicine.category === categoryFilter;
             return matchesSearch && matchesCategory;
@@ -93,15 +93,15 @@ export default function MedicinesPage() {
         result.sort((a, b) => {
             let comparison = 0;
             if (sortField === "code") {
-                comparison = a.code.localeCompare(b.code);
+                comparison = (a.code || "").localeCompare(b.code || "");
             } else if (sortField === "name") {
-                comparison = a.name.localeCompare(b.name);
+                comparison = (a.name || "").localeCompare(b.name || "");
             } else if (sortField === "price") {
-                comparison = a.price - b.price;
+                comparison = (a.price || 0) - (b.price || 0);
             } else if (sortField === "stock") {
-                comparison = a.stock - b.stock;
+                comparison = (a.stock || 0) - (b.stock || 0);
             } else if (sortField === "status") {
-                comparison = a.status.localeCompare(b.status);
+                comparison = (a.status || "").localeCompare(b.status || "");
             }
             return sortOrder === "asc" ? comparison : -comparison;
         });

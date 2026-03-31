@@ -25,7 +25,25 @@ export default function DepartmentsPage() {
                 setIsDataLoading(true);
                 const res: any = await departmentService.getDepartments({ limit: 100 });
                 const items = res?.data?.items ?? res?.items ?? res?.data?.data ?? res?.data ?? res ?? [];
-                if (Array.isArray(items)) setDepartments(items as Department[]);
+                if (Array.isArray(items)) {
+                    setDepartments(items.map((item: Record<string, unknown>) => ({
+                        id: (item.departments_id ?? item.id ?? "") as string,
+                        code: (item.code ?? "") as string,
+                        name: (item.name ?? "") as string,
+                        nameEn: (item.name_en ?? item.nameEn ?? "") as string,
+                        description: (item.description ?? "") as string,
+                        icon: (item.icon ?? "") as string,
+                        color: (item.color ?? "") as string,
+                        location: (item.location ?? "") as string,
+                        capacity: (item.capacity ?? 0) as number,
+                        doctorCount: (item.doctor_count ?? item.doctorCount ?? 0) as number,
+                        patientCount: (item.patient_count ?? item.patientCount ?? 0) as number,
+                        appointmentToday: (item.appointment_today ?? item.appointmentToday ?? 0) as number,
+                        status: (item.status ?? "ACTIVE") as string,
+                        createdAt: (item.created_at ?? item.createdAt ?? "") as string,
+                        updatedAt: (item.updated_at ?? item.updatedAt ?? "") as string,
+                    } as Department)));
+                }
             } catch (err) {
                 console.error('Lỗi tải danh sách khoa:', err);
             } finally {
@@ -47,8 +65,8 @@ export default function DepartmentsPage() {
         let result = departments.filter((dept) => {
             return (
                 searchQuery === "" ||
-                dept.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                dept.code.toLowerCase().includes(searchQuery.toLowerCase())
+                (dept.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (dept.code || "").toLowerCase().includes(searchQuery.toLowerCase())
             );
         });
 
@@ -57,16 +75,16 @@ export default function DepartmentsPage() {
             let comparison = 0;
             switch (sortField) {
                 case "name":
-                    comparison = a.name.localeCompare(b.name);
+                    comparison = (a.name || "").localeCompare(b.name || "");
                     break;
                 case "doctorCount":
-                    comparison = a.doctorCount - b.doctorCount;
+                    comparison = (a.doctorCount || 0) - (b.doctorCount || 0);
                     break;
                 case "patientCount":
                     comparison = (a.patientCount || 0) - (b.patientCount || 0);
                     break;
                 case "status":
-                    comparison = a.status.localeCompare(b.status);
+                    comparison = (a.status || "").localeCompare(b.status || "");
                     break;
             }
             return sortOrder === "asc" ? comparison : -comparison;
@@ -171,7 +189,7 @@ export default function DepartmentsPage() {
     const dynamicStats = {
         total: departments.length,
         active: departments.filter((d) => d.status === DEPARTMENT_STATUS.ACTIVE).length,
-        totalDoctors: departments.reduce((sum, d) => sum + d.doctorCount, 0),
+        totalDoctors: departments.reduce((sum, d) => sum + (d.doctorCount || 0), 0),
         totalPatients: departments.reduce((sum, d) => sum + (d.patientCount || 0), 0),
     };
 

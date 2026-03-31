@@ -48,16 +48,16 @@ export default function HospitalsPage() {
                 const items: any[] = res?.data?.items ?? res?.items ?? res?.data?.data ?? res?.data ?? res ?? [];
                 if (Array.isArray(items) && items.length > 0) {
                     setHospitals(items.map((f: any) => ({
-                        id: f.id,
+                        id: f.facilities_id ?? f.id ?? "",
                         name: f.name ?? "",
-                        code: f.code ?? f.id,
+                        code: f.code ?? f.facilities_id ?? f.id ?? "",
                         address: f.address ?? "",
                         phone: f.phone ?? "",
                         email: f.email ?? "",
                         type: f.type ?? "Phòng khám đa khoa",
-                        status: f.status ?? "active",
-                        doctorCount: f.doctorCount ?? 0,
-                        departmentCount: f.departmentCount ?? 0,
+                        status: (f.status ?? "active").toLowerCase(),
+                        doctorCount: f.doctor_count ?? f.doctorCount ?? 0,
+                        departmentCount: f.department_count ?? f.departmentCount ?? 0,
                     })));
                 }
             })
@@ -65,7 +65,7 @@ export default function HospitalsPage() {
     }, []);
 
     const filtered = hospitals.filter(
-        (h) => h.name.toLowerCase().includes(searchQuery.toLowerCase()) || h.code.toLowerCase().includes(searchQuery.toLowerCase())
+        (h) => (h.name || "").toLowerCase().includes(searchQuery.toLowerCase()) || (h.code || "").toLowerCase().includes(searchQuery.toLowerCase())
     );
 
     return (

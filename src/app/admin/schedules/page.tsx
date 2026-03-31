@@ -121,12 +121,12 @@ export default function SchedulesPage() {
                 const items: any[] = res?.data?.items ?? res?.items ?? res?.data?.data ?? res?.data ?? res ?? [];
                 if (Array.isArray(items) && items.length > 0) {
                     setSchedules(items.map((s: any) => ({
-                        id: s.id,
-                        doctorId: s.doctorId ?? "",
-                        doctorName: s.doctorName ?? "",
-                        department: s.department ?? s.departmentName ?? "",
+                        id: s.id ?? s.schedule_id ?? "",
+                        doctorId: s.doctorId ?? s.doctor_id ?? "",
+                        doctorName: s.doctorName ?? s.doctor_name ?? s.full_name ?? "",
+                        department: s.department ?? s.departmentName ?? s.department_name ?? "",
                         shift: s.shift ?? "MORNING",
-                        date: s.date ?? s.workDate ?? "",
+                        date: s.date ?? s.workDate ?? s.work_date ?? "",
                         status: s.status ?? "SCHEDULED",
                         avatar: s.avatar,
                     })));
@@ -389,7 +389,7 @@ function WeekView({ weekDates, schedulesMap, todayStr, onSelect }: {
                                                                 <div className="w-5 h-5 rounded-full bg-[#3C81C6]/10 flex items-center justify-center flex-shrink-0">
                                                                     <span className="material-symbols-outlined text-[12px] text-[#3C81C6]">person</span>
                                                                 </div>
-                                                                <span className="truncate">{s.doctorName.replace("BS. ", "")}</span>
+                                                                <span className="truncate">{(s.doctorName || "").replace("BS. ", "")}</span>
                                                             </div>
                                                         </button>
                                                     );

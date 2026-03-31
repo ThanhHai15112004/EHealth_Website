@@ -35,7 +35,16 @@ export default function UsersPage() {
                 const res: any = await userService.getUsers({ limit: 100 });
                 const items = res?.data?.items ?? res?.items ?? res?.data?.data ?? res?.data ?? res ?? [];
                 if (Array.isArray(items) && items.length > 0) {
-                    setUsers(items as unknown as User[]);
+                    setUsers(items.map((u: Record<string, unknown>) => ({
+                        id: u.users_id ?? u.id ?? "",
+                        fullName: (u as Record<string, unknown> & { profile?: { full_name?: string } }).profile?.full_name ?? u.full_name ?? u.fullName ?? u.email ?? "",
+                        email: u.email ?? "",
+                        phone: u.phone ?? u.phone_number ?? "",
+                        role: Array.isArray(u.roles) && (u.roles as string[]).length > 0 ? (u.roles as string[])[0].toLowerCase() : "staff",
+                        status: u.status ?? "ACTIVE",
+                        avatar: (u as Record<string, unknown> & { profile?: { avatar_url?: string } }).profile?.avatar_url ?? u.avatar ?? "",
+                        createdAt: u.created_at ?? u.createdAt ?? "",
+                    })) as unknown as User[]);
                 }
             } catch (err) {
                 console.error('Lỗi tải danh sách người dùng:', err);
@@ -59,8 +68,8 @@ export default function UsersPage() {
         let result = users.filter((user) => {
             const matchesSearch =
                 searchQuery === "" ||
-                user.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                user.email.toLowerCase().includes(searchQuery.toLowerCase());
+                (user.fullName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (user.email || "").toLowerCase().includes(searchQuery.toLowerCase());
             const matchesRole = roleFilter === "all" || user.role === roleFilter;
             return matchesSearch && matchesRole;
         });
@@ -69,13 +78,13 @@ export default function UsersPage() {
         result.sort((a, b) => {
             let comparison = 0;
             if (sortField === "fullName") {
-                comparison = a.fullName.localeCompare(b.fullName);
+                comparison = (a.fullName || "").localeCompare(b.fullName || "");
             } else if (sortField === "role") {
-                comparison = a.role.localeCompare(b.role);
+                comparison = (a.role || "").localeCompare(b.role || "");
             } else if (sortField === "createdAt") {
-                comparison = a.createdAt.localeCompare(b.createdAt);
+                comparison = (a.createdAt || "").localeCompare(b.createdAt || "");
             } else if (sortField === "status") {
-                comparison = a.status.localeCompare(b.status);
+                comparison = (a.status || "").localeCompare(b.status || "");
             }
             return sortOrder === "asc" ? comparison : -comparison;
         });

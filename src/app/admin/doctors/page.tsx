@@ -38,12 +38,13 @@ export default function DoctorsPage() {
                 if (Array.isArray(items) && items.length > 0) {
                     setDoctors(items.map((d: any) => ({
                         ...MOCK_DOCTORS[0],
-                        id: d.id,
-                        code: d.code ?? d.id,
-                        fullName: d.fullName ?? d.name ?? "",
-                        departmentId: d.departmentId ?? "",
-                        departmentName: d.departmentName ?? "",
-                        specialization: d.specialization ?? "",
+                        id: d.id ?? d.staff_id ?? "",
+                        userId: d.userId ?? d.user_id ?? "",
+                        code: d.code ?? d.staff_id ?? d.id ?? "",
+                        fullName: d.fullName ?? d.full_name ?? d.name ?? "",
+                        departmentId: d.departmentId ?? d.department_id ?? "",
+                        departmentName: d.departmentName ?? d.department_name ?? "",
+                        specialization: d.specialization ?? d.position ?? "",
                         phone: d.phone ?? "",
                         email: d.email ?? "",
                         rating: d.rating ?? 0,
@@ -69,8 +70,8 @@ export default function DoctorsPage() {
         let result = doctors.filter((doctor) => {
             const matchesSearch =
                 searchQuery === "" ||
-                doctor.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                doctor.code.toLowerCase().includes(searchQuery.toLowerCase());
+                (doctor.fullName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (doctor.code || "").toLowerCase().includes(searchQuery.toLowerCase());
             const matchesDepartment =
                 departmentFilter === "all" || doctor.departmentId === departmentFilter;
             return matchesSearch && matchesDepartment;
@@ -79,13 +80,13 @@ export default function DoctorsPage() {
         result.sort((a, b) => {
             let comparison = 0;
             if (sortField === "fullName") {
-                comparison = a.fullName.localeCompare(b.fullName);
+                comparison = (a.fullName || "").localeCompare(b.fullName || "");
             } else if (sortField === "departmentName") {
-                comparison = a.departmentName.localeCompare(b.departmentName);
+                comparison = (a.departmentName || "").localeCompare(b.departmentName || "");
             } else if (sortField === "rating") {
-                comparison = a.rating - b.rating;
+                comparison = (a.rating ?? 0) - (b.rating ?? 0);
             } else if (sortField === "status") {
-                comparison = a.status.localeCompare(b.status);
+                comparison = (a.status || "").localeCompare(b.status || "");
             }
             return sortOrder === "asc" ? comparison : -comparison;
         });
