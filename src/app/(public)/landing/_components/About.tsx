@@ -86,16 +86,19 @@ export function AboutSection({ scrollTo }: { scrollTo: (id: string) => void }) {
                     {/* Video modal */}
                     {showVideo && (
                         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" onClick={() => setShowVideo(false)}>
-                            <div className="relative w-full max-w-4xl aspect-video bg-black rounded-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                                <button onClick={() => setShowVideo(false)} className="absolute -top-10 right-0 text-white hover:text-gray-300 z-10">
+                            <div className="relative w-full max-w-5xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+                                <button onClick={() => setShowVideo(false)} className="absolute -top-10 right-0 text-white hover:text-gray-300 z-10 flex items-center gap-1">
                                     <span className="material-symbols-outlined text-[32px]">close</span>
                                 </button>
-                                <div className="w-full h-full flex items-center justify-center text-white text-sm">
-                                    <div className="text-center">
-                                        <span className="material-symbols-outlined text-6xl mb-4 text-gray-500">videocam</span>
-                                        <p className="text-gray-400">Video giới thiệu sẽ được cập nhật</p>
-                                    </div>
-                                </div>
+                                <video
+                                    className="w-full h-full object-contain"
+                                    controls
+                                    autoPlay
+                                    playsInline
+                                    src="/img/video/Video_Giới_Thiệu_Bệnh_Viện.mp4"
+                                >
+                                    Trình duyệt của bạn không hỗ trợ phát video.
+                                </video>
                             </div>
                         </div>
                     )}
