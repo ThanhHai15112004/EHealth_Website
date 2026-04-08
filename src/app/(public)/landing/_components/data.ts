@@ -72,6 +72,7 @@ export const PROCESS_STEPS = [
 
 export const NAV_ITEMS = [
     { id: "services", label: "Chuyên khoa" },
+    { id: "medical-services", label: "Dịch vụ", href: "/services" },
     { id: "about", label: "Giới thiệu" },
     { id: "doctors", label: "Đội ngũ bác sĩ" },
     { id: "equipment", label: "Trang thiết bị" },

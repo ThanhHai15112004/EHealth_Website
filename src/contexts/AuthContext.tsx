@@ -100,7 +100,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
             if (response.success && response.data) {
                 // Swagger: { accessToken, refreshToken, user: { userId, name, avatar, email, phone, roles[] } }
                 const { accessToken, refreshToken, user: apiUser } = response.data;
-                const primaryRole = (apiUser.roles?.[0] || 'staff').toLowerCase();
+                const primaryRole = (apiUser.roles?.[0] || 'patient').toLowerCase();
 
                 const userData: User = {
                     id: apiUser.userId,

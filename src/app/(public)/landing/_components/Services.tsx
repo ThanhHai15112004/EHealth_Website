@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { SERVICES } from "./data";
 import { SafeImage } from "./SafeImage";
 import { ScrollReveal } from "./ScrollReveal";
@@ -34,14 +35,31 @@ export function ServicesGrid() {
                                             <span key={f} className="px-2 py-0.5 bg-slate-50 text-[#4a5568] text-[10px] font-medium rounded-md border border-gray-100">{f}</span>
                                         ))}
                                     </div>
-                                    <div className="flex items-center gap-1 text-[#3C81C6] text-xs font-semibold group-hover:gap-2 transition-all">
-                                        Tìm hiểu thêm <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                                    {/* Action buttons */}
+                                    <div className="flex items-center gap-2">
+                                        <Link href={`/specialties`}
+                                            className="flex-1 flex items-center justify-center gap-1 text-[#3C81C6] text-xs font-semibold py-2 rounded-lg hover:bg-blue-50 transition-colors">
+                                            Tìm hiểu <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
+                                        </Link>
+                                        <Link href={`/booking?specialtyName=${encodeURIComponent(s.title)}`}
+                                            className="flex-1 flex items-center justify-center gap-1 bg-gradient-to-r from-[#3C81C6] to-[#1d4ed8] text-white text-xs font-bold py-2 rounded-lg hover:shadow-md transition-all active:scale-95">
+                                            <span className="material-symbols-outlined text-[14px]">calendar_month</span>
+                                            Đặt lịch
+                                        </Link>
                                     </div>
                                 </div>
                             </div>
                         </ScrollReveal>
                     ))}
                 </div>
+
+                {/* View all button */}
+                <ScrollReveal className="text-center mt-10">
+                    <Link href="/specialties"
+                        className="inline-flex items-center gap-2 px-6 py-3 border-2 border-gray-200 text-[#4a5568] rounded-xl text-sm font-bold hover:border-[#3C81C6] hover:text-[#3C81C6] transition-all active:scale-95">
+                        Xem tất cả chuyên khoa <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                    </Link>
+                </ScrollReveal>
             </div>
         </section>
     );

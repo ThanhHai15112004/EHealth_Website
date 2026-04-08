@@ -1,19 +1,32 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { getAppointments, type Appointment } from "@/services/appointmentService";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
 import { filterMockAppointments } from "@/data/patient-mock";
 import { MOCK_INVOICES, MOCK_TELE_SESSIONS, MOCK_VITAL_SIGNS } from "@/data/patient-portal-mock";
+import { MOCK_MEDICATION_REMINDERS, MOCK_MEDICATION_LOGS, type MedicationReminder, type MedicationLog } from "@/data/medication-reminders-mock";
+import { loadFromStorage, STORAGE_KEYS } from "@/utils/localStorage";
 
 export default function PatientDashboard() {
     const { user } = useAuth();
     const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
 
-    useEffect(() => { loadData(); }, []);
+    // Load medication data from localStorage (synced with medication-reminders page)
+    const [reminders, setReminders] = useState<MedicationReminder[]>([]);
+    const [medLogs, setMedLogs] = useState<MedicationLog[]>([]);
+
+    useEffect(() => {
+        loadData();
+        // Load medication data
+        const storedRem = loadFromStorage<MedicationReminder[]>(STORAGE_KEYS.MEDICATION_REMINDERS, MOCK_MEDICATION_REMINDERS);
+        const storedLogs = loadFromStorage<MedicationLog[]>(STORAGE_KEYS.MEDICATION_LOGS, MOCK_MEDICATION_LOGS);
+        setReminders(storedRem);
+        setMedLogs(storedLogs);
+    }, []);
 
     const loadData = async () => {
         try {
@@ -31,6 +44,8 @@ export default function PatientDashboard() {
     const pendingInvoices = MOCK_INVOICES.filter(i => i.status === "pending" || i.status === "overdue");
     const upcomingTele = MOCK_TELE_SESSIONS.filter(s => s.status === "scheduled");
     const latestVital = MOCK_VITAL_SIGNS[0];
+    const todayMeds = getTodaySchedule("pp-001");
+    const activeMeds = getActiveReminders("pp-001");
 
     return (
         <div className="space-y-6">
@@ -52,7 +67,7 @@ export default function PatientDashboard() {
                 {[
                     { icon: "calendar_month", label: "Đặt lịch khám", desc: "Đặt lịch mới", href: "/booking", color: "from-[#3C81C6] to-[#2563eb]" },
                     { icon: "event_note", label: "Lịch hẹn", desc: `${upcomingAppointments.length} sắp tới`, href: "/patient/appointments", color: "from-emerald-500 to-emerald-600" },
-                    { icon: "monitor_heart", label: "Hồ sơ sức khỏe", desc: "Xem EHR", href: "/patient/health-records", color: "from-violet-500 to-violet-600" },
+                    { icon: "medication", label: "Nhắc thuốc", desc: `${activeMeds.length} thuốc đang dùng`, href: "/patient/medication-reminders", color: "from-violet-500 to-violet-600" },
                     { icon: "smart_toy", label: "AI tư vấn", desc: "Hỏi triệu chứng", href: "/patient/ai-consult", color: "from-cyan-500 to-teal-600" },
                 ].map(item => (
                     <Link key={item.label} href={item.href}
@@ -183,15 +198,59 @@ export default function PatientDashboard() {
                         </div>
                     )}
 
+                    {/* Medication Reminder Widget */}
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2">
+                                <span className="material-symbols-outlined text-violet-500" style={{ fontSize: "20px" }}>medication</span>
+                                Nhắc thuốc hôm nay
+                            </h3>
+                            <Link href="/patient/medication-reminders" className="text-xs text-[#3C81C6] font-medium hover:underline">Xem tất cả →</Link>
+                        </div>
+                        {todayMeds.length === 0 ? (
+                            <p className="text-xs text-[#687582] text-center py-4">Không có thuốc cần uống hôm nay</p>
+                        ) : (
+                            <div className="space-y-2">
+                                {todayMeds.slice(0, 4).map((item, idx) => {
+                                    const isTaken = item.log?.status === "taken";
+                                    const isMissed = item.log?.status === "missed";
+                                    return (
+                                        <div key={idx} className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors ${
+                                            isTaken ? "bg-emerald-50/50 dark:bg-emerald-500/5" : isMissed ? "bg-red-50/50 dark:bg-red-500/5" : "bg-[#f6f7f8] dark:bg-[#13191f]"
+                                        }`}>
+                                            <span className={`text-xs font-bold w-12 text-center ${
+                                                isTaken ? "text-emerald-600" : isMissed ? "text-red-500" : "text-[#121417] dark:text-white"
+                                            }`}>{item.time}</span>
+                                            <div className={`w-0.5 h-6 rounded-full bg-gradient-to-b ${item.reminder.color}`} />
+                                            <div className="flex-1 min-w-0">
+                                                <p className={`text-xs font-semibold truncate ${isTaken ? "text-emerald-700 dark:text-emerald-400 line-through" : "text-[#121417] dark:text-white"}`}>
+                                                    {item.reminder.medicationName}
+                                                </p>
+                                                <p className="text-[10px] text-[#687582]">{item.reminder.dosage}</p>
+                                            </div>
+                                            {isTaken && <span className="material-symbols-outlined text-emerald-500" style={{ fontSize: "16px" }}>check_circle</span>}
+                                            {isMissed && <span className="material-symbols-outlined text-red-400" style={{ fontSize: "16px" }}>error</span>}
+                                        </div>
+                                    );
+                                })}
+                                {todayMeds.length > 4 && (
+                                    <p className="text-[10px] text-center text-[#687582]">+{todayMeds.length - 4} thuốc khác</p>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
                     {/* Quick Links */}
                     <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
                         <h3 className="text-sm font-bold text-[#121417] dark:text-white mb-3">Truy cập nhanh</h3>
                         <div className="grid grid-cols-2 gap-2">
                             {[
                                 { icon: "folder_shared", label: "Kết quả khám", href: "/patient/medical-records", color: "text-violet-500 bg-violet-50 dark:bg-violet-500/10" },
+                                { icon: "family_restroom", label: "Hồ sơ BN", href: "/patient/patient-profiles", color: "text-[#3C81C6] bg-[#3C81C6]/10" },
                                 { icon: "receipt_long", label: "Thanh toán", href: "/patient/billing", color: "text-amber-500 bg-amber-50 dark:bg-amber-500/10" },
                                 { icon: "videocam", label: "Khám từ xa", href: "/patient/telemedicine", color: "text-cyan-500 bg-cyan-50 dark:bg-cyan-500/10" },
-                                { icon: "person", label: "Hồ sơ cá nhân", href: "/patient/profile", color: "text-orange-500 bg-orange-50 dark:bg-orange-500/10" },
+                                { icon: "manage_accounts", label: "Tài khoản", href: "/patient/profile", color: "text-orange-500 bg-orange-50 dark:bg-orange-500/10" },
+                                { icon: "monitor_heart", label: "Hồ sơ sức khỏe", href: "/patient/health-records", color: "text-green-500 bg-green-50 dark:bg-green-500/10" },
                             ].map(l => (
                                 <Link key={l.label} href={l.href} className="flex items-center gap-2 p-3 rounded-xl hover:bg-[#f6f7f8] dark:hover:bg-[#13191f] transition-colors">
                                     <div className={`w-8 h-8 rounded-lg ${l.color} flex items-center justify-center`}>

@@ -13,6 +13,7 @@ export const ROUTES = {
     SPECIALTIES: "/specialties",
     DOCTORS: "/doctors",
     DOCTOR_DETAIL: (id: string) => `/doctors/${id}`,
+    SERVICES: "/services",
     BOOKING: "/booking",
   },
 
@@ -79,12 +80,14 @@ export const ROUTES = {
     BOOKING_SUCCESS: "/patient/booking-success",
     APPOINTMENTS: "/patient/appointments",
     APPOINTMENT_DETAIL: (id: string) => `/patient/appointments/${id}`,
+    PATIENT_PROFILES: "/patient/patient-profiles",
     PROFILE: "/patient/profile",
     MEDICAL_RECORDS: "/patient/medical-records",
     HEALTH_RECORDS: "/patient/health-records",
     BILLING: "/patient/billing",
     TELEMEDICINE: "/patient/telemedicine",
     AI_CONSULT: "/patient/ai-consult",
+    MEDICATION_REMINDERS: "/patient/medication-reminders",
   },
 } as const;
 
@@ -315,6 +318,12 @@ export const PATIENT_MENU_ITEMS = [
     label: "Lịch hẹn của tôi",
   },
   {
+    key: "patient-profiles",
+    href: ROUTES.PATIENT.PATIENT_PROFILES,
+    icon: "family_restroom",
+    label: "Hồ sơ bệnh nhân",
+  },
+  {
     key: "medical-records",
     href: ROUTES.PATIENT.MEDICAL_RECORDS,
     icon: "folder_shared",
@@ -325,6 +334,12 @@ export const PATIENT_MENU_ITEMS = [
     href: ROUTES.PATIENT.HEALTH_RECORDS,
     icon: "monitor_heart",
     label: "Hồ sơ sức khỏe",
+  },
+  {
+    key: "medication-reminders",
+    href: ROUTES.PATIENT.MEDICATION_REMINDERS,
+    icon: "medication",
+    label: "Nhắc thuốc",
   },
   {
     key: "billing",
@@ -347,7 +362,7 @@ export const PATIENT_MENU_ITEMS = [
   {
     key: "profile",
     href: ROUTES.PATIENT.PROFILE,
-    icon: "person",
-    label: "Hồ sơ cá nhân",
+    icon: "manage_accounts",
+    label: "Tài khoản",
   },
 ] as const;

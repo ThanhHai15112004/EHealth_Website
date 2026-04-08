@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { DOCTORS, SERVICES } from "./data";
 import { SafeImage } from "./SafeImage";
 import { ScrollReveal } from "./ScrollReveal";
@@ -78,15 +79,14 @@ export function DoctorTeam({ scrollTo }: { scrollTo: (id: string) => void }) {
                                             <span className="text-xs text-[#687582]">Phí khám</span>
                                             <span className="text-sm font-bold text-[#121417]">{d.fee}</span>
                                         </div>
-                                        <button onClick={() => scrollTo("booking")}
-                                            disabled={!d.available}
+                                        <Link href={d.available ? `/booking?doctorName=${encodeURIComponent(d.name)}` : "#"}
                                             className={`w-full py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all ${d.available
                                                 ? "bg-gradient-to-r from-[#3C81C6] to-[#1d4ed8] text-white hover:shadow-lg hover:shadow-blue-200"
-                                                : "bg-gray-100 text-gray-400 cursor-not-allowed"}`}
+                                                : "bg-gray-100 text-gray-400 cursor-not-allowed pointer-events-none"}`}
                                             aria-label={`Đặt lịch khám với ${d.name}`}>
                                             <span className="material-symbols-outlined text-[16px]">calendar_month</span>
                                             {d.available ? "Đặt lịch ngay" : "Hết lịch"}
-                                        </button>
+                                        </Link>
                                     </div>
                                 </div>
                             </div>
@@ -102,9 +102,9 @@ export function DoctorTeam({ scrollTo }: { scrollTo: (id: string) => void }) {
                 )}
 
                 <ScrollReveal className="text-center mt-10">
-                    <button className="inline-flex items-center gap-2 px-6 py-3 border-2 border-gray-200 text-[#4a5568] rounded-xl text-sm font-bold hover:border-[#3C81C6] hover:text-[#3C81C6] transition-all active:scale-95">
+                    <Link href="/doctors" className="inline-flex items-center gap-2 px-6 py-3 border-2 border-gray-200 text-[#4a5568] rounded-xl text-sm font-bold hover:border-[#3C81C6] hover:text-[#3C81C6] transition-all active:scale-95">
                         Xem tất cả bác sĩ <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
-                    </button>
+                    </Link>
                 </ScrollReveal>
             </div>
         </section>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 
 interface TimeSlot {
     time: string;
@@ -15,28 +15,11 @@ interface TimeSlotPickerProps {
     onTimeChange: (time: string) => void;
     slots?: TimeSlot[];
     loading?: boolean;
+    availableDates?: string[];
 }
 
-const DAYS_OF_WEEK = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
-
-function getNext14Days(): { date: string; day: string; dayOfWeek: string; isToday: boolean }[] {
-    const days = [];
-    const today = new Date();
-    for (let i = 0; i < 14; i++) {
-        const d = new Date(today);
-        d.setDate(d.getDate() + i);
-        const yyyy = d.getFullYear();
-        const mm = String(d.getMonth() + 1).padStart(2, "0");
-        const dd = String(d.getDate()).padStart(2, "0");
-        days.push({
-            date: `${yyyy}-${mm}-${dd}`,
-            day: String(d.getDate()),
-            dayOfWeek: DAYS_OF_WEEK[d.getDay()],
-            isToday: i === 0,
-        });
-    }
-    return days;
-}
+const DAYS_HEADER = ["CN", "T2", "T3", "T4", "T5", "T6", "T7"];
+const MONTH_NAMES = ["Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6", "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12"];
 
 const DEFAULT_SLOTS: TimeSlot[] = [
     { time: "07:00", available: true, remaining: 3 },
@@ -57,41 +40,158 @@ const DEFAULT_SLOTS: TimeSlot[] = [
     { time: "17:00", available: false },
 ];
 
-export function TimeSlotPicker({ selectedDate, onDateChange, selectedTime, onTimeChange, slots, loading }: TimeSlotPickerProps) {
-    const days = getNext14Days();
-    const timeSlots = slots || DEFAULT_SLOTS;
-    const [scrollStart, setScrollStart] = useState(0);
+function formatDate(y: number, m: number, d: number): string {
+    return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
 
-    const morningSlots = timeSlots.filter(s => {
-        const h = parseInt(s.time.split(":")[0]);
-        return h < 12;
-    });
-    const afternoonSlots = timeSlots.filter(s => {
-        const h = parseInt(s.time.split(":")[0]);
-        return h >= 12;
-    });
+function getCalendarDays(year: number, month: number): { date: string; day: number; isCurrentMonth: boolean; isToday: boolean; isPast: boolean }[] {
+    const today = new Date();
+    const todayStr = formatDate(today.getFullYear(), today.getMonth(), today.getDate());
+
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const days: { date: string; day: number; isCurrentMonth: boolean; isToday: boolean; isPast: boolean }[] = [];
+
+    // Previous month padding
+    for (let i = firstDay - 1; i >= 0; i--) {
+        const d = daysInPrevMonth - i;
+        const m = month === 0 ? 11 : month - 1;
+        const y = month === 0 ? year - 1 : year;
+        const dateStr = formatDate(y, m, d);
+        days.push({ date: dateStr, day: d, isCurrentMonth: false, isToday: dateStr === todayStr, isPast: dateStr < todayStr });
+    }
+
+    // Current month
+    for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = formatDate(year, month, d);
+        days.push({ date: dateStr, day: d, isCurrentMonth: true, isToday: dateStr === todayStr, isPast: dateStr < todayStr });
+    }
+
+    // Next month padding
+    const remaining = 42 - days.length; // 6 rows
+    for (let d = 1; d <= remaining; d++) {
+        const m = month === 11 ? 0 : month + 1;
+        const y = month === 11 ? year + 1 : year;
+        const dateStr = formatDate(y, m, d);
+        days.push({ date: dateStr, day: d, isCurrentMonth: false, isToday: dateStr === todayStr, isPast: dateStr < todayStr });
+    }
+
+    return days;
+}
+
+export function TimeSlotPicker({ selectedDate, onDateChange, selectedTime, onTimeChange, slots, loading, availableDates }: TimeSlotPickerProps) {
+    const today = new Date();
+    const [viewYear, setViewYear] = useState(today.getFullYear());
+    const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+    const timeSlots = slots || DEFAULT_SLOTS;
+    const calendarDays = useMemo(() => getCalendarDays(viewYear, viewMonth), [viewYear, viewMonth]);
+
+    const morningSlots = timeSlots.filter(s => parseInt(s.time.split(":")[0]) < 12);
+    const afternoonSlots = timeSlots.filter(s => parseInt(s.time.split(":")[0]) >= 12);
+
+    const goToPrevMonth = () => {
+        if (viewMonth === 0) { setViewYear(viewYear - 1); setViewMonth(11); }
+        else setViewMonth(viewMonth - 1);
+    };
+    const goToNextMonth = () => {
+        if (viewMonth === 11) { setViewYear(viewYear + 1); setViewMonth(0); }
+        else setViewMonth(viewMonth + 1);
+    };
+    const goToToday = () => {
+        setViewYear(today.getFullYear());
+        setViewMonth(today.getMonth());
+    };
+
+    // Don't allow navigating to months before current
+    const canGoPrev = viewYear > today.getFullYear() || (viewYear === today.getFullYear() && viewMonth > today.getMonth());
 
     return (
         <div className="space-y-6">
-            {/* Date picker */}
+            {/* Calendar picker */}
             <div>
                 <label className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2">
                     <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>calendar_today</span>
                     Chọn ngày khám
                 </label>
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-                    {days.map(d => (
-                        <button key={d.date} onClick={() => onDateChange(d.date)}
-                            className={`flex-shrink-0 w-16 py-3 rounded-xl text-center transition-all duration-200
-                            ${selectedDate === d.date
-                                ? "bg-gradient-to-b from-[#3C81C6] to-[#2563eb] text-white shadow-lg shadow-[#3C81C6]/25 scale-105"
-                                : "bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-100"}`}>
-                            <div className={`text-[10px] font-medium uppercase tracking-wide ${selectedDate === d.date ? "text-blue-200" : "text-gray-400"}`}>
-                                {d.isToday ? "Hôm nay" : d.dayOfWeek}
-                            </div>
-                            <div className="text-lg font-bold mt-0.5">{d.day}</div>
+
+                <div className="bg-gray-50 rounded-2xl border border-gray-100 p-4">
+                    {/* Calendar header */}
+                    <div className="flex items-center justify-between mb-4">
+                        <button onClick={goToPrevMonth} disabled={!canGoPrev}
+                            className="p-2 rounded-xl hover:bg-white hover:shadow-sm disabled:opacity-30 disabled:cursor-not-allowed transition-all">
+                            <span className="material-symbols-outlined text-gray-600" style={{ fontSize: "20px" }}>chevron_left</span>
                         </button>
-                    ))}
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-base font-bold text-gray-900">
+                                {MONTH_NAMES[viewMonth]} {viewYear}
+                            </h3>
+                            {(viewMonth !== today.getMonth() || viewYear !== today.getFullYear()) && (
+                                <button onClick={goToToday}
+                                    className="px-2.5 py-1 text-[10px] font-bold text-[#3C81C6] bg-[#3C81C6]/10 rounded-full hover:bg-[#3C81C6]/20 transition-colors">
+                                    Hôm nay
+                                </button>
+                            )}
+                        </div>
+                        <button onClick={goToNextMonth}
+                            className="p-2 rounded-xl hover:bg-white hover:shadow-sm transition-all">
+                            <span className="material-symbols-outlined text-gray-600" style={{ fontSize: "20px" }}>chevron_right</span>
+                        </button>
+                    </div>
+
+                    {/* Day headers */}
+                    <div className="grid grid-cols-7 mb-1">
+                        {DAYS_HEADER.map(d => (
+                            <div key={d} className="text-center text-[11px] font-bold text-gray-400 uppercase py-2">{d}</div>
+                        ))}
+                    </div>
+
+                    {/* Calendar grid */}
+                    <div className="grid grid-cols-7 gap-1">
+                        {calendarDays.map((day, idx) => {
+                            const isSelected = selectedDate === day.date;
+                            const isDisabled = day.isPast || !day.isCurrentMonth;
+                            const hasSlots = !availableDates || availableDates.includes(day.date);
+
+                            return (
+                                <button
+                                    key={idx}
+                                    onClick={() => !isDisabled && hasSlots && onDateChange(day.date)}
+                                    disabled={isDisabled || !hasSlots}
+                                    className={`relative aspect-square flex flex-col items-center justify-center rounded-xl text-sm transition-all duration-200
+                                        ${isSelected
+                                            ? "bg-gradient-to-br from-[#3C81C6] to-[#2563eb] text-white shadow-lg shadow-[#3C81C6]/25 scale-105 font-bold"
+                                            : day.isToday
+                                                ? "bg-[#3C81C6]/10 text-[#3C81C6] font-bold ring-2 ring-[#3C81C6]/30"
+                                                : isDisabled
+                                                    ? "text-gray-300 cursor-not-allowed"
+                                                    : !hasSlots
+                                                        ? "text-gray-300 cursor-not-allowed"
+                                                        : "text-gray-700 hover:bg-white hover:shadow-sm cursor-pointer font-medium"
+                                        }`}
+                                >
+                                    <span>{day.day}</span>
+                                    {day.isToday && !isSelected && (
+                                        <span className="absolute bottom-1 w-1 h-1 rounded-full bg-[#3C81C6]" />
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    {/* Selected date display */}
+                    {selectedDate && (
+                        <div className="mt-3 pt-3 border-t border-gray-200 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "16px" }}>event</span>
+                            <span className="text-sm text-gray-700">
+                                Đã chọn: <strong className="text-[#3C81C6]">
+                                    {new Date(selectedDate + "T00:00:00").toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                                </strong>
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -102,7 +202,14 @@ export function TimeSlotPicker({ selectedDate, onDateChange, selectedTime, onTim
                     Chọn giờ khám
                 </label>
 
-                {loading ? (
+                {!selectedDate ? (
+                    <div className="flex items-center justify-center py-8 text-gray-400">
+                        <div className="text-center">
+                            <span className="material-symbols-outlined mb-2" style={{ fontSize: "36px" }}>calendar_today</span>
+                            <p className="text-sm">Vui lòng chọn ngày khám trước</p>
+                        </div>
+                    </div>
+                ) : loading ? (
                     <div className="flex items-center justify-center py-8">
                         <div className="w-8 h-8 border-3 border-[#3C81C6]/20 border-t-[#3C81C6] rounded-full animate-spin" />
                     </div>

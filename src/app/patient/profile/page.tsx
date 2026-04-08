@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/contexts/ToastContext";
 import axiosClient from "@/api/axiosClient";
 import { PROFILE_ENDPOINTS, PATIENT_ENDPOINTS } from "@/api/endpoints";
+import { validateName, validatePhone, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
 
 const TABS = [
     { id: "personal", label: "Thông tin cá nhân", icon: "person" },
@@ -36,7 +38,8 @@ interface FamilyMember {
 }
 
 export default function ProfilePage() {
-    const { user } = useAuth();
+    const { user, updateUser } = useAuth();
+    const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState("personal");
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -45,7 +48,7 @@ export default function ProfilePage() {
         phone: user?.phone || "",
         email: user?.email || "",
         dob: "",
-        gender: "male",
+        gender: "MALE",
         idNumber: "",
         insuranceNumber: "",
         address: "",
@@ -56,6 +59,31 @@ export default function ProfilePage() {
 
     // Password change
     const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
+    const [errors, setErrors] = useState<Record<string, string>>({});
+
+    const validateProfile = (): boolean => {
+        const errs: Record<string, string> = {};
+        const nameRes = validateName(profile.fullName);
+        if (!nameRes.valid) errs.fullName = nameRes.message;
+        if (profile.phone) {
+            const phoneRes = validatePhone(profile.phone);
+            if (!phoneRes.valid) errs.phone = phoneRes.message;
+        }
+        if (profile.dob) {
+            const dobRes = validateDob(profile.dob);
+            if (!dobRes.valid) errs.dob = dobRes.message;
+        }
+        if (profile.idNumber) {
+            const idRes = validateIdNumber(profile.idNumber);
+            if (!idRes.valid) errs.idNumber = idRes.message;
+        }
+        if (profile.insuranceNumber) {
+            const bhytRes = validateBHYT(profile.insuranceNumber);
+            if (!bhytRes.valid) errs.insuranceNumber = bhytRes.message;
+        }
+        setErrors(errs);
+        return Object.keys(errs).length === 0;
+    };
 
     useEffect(() => {
         loadProfile();
@@ -67,34 +95,45 @@ export default function ProfilePage() {
             const data = res.data?.data || res.data;
             if (data) {
                 setProfile({
-                    fullName: data.fullName || data.full_name || user?.fullName || "",
-                    phone: data.phone || user?.phone || "",
+                    fullName: data.full_name || data.fullName || user?.fullName || "",
+                    phone: data.phone_number || data.phone || user?.phone || "",
                     email: data.email || user?.email || "",
                     dob: data.dob || data.dateOfBirth || "",
-                    gender: data.gender || "male",
-                    idNumber: data.idNumber || data.citizenId || "",
+                    gender: data.gender || "MALE",
+                    idNumber: data.identity_card_number || data.idNumber || data.citizenId || "",
                     insuranceNumber: data.insuranceNumber || data.healthInsuranceId || "",
                     address: data.address || "",
-                    avatar: data.avatar,
+                    avatar: data.avatar_url?.[0]?.url || data.avatar,
                 });
             }
         } catch { /* use defaults */ }
     };
 
     const handleSave = async () => {
+        if (!validateProfile()) {
+            showToast("Vui lòng kiểm tra lại thông tin", "error");
+            return;
+        }
         try {
             setSaving(true);
             await axiosClient.put(PROFILE_ENDPOINTS.ME, {
-                fullName: profile.fullName,
-                phone: profile.phone,
-                dateOfBirth: profile.dob,
+                full_name: profile.fullName,
+                phone_number: profile.phone,
+                dob: profile.dob || undefined,
                 gender: profile.gender,
-                citizenId: profile.idNumber,
-                healthInsuranceId: profile.insuranceNumber,
-                address: profile.address,
+                identity_card_number: profile.idNumber || undefined,
+                address: profile.address || undefined,
             });
+            // Update user context so navbar/sidebar reflect changes
+            updateUser({ fullName: profile.fullName, phone: profile.phone });
+            // Reload from server to stay in sync
+            await loadProfile();
             setEditing(false);
-        } catch { /* silent */ } finally {
+            showToast("Cập nhật thông tin thành công!", "success");
+        } catch (err: any) {
+            const msg = err?.response?.data?.message || "Cập nhật thất bại. Vui lòng thử lại.";
+            showToast(msg, "error");
+        } finally {
             setSaving(false);
         }
     };
@@ -108,7 +147,11 @@ export default function ProfilePage() {
                 newPassword: passwords.new,
             });
             setPasswords({ current: "", new: "", confirm: "" });
-        } catch { /* silent */ } finally {
+            showToast("Đổi mật khẩu thành công!", "success");
+        } catch (err: any) {
+            const msg = err?.response?.data?.message || "Đổi mật khẩu thất bại.";
+            showToast(msg, "error");
+        } finally {
             setSaving(false);
         }
     };
@@ -122,7 +165,11 @@ export default function ProfilePage() {
             setFamilyMembers(prev => [...prev, { ...newFamily, id: `fm-${Date.now()}` } as FamilyMember]);
             setShowAddFamily(false);
             setNewFamily({ name: "", dob: "", gender: "male", relation: "", phone: "" });
-        } catch { /* silent */ }
+            showToast("Thêm người thân thành công!", "success");
+        } catch (err: any) {
+            const msg = err?.response?.data?.message || "Thêm người thân thất bại.";
+            showToast(msg, "error");
+        }
     };
 
     const updateProfile = (key: keyof ProfileData, value: string) => setProfile(prev => ({ ...prev, [key]: value }));
@@ -203,14 +250,14 @@ export default function ProfilePage() {
                             )}
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <ProfileField label="Họ và tên" icon="person" value={profile.fullName} onChange={v => updateProfile("fullName", v)} disabled={!editing} />
-                            <ProfileField label="Số điện thoại" icon="call" value={profile.phone} onChange={v => updateProfile("phone", v)} disabled={!editing} />
+                            <ProfileField label="Họ và tên" icon="person" value={profile.fullName} onChange={v => { updateProfile("fullName", v); setErrors(e => ({ ...e, fullName: "" })); }} disabled={!editing} error={errors.fullName} />
+                            <ProfileField label="Số điện thoại" icon="call" value={profile.phone} onChange={v => { updateProfile("phone", v); setErrors(e => ({ ...e, phone: "" })); }} disabled={!editing} error={errors.phone} />
                             <ProfileField label="Email" icon="mail" value={profile.email} onChange={v => updateProfile("email", v)} disabled />
-                            <ProfileField label="Ngày sinh" icon="cake" value={profile.dob} onChange={v => updateProfile("dob", v)} disabled={!editing} type="date" />
+                            <ProfileField label="Ngày sinh" icon="cake" value={profile.dob} onChange={v => { updateProfile("dob", v); setErrors(e => ({ ...e, dob: "" })); }} disabled={!editing} type="date" error={errors.dob} />
                             <div>
                                 <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Giới tính</label>
                                 <div className="flex gap-2">
-                                    {[{ v: "male", l: "Nam" }, { v: "female", l: "Nữ" }].map(g => (
+                                    {[{ v: "MALE", l: "Nam" }, { v: "FEMALE", l: "Nữ" }].map(g => (
                                         <button key={g.v} onClick={() => editing && updateProfile("gender", g.v)}
                                             className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all
                                             ${profile.gender === g.v ? "border-[#3C81C6] bg-[#3C81C6]/[0.06] text-[#3C81C6]" : "border-gray-200 text-gray-500"}
@@ -220,8 +267,8 @@ export default function ProfilePage() {
                                     ))}
                                 </div>
                             </div>
-                            <ProfileField label="CCCD/CMND" icon="badge" value={profile.idNumber} onChange={v => updateProfile("idNumber", v)} disabled={!editing} />
-                            <ProfileField label="Số thẻ BHYT" icon="health_and_safety" value={profile.insuranceNumber} onChange={v => updateProfile("insuranceNumber", v)} disabled={!editing} />
+                            <ProfileField label="CCCD/CMND" icon="badge" value={profile.idNumber} onChange={v => { updateProfile("idNumber", v); setErrors(e => ({ ...e, idNumber: "" })); }} disabled={!editing} error={errors.idNumber} />
+                            <ProfileField label="Số thẻ BHYT" icon="health_and_safety" value={profile.insuranceNumber} onChange={v => { updateProfile("insuranceNumber", v); setErrors(e => ({ ...e, insuranceNumber: "" })); }} disabled={!editing} error={errors.insuranceNumber} />
                             <div className="sm:col-span-2">
                                 <ProfileField label="Địa chỉ" icon="location_on" value={profile.address} onChange={v => updateProfile("address", v)} disabled={!editing} />
                             </div>
@@ -257,7 +304,7 @@ export default function ProfilePage() {
                                             </div>
                                             <div>
                                                 <p className="text-sm font-semibold text-gray-900">{fm.name}</p>
-                                                <p className="text-xs text-gray-400">{fm.relation} • {fm.gender === "male" ? "Nam" : "Nữ"}</p>
+                                                <p className="text-xs text-gray-400">{fm.relation} • {fm.gender === "MALE" ? "Nam" : "Nữ"}</p>
                                             </div>
                                         </div>
                                         <div className="flex gap-2">
@@ -378,8 +425,8 @@ export default function ProfilePage() {
     );
 }
 
-function ProfileField({ label, icon, value, onChange, disabled = false, type = "text" }: {
-    label: string; icon: string; value: string; onChange: (v: string) => void; disabled?: boolean; type?: string;
+function ProfileField({ label, icon, value, onChange, disabled = false, type = "text", error }: {
+    label: string; icon: string; value: string; onChange: (v: string) => void; disabled?: boolean; type?: string; error?: string;
 }) {
     return (
         <div>
@@ -387,9 +434,11 @@ function ProfileField({ label, icon, value, onChange, disabled = false, type = "
             <div className="relative">
                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 material-symbols-outlined text-gray-400" style={{ fontSize: "18px" }}>{icon}</span>
                 <input type={type} value={value} onChange={e => onChange(e.target.value)} disabled={disabled}
-                    className={`w-full pl-11 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 transition-colors
+                    className={`w-full pl-11 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 transition-colors
+                    ${error ? "border-red-300 focus:ring-red-300/30" : "border-gray-200 focus:ring-[#3C81C6]/30"}
                     ${disabled ? "bg-gray-50 text-gray-500 cursor-not-allowed" : "bg-white text-gray-700"}`} />
             </div>
+            {error && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><span className="material-symbols-outlined" style={{ fontSize: "12px" }}>error</span>{error}</p>}
         </div>
     );
 }

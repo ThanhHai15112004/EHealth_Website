@@ -92,7 +92,7 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
                 email: user.email || credentials.email,
                 fullName: user.name || credentials.email.split('@')[0],
                 avatar: user.avatar,
-                role: (user.roles?.[0] || 'staff').toLowerCase(),
+                role: (user.roles?.[0] || 'patient').toLowerCase(),
             }));
         }
 
@@ -131,7 +131,7 @@ export const loginByPhone = async (credentials: LoginPhoneCredentials): Promise<
                 phone: user.phone || credentials.phone,
                 fullName: user.name || credentials.phone,
                 avatar: user.avatar,
-                role: (user.roles?.[0] || 'staff').toLowerCase(),
+                role: (user.roles?.[0] || 'patient').toLowerCase(),
             }));
         }
 
