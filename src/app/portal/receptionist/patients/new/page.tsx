@@ -4,10 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createPatient } from "@/services/patientService";
+import { validateName, validatePhone, validateIdNumber, validateBHYT, validateDob, validateEmail } from "@/utils/validation";
 
 export default function NewPatientPage() {
     const router = useRouter();
     const [saving, setSaving] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
     const [fd, setFd] = useState({
         name: "", phone: "", cccd: "", dob: "", gender: "Nam",
         email: "", address: "", insurance: "", insuranceExpiry: "",
@@ -18,16 +20,47 @@ export default function NewPatientPage() {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
         const { name, value } = e.target;
         setFd((p) => ({ ...p, [name]: value }));
+        if (errors[name]) setErrors((prev) => ({ ...prev, [name]: "" }));
+    };
+
+    const validate = (): boolean => {
+        const errs: Record<string, string> = {};
+        const nameRes = validateName(fd.name);
+        if (!nameRes.valid) errs.name = nameRes.message;
+        const phoneRes = validatePhone(fd.phone);
+        if (!phoneRes.valid) errs.phone = phoneRes.message;
+        if (fd.cccd) {
+            const idRes = validateIdNumber(fd.cccd);
+            if (!idRes.valid) errs.cccd = idRes.message;
+        }
+        if (fd.dob) {
+            const dobRes = validateDob(fd.dob);
+            if (!dobRes.valid) errs.dob = dobRes.message;
+        }
+        if (fd.email) {
+            const emailRes = validateEmail(fd.email);
+            if (!emailRes.valid) errs.email = emailRes.message;
+        }
+        if (fd.insurance) {
+            const bhytRes = validateBHYT(fd.insurance);
+            if (!bhytRes.valid) errs.insurance = bhytRes.message;
+        }
+        if (fd.emergencyPhone) {
+            const epRes = validatePhone(fd.emergencyPhone);
+            if (!epRes.valid) errs.emergencyPhone = epRes.message;
+        }
+        setErrors(errs);
+        return Object.keys(errs).length === 0;
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!fd.name || !fd.phone) { alert("Vui lòng nhập họ tên và số điện thoại"); return; }
+        if (!validate()) return;
         setSaving(true);
         try {
             await createPatient({
                 full_name: fd.name,
-                date_of_birth: fd.dob || "1990-01-01",
+                date_of_birth: fd.dob || undefined,
                 gender: fd.gender === "Nam" ? "MALE" : "FEMALE",
                 identity_type: fd.cccd ? "CCCD" : undefined,
                 identity_number: fd.cccd || undefined,
@@ -39,8 +72,7 @@ export default function NewPatientPage() {
             });
             router.push("/portal/receptionist/patients");
         } catch {
-            alert("Tiếp nhận bệnh nhân thành công!");
-            router.push("/portal/receptionist/patients");
+            alert("Tiếp nhận bệnh nhân thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }
@@ -67,16 +99,16 @@ export default function NewPatientPage() {
                 <form onSubmit={handleSubmit} className="p-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                         <h3 className="col-span-full text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2"><span className="material-symbols-outlined text-[18px] text-[#3C81C6]">badge</span> Thông tin cá nhân</h3>
-                        <Inp label="Họ và tên *" name="name" value={fd.name} onChange={handleChange} placeholder="Nguyễn Văn A" />
-                        <Inp label="Số điện thoại *" name="phone" value={fd.phone} onChange={handleChange} placeholder="0901 234 567" />
-                        <Inp label="CCCD / CMND" name="cccd" value={fd.cccd} onChange={handleChange} placeholder="012345678901" />
-                        <Inp label="Ngày sinh" name="dob" type="date" value={fd.dob} onChange={handleChange} />
+                        <Inp label="Họ và tên *" name="name" value={fd.name} onChange={handleChange} placeholder="Nguyễn Văn A" error={errors.name} />
+                        <Inp label="Số điện thoại *" name="phone" value={fd.phone} onChange={handleChange} placeholder="0901 234 567" error={errors.phone} />
+                        <Inp label="CCCD / CMND" name="cccd" value={fd.cccd} onChange={handleChange} placeholder="012345678901" error={errors.cccd} />
+                        <Inp label="Ngày sinh" name="dob" type="date" value={fd.dob} onChange={handleChange} error={errors.dob} />
                         <Sel label="Giới tính" name="gender" value={fd.gender} onChange={handleChange} options={["Nam", "Nữ"]} />
-                        <Inp label="Email" name="email" value={fd.email} onChange={handleChange} placeholder="email@example.com" />
+                        <Inp label="Email" name="email" value={fd.email} onChange={handleChange} placeholder="email@example.com" error={errors.email} />
                         <div className="col-span-full"><Inp label="Địa chỉ" name="address" value={fd.address} onChange={handleChange} placeholder="Số nhà, đường, phường, quận..." /></div>
 
                         <h3 className="col-span-full text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-800"><span className="material-symbols-outlined text-[18px] text-[#3C81C6]">health_and_safety</span> Bảo hiểm & Y tế</h3>
-                        <Inp label="Số BHYT" name="insurance" value={fd.insurance} onChange={handleChange} placeholder="HC4012345678" />
+                        <Inp label="Số BHYT" name="insurance" value={fd.insurance} onChange={handleChange} placeholder="HC4012345678" error={errors.insurance} />
                         <Inp label="Hạn BHYT" name="insuranceExpiry" type="date" value={fd.insuranceExpiry} onChange={handleChange} />
                         <Sel label="Nhóm máu" name="bloodType" value={fd.bloodType} onChange={handleChange} options={["-- Chưa rõ --", "A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"]} />
                         <div className="col-span-full"><Inp label="Dị ứng" name="allergies" value={fd.allergies} onChange={handleChange} placeholder="Thuốc, thực phẩm... (nếu có)" /></div>
@@ -87,7 +119,7 @@ export default function NewPatientPage() {
 
                         <h3 className="col-span-full text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 pt-4 border-t border-gray-100 dark:border-gray-800"><span className="material-symbols-outlined text-[18px] text-[#3C81C6]">emergency</span> Liên hệ khẩn cấp</h3>
                         <Inp label="Người liên hệ" name="emergencyContact" value={fd.emergencyContact} onChange={handleChange} placeholder="Họ tên người thân" />
-                        <Inp label="SĐT người thân" name="emergencyPhone" value={fd.emergencyPhone} onChange={handleChange} placeholder="0901 xxx xxx" />
+                        <Inp label="SĐT người thân" name="emergencyPhone" value={fd.emergencyPhone} onChange={handleChange} placeholder="0901 xxx xxx" error={errors.emergencyPhone} />
                     </div>
                     <div className="flex items-center justify-end gap-3 pt-6 mt-6 border-t border-gray-100 dark:border-gray-800">
                         <button type="button" onClick={() => router.back()} className="px-6 py-2.5 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-bold text-[#687582] hover:bg-gray-50 transition-colors">Hủy</button>
@@ -101,8 +133,8 @@ export default function NewPatientPage() {
     );
 }
 
-function Inp({ label, name, type = "text", value, onChange, placeholder }: { label: string; name: string; type?: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; placeholder?: string }) {
-    return (<div><label className="block text-sm font-medium text-[#121417] dark:text-gray-300 mb-1.5">{label}</label><input type={type} name={name} value={value} onChange={onChange} placeholder={placeholder} className="w-full py-2.5 px-4 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white placeholder:text-gray-400" /></div>);
+function Inp({ label, name, type = "text", value, onChange, placeholder, error }: { label: string; name: string; type?: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void; placeholder?: string; error?: string }) {
+    return (<div><label className="block text-sm font-medium text-[#121417] dark:text-gray-300 mb-1.5">{label}</label><input type={type} name={name} value={value} onChange={onChange} placeholder={placeholder} className={`w-full py-2.5 px-4 text-sm bg-gray-50 dark:bg-gray-800 border ${error ? "border-red-400" : "border-gray-200 dark:border-gray-700"} rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white placeholder:text-gray-400`} />{error && <p className="text-xs text-red-500 mt-1">{error}</p>}</div>);
 }
 function Sel({ label, name, value, onChange, options }: { label: string; name: string; value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; options: string[] }) {
     return (<div><label className="block text-sm font-medium text-[#121417] dark:text-gray-300 mb-1.5">{label}</label><select name={name} value={value} onChange={onChange} className="w-full py-2.5 px-4 text-sm bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white">{options.map(o => <option key={o} value={o}>{o}</option>)}</select></div>);

@@ -125,7 +125,7 @@ export default function ReceptionPage() {
             if (isNewPatient && newPatient.name && newPatient.phone) {
                 const created = await createPatient({
                     full_name: newPatient.name,
-                    date_of_birth: newPatient.age ? `${new Date().getFullYear() - parseInt(newPatient.age)}-01-01` : "1990-01-01",
+                    date_of_birth: newPatient.age ? `${new Date().getFullYear() - parseInt(newPatient.age)}-01-01` : undefined,
                     gender: newPatient.gender === "male" ? "MALE" : "FEMALE",
                     contact: { phone_number: newPatient.phone, street_address: newPatient.address },
                 });
@@ -143,12 +143,12 @@ export default function ReceptionPage() {
                     type: serviceType,
                 } as any);
             }
+            setDone(true);
         } catch {
-            // Tiếp tục hiển thị thành công dù lỗi API
+            alert("Tiếp nhận thất bại. Vui lòng thử lại.");
         } finally {
             setSubmitting(false);
         }
-        setDone(true);
     };
 
     if (done) {

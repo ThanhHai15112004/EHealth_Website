@@ -58,8 +58,7 @@ export default function StockOutCreatePage() {
             });
             router.push("/admin/medicines/export");
         } catch {
-            alert("Tạo phiếu xuất kho thành công!");
-            router.push("/admin/medicines/export");
+            alert("Tạo phiếu xuất kho thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

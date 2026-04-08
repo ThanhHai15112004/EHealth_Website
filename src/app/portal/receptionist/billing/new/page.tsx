@@ -58,8 +58,7 @@ export default function NewBillingPage() {
             });
             router.push("/portal/receptionist/billing");
         } catch {
-            alert("Tạo hóa đơn thành công!");
-            router.push("/portal/receptionist/billing");
+            alert("Tạo hóa đơn thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

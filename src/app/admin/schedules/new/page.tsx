@@ -63,8 +63,7 @@ export default function NewSchedulePage() {
             } as any);
             router.push("/admin/schedules");
         } catch {
-            alert("Thêm lịch trực thành công!");
-            router.push("/admin/schedules");
+            alert("Thêm lịch trực thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

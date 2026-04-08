@@ -49,16 +49,15 @@ export default function DispensingPage() {
         setDispensing(true);
         try {
             const id = prescriptionId || rx.id;
-            // Dùng /api/dispensing/{prescriptionId} — đúng Swagger
             await dispensingService.dispense(id, {
                 items: rx.medicines.map((m, i) => ({ ...m, dispensed: checkedMeds[i] })),
             });
+            setCompleted(true);
         } catch {
-            // proceed anyway on API error
+            alert("Cấp phát thuốc thất bại. Vui lòng thử lại.");
         } finally {
             setDispensing(false);
         }
-        setCompleted(true);
     };
 
     if (completed) {

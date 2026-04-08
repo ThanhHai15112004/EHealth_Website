@@ -96,8 +96,7 @@ export default function NewDoctorPage() {
             } as any);
             router.push("/admin/doctors");
         } catch {
-            alert("Thêm bác sĩ thành công!");
-            router.push("/admin/doctors");
+            alert("Thêm bác sĩ thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

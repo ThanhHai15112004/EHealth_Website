@@ -13,6 +13,9 @@ import { doctorService, type Doctor } from "@/services/doctorService";
 import { createAppointment } from "@/services/appointmentService";
 import { useAuth } from "@/contexts/AuthContext";
 import { MOCK_SPECIALTIES, filterMockDoctors, getMockDoctorById } from "@/data/patient-mock";
+import { MOCK_MEDICAL_SERVICES, getServicesBySpecialtyId, getSpecialtyIdsByServiceId, SERVICE_CATEGORIES, type MedicalServiceItem } from "@/data/medical-services-mock";
+import { MOCK_PATIENT_PROFILES, getProfilesByUserId, type PatientProfile } from "@/data/patient-profiles-mock";
+import { validateName, validatePhone, validateAppointmentDate } from "@/utils/validation";
 
 const STEPS = [
     { label: "Hình thức", icon: "category" },
@@ -48,33 +51,87 @@ function BookingPageInner() {
     const { user, isAuthenticated } = useAuth();
 
     const initDoctorId = searchParams.get("doctorId") || "";
+    const initDoctorName = searchParams.get("doctorName") || "";
     const initSpecialtyId = searchParams.get("specialtyId") || "";
+    const initSpecialtyName = searchParams.get("specialtyName") || "";
+    const initServiceId = searchParams.get("serviceId") || "";
     const initDate = searchParams.get("date") || "";
     const initTime = searchParams.get("time") || "";
 
     const [step, setStep] = useState(1);
-    const [bookingType, setBookingType] = useState<"specialty" | "doctor">(initDoctorId ? "doctor" : "specialty");
+    const [bookingType, setBookingType] = useState<"specialty" | "doctor" | "service">(
+        initDoctorId || initDoctorName ? "doctor" : initServiceId ? "service" : "specialty"
+    );
     const [consultType, setConsultType] = useState<"in-person" | "online">("in-person");
     const [selectedSpecialty, setSelectedSpecialty] = useState(initSpecialtyId);
     const [selectedDoctor, setSelectedDoctor] = useState(initDoctorId);
+    const [selectedService, setSelectedService] = useState(initServiceId);
     const [selectedDate, setSelectedDate] = useState(initDate);
     const [selectedTime, setSelectedTime] = useState(initTime);
     const [form, setForm] = useState<PatientForm>(emptyForm);
     const [agreedTerms, setAgreedTerms] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [bookingCode, setBookingCode] = useState("");
+    const [selectedProfileId, setSelectedProfileId] = useState<string>("");
+    const [serviceFilter, setServiceFilter] = useState("all");
 
     // Data
     const [specialties, setSpecialties] = useState<Specialty[]>([]);
     const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [selectedDoctorObj, setSelectedDoctorObj] = useState<Doctor | null>(null);
+    const [patientProfiles, setPatientProfiles] = useState<PatientProfile[]>([]);
+
+    // Filtered services based on selected specialty or category
+    const filteredServices = (() => {
+        let svcs = [...MOCK_MEDICAL_SERVICES];
+        if (selectedSpecialty) {
+            svcs = svcs.filter(s => s.specialtyIds.includes(selectedSpecialty));
+        }
+        if (serviceFilter !== "all") {
+            svcs = svcs.filter(s => s.category === serviceFilter);
+        }
+        return svcs;
+    })();
+
+    // Suggested specialties based on selected service
+    const suggestedSpecialties = (() => {
+        if (!selectedService) return [];
+        const specIds = getSpecialtyIdsByServiceId(selectedService);
+        return specialties.filter(s => specIds.includes(s.id));
+    })();
+
+    // Services available for selected doctor
+    const doctorServices = (() => {
+        if (!selectedDoctorObj) return [];
+        return getServicesBySpecialtyId(selectedDoctorObj.departmentId || "");
+    })();
 
     useEffect(() => { loadSpecialties(); }, []);
     useEffect(() => { if (selectedSpecialty) loadDoctors(); }, [selectedSpecialty]);
     useEffect(() => { if (initDoctorId) loadSelectedDoctor(initDoctorId); }, [initDoctorId]);
     useEffect(() => {
+        if (initDoctorName) {
+            // Find doctor by name from mock data
+            const { data } = filterMockDoctors({ search: initDoctorName, limit: 1 });
+            if (data.length > 0) {
+                setSelectedDoctorObj(data[0]);
+                setSelectedDoctor(data[0].id);
+            }
+        }
+    }, [initDoctorName]);
+    useEffect(() => {
+        if (initSpecialtyName && specialties.length > 0) {
+            const found = specialties.find(s => s.name === initSpecialtyName);
+            if (found) setSelectedSpecialty(found.id);
+        }
+    }, [initSpecialtyName, specialties]);
+    useEffect(() => {
         if (user && isAuthenticated) {
             setForm(prev => ({ ...prev, fullName: user.fullName || "", phone: user.phone || "" }));
+            const profiles = getProfilesByUserId(user.id || "patient-001");
+            setPatientProfiles(profiles);
+            const primary = profiles.find(p => p.isPrimary);
+            if (primary) setSelectedProfileId(primary.id);
         }
     }, [user, isAuthenticated]);
 
@@ -112,12 +169,46 @@ function BookingPageInner() {
         }
     };
 
+    // When service is selected, auto-select specialty if only one match
+    const handleServiceSelect = (svcId: string) => {
+        setSelectedService(svcId);
+        const specIds = getSpecialtyIdsByServiceId(svcId);
+        if (specIds.length === 1) {
+            setSelectedSpecialty(specIds[0]);
+        } else {
+            setSelectedSpecialty("");
+        }
+    };
+
+    // Apply profile to form
+    const applyProfile = (profileId: string) => {
+        setSelectedProfileId(profileId);
+        const profile = patientProfiles.find(p => p.id === profileId);
+        if (profile) {
+            setForm(prev => ({
+                ...prev,
+                fullName: profile.fullName,
+                phone: profile.phone,
+                dob: profile.dob,
+                gender: profile.gender,
+                idNumber: profile.idNumber || "",
+                insuranceNumber: profile.insuranceNumber || "",
+                address: profile.address || "",
+                bookingFor: profile.relationship === "self" ? "self" : "relative",
+            }));
+        }
+    };
+
     const nextStep = () => setStep(s => Math.min(s + 1, 5));
     const prevStep = () => setStep(s => Math.max(s - 1, 1));
 
-    const canProceedStep1 = (bookingType === "doctor" && selectedDoctor) || (bookingType === "specialty" && selectedSpecialty);
-    const canProceedStep2 = selectedDate && selectedTime;
-    const canProceedStep3 = form.fullName && form.phone && form.gender;
+    const canProceedStep1 =
+        (bookingType === "doctor" && selectedDoctor) ||
+        (bookingType === "specialty" && selectedSpecialty) ||
+        (bookingType === "service" && selectedService && selectedSpecialty);
+    const canProceedStep2 = selectedDate && selectedTime && validateAppointmentDate(selectedDate).valid;
+    const canProceedStep3 = form.fullName && form.phone && form.gender
+        && validateName(form.fullName).valid && validatePhone(form.phone).valid;
     const canProceedStep4 = agreedTerms;
 
     const handleSubmit = async () => {
@@ -143,6 +234,8 @@ function BookingPageInner() {
     };
 
     const updateForm = (key: keyof PatientForm, value: string) => setForm(prev => ({ ...prev, [key]: value }));
+
+    const getSelectedServiceObj = (): MedicalServiceItem | undefined => MOCK_MEDICAL_SERVICES.find(s => s.id === selectedService);
 
     return (
         <div className="min-h-screen bg-gray-50/50">
@@ -171,20 +264,21 @@ function BookingPageInner() {
                                 Chọn hình thức khám
                             </h2>
 
-                            {/* Booking type */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {/* Booking type — 3 options */}
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 {[
-                                    { type: "specialty" as const, icon: "medical_services", label: "Khám theo chuyên khoa", desc: "Chọn chuyên khoa, hệ thống sẽ gợi ý bác sĩ phù hợp" },
-                                    { type: "doctor" as const, icon: "person_search", label: "Khám theo bác sĩ", desc: "Chọn trực tiếp bác sĩ bạn muốn khám" },
+                                    { type: "specialty" as const, icon: "medical_services", label: "Theo chuyên khoa", desc: "Chọn chuyên khoa trước, rồi lọc bác sĩ" },
+                                    { type: "doctor" as const, icon: "person_search", label: "Theo bác sĩ", desc: "Chọn trực tiếp bác sĩ bạn muốn" },
+                                    { type: "service" as const, icon: "health_and_safety", label: "Theo dịch vụ", desc: "Chọn dịch vụ, hệ thống gợi ý phù hợp" },
                                 ].map(opt => (
-                                    <button key={opt.type} onClick={() => setBookingType(opt.type)}
-                                        className={`text-left p-5 rounded-xl border-2 transition-all
+                                    <button key={opt.type} onClick={() => { setBookingType(opt.type); setSelectedService(""); setSelectedSpecialty(initSpecialtyId); setSelectedDoctor(initDoctorId); }}
+                                        className={`text-left p-4 rounded-xl border-2 transition-all
                                         ${bookingType === opt.type ? "border-[#3C81C6] bg-[#3C81C6]/[0.04] shadow-sm" : "border-gray-100 hover:border-gray-200"}`}>
-                                        <div className="flex items-center gap-3 mb-2">
+                                        <div className="flex items-center gap-3 mb-1.5">
                                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${bookingType === opt.type ? "bg-[#3C81C6] text-white" : "bg-gray-100 text-gray-500"}`}>
                                                 <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>{opt.icon}</span>
                                             </div>
-                                            <span className="font-semibold text-gray-900">{opt.label}</span>
+                                            <span className="font-semibold text-gray-900 text-sm">{opt.label}</span>
                                         </div>
                                         <p className="text-xs text-gray-500 ml-[52px]">{opt.desc}</p>
                                     </button>
@@ -209,33 +303,164 @@ function BookingPageInner() {
                                 </div>
                             </div>
 
-                            {/* Specialty selector */}
+                            {/* ===== BY SPECIALTY ===== */}
                             {bookingType === "specialty" && (
-                                <div>
-                                    <label className="text-sm font-semibold text-gray-700 mb-2 block">Chọn chuyên khoa</label>
-                                    <select value={selectedSpecialty} onChange={e => setSelectedSpecialty(e.target.value)}
-                                        className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 focus:border-[#3C81C6]/30 bg-gray-50">
-                                        <option value="">— Chọn chuyên khoa —</option>
-                                        {specialties.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                    </select>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-sm font-semibold text-gray-700 mb-2 block">Chọn chuyên khoa</label>
+                                        <select value={selectedSpecialty} onChange={e => { setSelectedSpecialty(e.target.value); setSelectedDoctor(""); setSelectedDoctorObj(null); }}
+                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 focus:border-[#3C81C6]/30 bg-gray-50">
+                                            <option value="">— Chọn chuyên khoa —</option>
+                                            {specialties.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                                        </select>
+                                    </div>
+                                    {/* Optional: filter doctor */}
+                                    {selectedSpecialty && doctors.length > 0 && (
+                                        <div>
+                                            <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                                                <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "16px" }}>person_search</span>
+                                                Chọn bác sĩ <span className="text-xs text-gray-400 font-normal">(tùy chọn)</span>
+                                            </label>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[300px] overflow-y-auto">
+                                                {doctors.map(doc => (
+                                                    <button key={doc.id} onClick={() => { setSelectedDoctor(doc.id); setSelectedDoctorObj(doc); }}
+                                                        className={`text-left p-3 rounded-xl border transition-all ${selectedDoctor === doc.id ? "border-[#3C81C6] bg-[#3C81C6]/[0.04]" : "border-gray-100 hover:border-gray-200"}`}>
+                                                        <p className="text-sm font-semibold text-gray-900 truncate">{doc.fullName}</p>
+                                                        <p className="text-xs text-gray-500 truncate">{doc.specialization}</p>
+                                                        <div className="flex items-center gap-1 mt-1">
+                                                            <span className="material-symbols-outlined text-amber-400" style={{ fontSize: "14px", fontVariationSettings: "'FILL' 1" }}>star</span>
+                                                            <span className="text-xs font-bold text-gray-700">{doc.rating}</span>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {/* Optional: filter service */}
+                                    {selectedSpecialty && (
+                                        <div>
+                                            <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                                                <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "16px" }}>health_and_safety</span>
+                                                Chọn dịch vụ <span className="text-xs text-gray-400 font-normal">(tùy chọn)</span>
+                                            </label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {getServicesBySpecialtyId(selectedSpecialty).map(svc => (
+                                                    <button key={svc.id} onClick={() => setSelectedService(svc.id === selectedService ? "" : svc.id)}
+                                                        className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${selectedService === svc.id ? "border-[#3C81C6] bg-[#3C81C6]/10 text-[#3C81C6]" : "border-gray-100 text-gray-600 hover:border-gray-200"}`}>
+                                                        {svc.name} — {svc.price.toLocaleString("vi-VN")}đ
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
-                            {/* Doctor selector (if booking by doctor) */}
-                            {bookingType === "doctor" && selectedDoctorObj && (
-                                <div>
-                                    <label className="text-sm font-semibold text-gray-700 mb-2 block">Bác sĩ đã chọn</label>
-                                    <DoctorCard id={selectedDoctorObj.id} fullName={selectedDoctorObj.fullName} department={selectedDoctorObj.departmentName}
-                                        rating={selectedDoctorObj.rating} avatar={selectedDoctorObj.avatar} compact />
+                            {/* ===== BY DOCTOR ===== */}
+                            {bookingType === "doctor" && (
+                                <div className="space-y-4">
+                                    {selectedDoctorObj ? (
+                                        <div>
+                                            <label className="text-sm font-semibold text-gray-700 mb-2 block">Bác sĩ đã chọn</label>
+                                            <DoctorCard id={selectedDoctorObj.id} fullName={selectedDoctorObj.fullName} department={selectedDoctorObj.departmentName}
+                                                rating={selectedDoctorObj.rating} avatar={selectedDoctorObj.avatar} compact />
+                                            <button onClick={() => { setSelectedDoctor(""); setSelectedDoctorObj(null); }}
+                                                className="mt-2 text-xs text-gray-500 hover:text-red-500 transition-colors flex items-center gap-1">
+                                                <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>close</span> Đổi bác sĩ
+                                            </button>
+                                            {/* Doctor's services */}
+                                            {doctorServices.length > 0 && (
+                                                <div className="mt-3">
+                                                    <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                                                        <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "16px" }}>health_and_safety</span>
+                                                        Dịch vụ bác sĩ hỗ trợ <span className="text-xs text-gray-400 font-normal">(tùy chọn)</span>
+                                                    </label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {doctorServices.map(svc => (
+                                                            <button key={svc.id} onClick={() => setSelectedService(svc.id === selectedService ? "" : svc.id)}
+                                                                className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${selectedService === svc.id ? "border-[#3C81C6] bg-[#3C81C6]/10 text-[#3C81C6]" : "border-gray-100 text-gray-600 hover:border-gray-200"}`}>
+                                                                {svc.name}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center py-8">
+                                            <p className="text-gray-500 text-sm mb-3">Chưa chọn bác sĩ</p>
+                                            <Link href="/doctors" className="px-4 py-2 text-sm font-medium text-[#3C81C6] bg-[#3C81C6]/10 rounded-xl hover:bg-[#3C81C6]/20 transition-colors">
+                                                Tìm bác sĩ →
+                                            </Link>
+                                        </div>
+                                    )}
                                 </div>
                             )}
 
-                            {bookingType === "doctor" && !selectedDoctorObj && (
-                                <div className="text-center py-8">
-                                    <p className="text-gray-500 text-sm mb-3">Chưa chọn bác sĩ</p>
-                                    <Link href="/doctors" className="px-4 py-2 text-sm font-medium text-[#3C81C6] bg-[#3C81C6]/10 rounded-xl hover:bg-[#3C81C6]/20 transition-colors">
-                                        Tìm bác sĩ →
-                                    </Link>
+                            {/* ===== BY SERVICE ===== */}
+                            {bookingType === "service" && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-sm font-semibold text-gray-700 mb-2 block">Chọn dịch vụ y tế</label>
+                                        {/* Category filter */}
+                                        <div className="flex gap-2 overflow-x-auto pb-2 mb-3 scrollbar-hide">
+                                            {SERVICE_CATEGORIES.map(cat => (
+                                                <button key={cat.key} onClick={() => setServiceFilter(cat.key)}
+                                                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${serviceFilter === cat.key
+                                                        ? "bg-[#3C81C6] text-white shadow-sm"
+                                                        : "bg-gray-50 text-gray-500 border border-gray-100 hover:border-[#3C81C6] hover:text-[#3C81C6]"}`}>
+                                                    <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>{cat.icon}</span>
+                                                    {cat.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {/* Service grid */}
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[350px] overflow-y-auto pr-1">
+                                            {filteredServices.map(svc => (
+                                                <button key={svc.id} onClick={() => handleServiceSelect(svc.id)}
+                                                    className={`text-left p-3 rounded-xl border-2 transition-all ${selectedService === svc.id ? "border-[#3C81C6] bg-[#3C81C6]/[0.04]" : "border-gray-100 hover:border-gray-200"}`}>
+                                                    <div className="flex items-start gap-2.5">
+                                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${selectedService === svc.id ? "bg-[#3C81C6] text-white" : "bg-gray-100 text-gray-500"}`}>
+                                                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{svc.icon}</span>
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-sm font-semibold text-gray-900 truncate">{svc.name}</p>
+                                                            <p className="text-[11px] text-gray-500 line-clamp-1">{svc.description}</p>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <span className="text-xs font-bold text-[#3C81C6]">{svc.priceRange || `${svc.price.toLocaleString("vi-VN")}đ`}</span>
+                                                                {svc.duration && <span className="text-[10px] text-gray-400">• {svc.duration}</span>}
+                                                                {svc.isPopular && <span className="px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[9px] font-bold rounded">Phổ biến</span>}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {/* Suggested specialties after service selected */}
+                                    {selectedService && suggestedSpecialties.length > 1 && (
+                                        <div>
+                                            <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                                                <span className="material-symbols-outlined text-amber-500" style={{ fontSize: "16px" }}>lightbulb</span>
+                                                Chọn chuyên khoa phù hợp
+                                            </label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {suggestedSpecialties.map(sp => (
+                                                    <button key={sp.id} onClick={() => setSelectedSpecialty(sp.id)}
+                                                        className={`px-4 py-2.5 rounded-xl text-sm font-medium border-2 transition-all ${selectedSpecialty === sp.id ? "border-[#3C81C6] bg-[#3C81C6]/10 text-[#3C81C6]" : "border-gray-100 text-gray-600 hover:border-gray-200"}`}>
+                                                        {sp.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {selectedService && suggestedSpecialties.length === 1 && (
+                                        <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-100 rounded-xl">
+                                            <span className="material-symbols-outlined text-green-600" style={{ fontSize: "18px" }}>check_circle</span>
+                                            <span className="text-sm text-green-700">Chuyên khoa: <strong>{suggestedSpecialties[0]?.name}</strong> (tự động)</span>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -254,6 +479,12 @@ function BookingPageInner() {
                                 selectedTime={selectedTime}
                                 onTimeChange={setSelectedTime}
                             />
+                            {selectedDate && !validateAppointmentDate(selectedDate).valid && (
+                                <p className="text-sm text-red-500 mt-2 flex items-center gap-1.5">
+                                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>error</span>
+                                    {validateAppointmentDate(selectedDate).message}
+                                </p>
+                            )}
                         </div>
                     )}
 
@@ -265,23 +496,64 @@ function BookingPageInner() {
                                 Thông tin bệnh nhân
                             </h2>
 
+                            {/* Patient profile selector */}
+                            {isAuthenticated && patientProfiles.length > 0 && (
+                                <div>
+                                    <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "16px" }}>family_restroom</span>
+                                        Chọn hồ sơ bệnh nhân
+                                    </label>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                                        {patientProfiles.map(profile => (
+                                            <button key={profile.id} onClick={() => applyProfile(profile.id)}
+                                                className={`p-3 rounded-xl border-2 text-left transition-all ${selectedProfileId === profile.id
+                                                    ? "border-[#3C81C6] bg-[#3C81C6]/[0.04]"
+                                                    : "border-gray-100 hover:border-gray-200"}`}>
+                                                <div className="flex items-center gap-2 mb-1">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${selectedProfileId === profile.id ? "bg-[#3C81C6]" : "bg-gray-300"}`}>
+                                                        {profile.fullName.charAt(0)}
+                                                    </div>
+                                                    <div className="min-w-0">
+                                                        <p className="text-xs font-bold text-gray-900 truncate">{profile.fullName}</p>
+                                                        <p className="text-[10px] text-gray-500">{profile.relationshipLabel}</p>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        ))}
+                                        <Link href="/patient/patient-profiles"
+                                            className="p-3 rounded-xl border-2 border-dashed border-gray-200 hover:border-[#3C81C6] flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-[#3C81C6] transition-colors">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>add</span>
+                                            <span className="text-[10px] font-medium">Thêm mới</span>
+                                        </Link>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Booking for */}
-                            <div className="flex gap-3">
-                                {[
-                                    { v: "self" as const, l: "Đặt cho bản thân" },
-                                    { v: "relative" as const, l: "Đặt cho người thân" },
-                                ].map(opt => (
-                                    <button key={opt.v} onClick={() => updateForm("bookingFor", opt.v)}
-                                        className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
-                                        ${form.bookingFor === opt.v ? "border-[#3C81C6] bg-[#3C81C6]/[0.04] text-[#3C81C6]" : "border-gray-100 text-gray-600"}`}>
-                                        {opt.l}
-                                    </button>
-                                ))}
-                            </div>
+                            {!isAuthenticated && (
+                                <div className="flex gap-3">
+                                    {[
+                                        { v: "self" as const, l: "Đặt cho bản thân" },
+                                        { v: "relative" as const, l: "Đặt cho người thân" },
+                                    ].map(opt => (
+                                        <button key={opt.v} onClick={() => updateForm("bookingFor", opt.v)}
+                                            className={`flex-1 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
+                                            ${form.bookingFor === opt.v ? "border-[#3C81C6] bg-[#3C81C6]/[0.04] text-[#3C81C6]" : "border-gray-100 text-gray-600"}`}>
+                                            {opt.l}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <FormField label="Họ và tên *" icon="person" value={form.fullName} onChange={v => updateForm("fullName", v)} placeholder="Nguyễn Văn A" />
-                                <FormField label="Số điện thoại *" icon="call" value={form.phone} onChange={v => updateForm("phone", v)} placeholder="0901 234 567" type="tel" />
+                                <div>
+                                    <FormField label="Họ và tên *" icon="person" value={form.fullName} onChange={v => updateForm("fullName", v)} placeholder="Nguyễn Văn A" />
+                                    {form.fullName && !validateName(form.fullName).valid && <p className="text-xs text-red-500 mt-1">{validateName(form.fullName).message}</p>}
+                                </div>
+                                <div>
+                                    <FormField label="Số điện thoại *" icon="call" value={form.phone} onChange={v => updateForm("phone", v)} placeholder="0901 234 567" type="tel" />
+                                    {form.phone && !validatePhone(form.phone).valid && <p className="text-xs text-red-500 mt-1">{validatePhone(form.phone).message}</p>}
+                                </div>
                                 <FormField label="Ngày sinh" icon="cake" value={form.dob} onChange={v => updateForm("dob", v)} type="date" />
                                 <div>
                                     <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Giới tính *</label>
@@ -308,13 +580,22 @@ function BookingPageInner() {
                                     className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 bg-gray-50 min-h-[100px] resize-none" />
                             </div>
 
-                            {form.bookingFor === "relative" && (
+                            {!isAuthenticated && form.bookingFor === "relative" && (
                                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
                                     <h4 className="text-sm font-bold text-blue-900 mb-3">Thông tin người thân</h4>
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <FormField label="Họ tên người thân" icon="person" value={form.relativeName} onChange={v => updateForm("relativeName", v)} />
                                         <FormField label="SĐT người thân" icon="call" value={form.relativePhone} onChange={v => updateForm("relativePhone", v)} />
                                     </div>
+                                </div>
+                            )}
+
+                            {!isAuthenticated && (
+                                <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl flex items-start gap-2">
+                                    <span className="material-symbols-outlined text-amber-500 mt-0.5" style={{ fontSize: "16px" }}>info</span>
+                                    <p className="text-xs text-amber-700">
+                                        <Link href="/login" className="font-bold text-[#3C81C6] hover:underline">Đăng nhập</Link> để quản lý hồ sơ bệnh nhân và đặt lịch nhanh hơn cho cả gia đình.
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -331,10 +612,11 @@ function BookingPageInner() {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <SummaryItem icon="medical_services" label="Chuyên khoa" value={specialties.find(s => s.id === selectedSpecialty)?.name || selectedDoctorObj?.departmentName || "—"} />
                                 <SummaryItem icon="person" label="Bác sĩ" value={selectedDoctorObj?.fullName || "Hệ thống sẽ phân bổ"} />
-                                <SummaryItem icon="calendar_today" label="Ngày khám" value={selectedDate || "—"} />
+                                {selectedService && <SummaryItem icon="health_and_safety" label="Dịch vụ" value={getSelectedServiceObj()?.name || "—"} />}
+                                <SummaryItem icon="calendar_today" label="Ngày khám" value={selectedDate ? new Date(selectedDate + "T00:00:00").toLocaleDateString("vi-VN", { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "—"} />
                                 <SummaryItem icon="schedule" label="Giờ khám" value={selectedTime || "—"} />
-                                <SummaryItem icon="location_on" label="Địa điểm" value="EHealth Hospital — 123 Nguyễn Văn Linh, Q.7" />
-                                <SummaryItem icon="payments" label="Phí khám (dự kiến)" value="400.000 — 500.000đ" />
+                                <SummaryItem icon="location_on" label="Địa điểm" value={consultType === "online" ? "Tư vấn online (Video call)" : "EHealth Hospital — 123 Nguyễn Văn Linh, Q.7"} />
+                                <SummaryItem icon="payments" label="Phí khám (dự kiến)" value={getSelectedServiceObj()?.priceRange || getSelectedServiceObj()?.price?.toLocaleString("vi-VN") + "đ" || "400.000 — 500.000đ"} />
                             </div>
 
                             <div className="p-4 bg-gray-50 rounded-xl">
@@ -342,6 +624,8 @@ function BookingPageInner() {
                                 <div className="grid grid-cols-2 gap-2 text-sm">
                                     <div><span className="text-gray-400">Họ tên:</span> <span className="font-medium text-gray-700">{form.fullName}</span></div>
                                     <div><span className="text-gray-400">SĐT:</span> <span className="font-medium text-gray-700">{form.phone}</span></div>
+                                    {form.dob && <div><span className="text-gray-400">Ngày sinh:</span> <span className="font-medium text-gray-700">{new Date(form.dob + "T00:00:00").toLocaleDateString("vi-VN")}</span></div>}
+                                    {form.insuranceNumber && <div><span className="text-gray-400">BHYT:</span> <span className="font-medium text-gray-700">{form.insuranceNumber}</span></div>}
                                     {form.symptoms && <div className="col-span-2"><span className="text-gray-400">Triệu chứng:</span> <span className="text-gray-700">{form.symptoms}</span></div>}
                                 </div>
                             </div>
@@ -396,7 +680,6 @@ function BookingPageInner() {
                                 </button>
                             </div>
 
-                            {/* Hướng dẫn */}
                             <div className="max-w-md mx-auto text-left p-5 bg-blue-50 border border-blue-100 rounded-xl">
                                 <h4 className="text-sm font-bold text-blue-900 mb-2">📋 Hướng dẫn trước khi đến khám</h4>
                                 <ul className="text-xs text-blue-700 space-y-1.5">

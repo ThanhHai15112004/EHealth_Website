@@ -108,8 +108,7 @@ export default function StockInDetailPage() {
             await inventoryService.confirmStockIn(orderId);
             setDetail(prev => ({ ...prev, status: "completed", approvedAt: new Date().toISOString() }));
         } catch {
-            alert("Duyệt phiếu thành công!");
-            setDetail(prev => ({ ...prev, status: "completed" }));
+            alert("Duyệt phiếu thất bại. Vui lòng thử lại.");
         } finally {
             setActionLoading("");
         }
@@ -121,8 +120,7 @@ export default function StockInDetailPage() {
             await inventoryService.receiveStockIn(orderId);
             setDetail(prev => ({ ...prev, status: "completed" }));
         } catch {
-            alert("Nhận hàng thành công!");
-            setDetail(prev => ({ ...prev, status: "completed" }));
+            alert("Nhận hàng thất bại. Vui lòng thử lại.");
         } finally {
             setActionLoading("");
         }

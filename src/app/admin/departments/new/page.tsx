@@ -44,8 +44,7 @@ export default function NewDepartmentPage() {
             } as any);
             router.push("/admin/departments");
         } catch {
-            alert("Thêm chuyên khoa thành công!");
-            router.push("/admin/departments");
+            alert("Thêm chuyên khoa thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

@@ -35,8 +35,16 @@ function getMockResponse(msg: string): string {
     return "Cảm ơn bạn đã liên hệ! Tôi là trợ lý AI của EHealth Hospital. Tôi có thể giúp bạn:\n- Thông tin **đặt lịch khám**\n- **Giờ làm việc** bệnh viện\n- **Chi phí** khám bệnh\n- Thông tin **chuyên khoa** và **bác sĩ**\n\nBạn muốn hỏi về vấn đề gì?";
 }
 
-function formatMd(text: string) {
+function escapeHtml(text: string) {
     return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function formatMd(text: string) {
+    return escapeHtml(text)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .replace(/\n/g, '<br/>');

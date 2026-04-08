@@ -65,8 +65,7 @@ export default function AppointmentsPage() {
             await appointmentService.confirmAppointment(requestId);
             setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
         } catch {
-            alert("Đã chấp nhận yêu cầu lịch hẹn!");
-            setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
+            alert("Chấp nhận yêu cầu lịch hẹn thất bại. Vui lòng thử lại.");
         }
     };
 

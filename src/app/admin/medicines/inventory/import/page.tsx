@@ -59,8 +59,7 @@ export default function InventoryImportPage() {
             });
             router.push("/admin/medicines/inventory");
         } catch {
-            alert("Nhập kho thành công!");
-            router.push("/admin/medicines/inventory");
+            alert("Nhập kho thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

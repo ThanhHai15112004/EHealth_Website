@@ -51,8 +51,7 @@ export default function ImportMedicinePage() {
             });
             router.push("/portal/pharmacist/inventory");
         } catch {
-            alert("Nhập thuốc thành công!");
-            router.push("/portal/pharmacist/inventory");
+            alert("Nhập thuốc thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

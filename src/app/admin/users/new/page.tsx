@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ROLES, ROLE_LABELS, type Role } from "@/constants/roles";
 import { createUser } from "@/services/userService";
+import { validateName, validatePhone, validateEmail, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
 
 const HOSPITALS = [
     { id: "1", name: "E-Health Quận 1" },
@@ -49,13 +50,29 @@ export default function NewUserPage() {
 
     const validate = () => {
         const newErrors: Record<string, string> = {};
-        if (!formData.fullName.trim()) newErrors.fullName = "Vui lòng nhập họ và tên";
-        if (!formData.email.trim()) newErrors.email = "Vui lòng nhập email";
-        else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) newErrors.email = "Email không hợp lệ";
-        if (!formData.phone.trim()) newErrors.phone = "Vui lòng nhập số điện thoại";
+        const nameRes = validateName(formData.fullName);
+        if (!nameRes.valid) newErrors.fullName = nameRes.message;
+        const emailRes = validateEmail(formData.email);
+        if (!emailRes.valid) newErrors.email = emailRes.message;
+        const phoneRes = validatePhone(formData.phone);
+        if (!phoneRes.valid) newErrors.phone = phoneRes.message;
         if (!formData.password) newErrors.password = "Vui lòng nhập mật khẩu";
         else if (formData.password.length < 6) newErrors.password = "Mật khẩu tối thiểu 6 ký tự";
         if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = "Mật khẩu xác nhận không khớp";
+        if (formData.dateOfBirth) {
+            const dobRes = validateDob(formData.dateOfBirth);
+            if (!dobRes.valid) newErrors.dateOfBirth = dobRes.message;
+        }
+        if (isCustomer) {
+            if (formData.insuranceNumber) {
+                const bhytRes = validateBHYT(formData.insuranceNumber);
+                if (!bhytRes.valid) newErrors.insuranceNumber = bhytRes.message;
+            }
+            if (formData.emergencyPhone) {
+                const epRes = validatePhone(formData.emergencyPhone);
+                if (!epRes.valid) newErrors.emergencyPhone = epRes.message;
+            }
+        }
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
@@ -71,11 +88,23 @@ export default function NewUserPage() {
                 phoneNumber: formData.phone,
                 role: formData.role,
                 password: formData.password,
+                gender: formData.gender || undefined,
+                dateOfBirth: formData.dateOfBirth || undefined,
+                address: formData.address || undefined,
+                ...(isCustomer ? {
+                    insuranceNumber: formData.insuranceNumber || undefined,
+                    bloodType: formData.bloodType || undefined,
+                    allergies: formData.allergies || undefined,
+                    emergencyContact: formData.emergencyContact || undefined,
+                    emergencyPhone: formData.emergencyPhone || undefined,
+                } : {
+                    department: formData.department || undefined,
+                    hospitalId: formData.hospitalId || undefined,
+                }),
             });
             router.push("/admin/users");
         } catch {
-            alert("Tạo tài khoản thành công!");
-            router.push("/admin/users");
+            alert("Tạo tài khoản thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

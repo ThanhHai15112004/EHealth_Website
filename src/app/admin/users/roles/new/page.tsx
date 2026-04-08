@@ -188,8 +188,7 @@ export default function NewRolePage() {
             });
             router.push("/admin/users/roles");
         } catch {
-            alert("Đã tạo vai trò thành công!");
-            router.push("/admin/users/roles");
+            alert("Tạo vai trò thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

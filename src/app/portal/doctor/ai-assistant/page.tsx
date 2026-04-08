@@ -243,12 +243,20 @@ export default function AIAssistantPage() {
     );
 }
 
-function formatMd(text: string): string {
+function escapeHtml(text: string): string {
     return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function formatMd(text: string): string {
+    return escapeHtml(text)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .replace(/`(.*?)`/g, '<code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-800 rounded text-xs">$1</code>')
-        .replace(/^> (.*)/gm, '<div class="pl-3 border-l-2 border-[#3C81C6] text-[#687582] italic">$1</div>')
+        .replace(/^&gt; (.*)/gm, '<div class="pl-3 border-l-2 border-[#3C81C6] text-[#687582] italic">$1</div>')
         .replace(/^- (.*)/gm, '<div class="flex gap-1.5"><span class="text-[#3C81C6]">•</span><span>$1</span></div>')
         .replace(/\| (.*)/g, '<span class="font-mono text-xs">| $1</span>')
         .replace(/\n/g, '<br/>');

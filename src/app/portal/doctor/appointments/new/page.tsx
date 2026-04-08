@@ -79,8 +79,7 @@ export default function NewAppointmentPage() {
             } as any);
             router.push("/portal/doctor/appointments");
         } catch {
-            alert("Đã tạo lịch hẹn thành công!");
-            router.push("/portal/doctor/appointments");
+            alert("Tạo lịch hẹn thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

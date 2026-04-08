@@ -64,7 +64,7 @@ export default function SettingsPage() {
             updateUser({ fullName: profile.fullName });
             toast.success("Đã lưu thay đổi thành công!");
         } catch {
-            toast.success("Đã lưu thay đổi!");
+            toast.error("Lưu thay đổi thất bại. Vui lòng thử lại.");
         } finally {
             setSavingProfile(false);
         }

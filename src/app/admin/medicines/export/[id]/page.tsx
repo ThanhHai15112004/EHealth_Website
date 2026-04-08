@@ -105,8 +105,7 @@ export default function StockOutDetailPage() {
             await inventoryService.confirmStockOut(orderId);
             setDetail(prev => ({ ...prev, status: "completed", approvedAt: new Date().toISOString() }));
         } catch {
-            alert("Duyệt phiếu xuất thành công!");
-            setDetail(prev => ({ ...prev, status: "completed" }));
+            alert("Duyệt phiếu xuất thất bại. Vui lòng thử lại.");
         } finally {
             setActionLoading("");
         }

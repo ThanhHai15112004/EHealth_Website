@@ -7,6 +7,7 @@ import { MOCK_PATIENT_QUEUE } from "@/lib/mock-data/doctor";
 import { emrService } from "@/services/emrService";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
+import { validateBloodPressure, validateVitalSign } from "@/utils/validation";
 
 /* ──────── Steps Config ──────── */
 const STEPS = [
@@ -59,6 +60,7 @@ export default function ExaminationPage() {
 
     const [activeStep, setActiveStep] = useState(0);
     const [saving, setSaving] = useState(false);
+    const [vitalErrors, setVitalErrors] = useState<Record<string, string>>({});
 
     // Form state
     const [vitals, setVitals] = useState({
@@ -90,7 +92,17 @@ export default function ExaminationPage() {
 
     const canProceed = useMemo(() => {
         switch (activeStep) {
-            case 0: return !!(vitals.bloodPressure && vitals.heartRate && vitals.temperature);
+            case 0: {
+                if (!vitals.bloodPressure || !vitals.heartRate || !vitals.temperature) return false;
+                if (!validateBloodPressure(vitals.bloodPressure).valid) return false;
+                if (!validateVitalSign(vitals.heartRate, "heartRate").valid) return false;
+                if (!validateVitalSign(vitals.temperature, "temperature").valid) return false;
+                if (vitals.spO2 && !validateVitalSign(vitals.spO2, "spO2").valid) return false;
+                if (vitals.respiratoryRate && !validateVitalSign(vitals.respiratoryRate, "respiratoryRate").valid) return false;
+                if (vitals.weight && !validateVitalSign(vitals.weight, "weight").valid) return false;
+                if (vitals.height && !validateVitalSign(vitals.height, "height").valid) return false;
+                return true;
+            }
             case 1: return symptoms.trim().length > 0;
             case 2: return true; // Lab is optional
             case 3: return diagnosis.trim().length > 0;
@@ -343,10 +355,21 @@ export default function ExaminationPage() {
                                                 <span className="text-xs font-medium text-[#687582]">{f.label}</span>
                                             </div>
                                             <div className="flex items-baseline gap-1">
-                                                <input type="text" value={vitals[f.key as keyof typeof vitals]} onChange={(e) => setVitals(prev => ({ ...prev, [f.key]: e.target.value }))}
-                                                    placeholder={f.placeholder} className="w-full text-lg font-bold text-[#121417] dark:text-white bg-transparent outline-none placeholder:text-gray-300 dark:placeholder:text-gray-600" />
+                                                <input type="text" value={vitals[f.key as keyof typeof vitals]} onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setVitals(prev => ({ ...prev, [f.key]: val }));
+                                                    if (f.key === "bloodPressure") {
+                                                        const res = validateBloodPressure(val);
+                                                        setVitalErrors(prev => ({ ...prev, [f.key]: res.valid ? "" : res.message }));
+                                                    } else {
+                                                        const res = validateVitalSign(val, f.key);
+                                                        setVitalErrors(prev => ({ ...prev, [f.key]: res.valid ? "" : res.message }));
+                                                    }
+                                                }}
+                                                    placeholder={f.placeholder} className={`w-full text-lg font-bold text-[#121417] dark:text-white bg-transparent outline-none placeholder:text-gray-300 dark:placeholder:text-gray-600 ${vitalErrors[f.key] ? "text-red-500" : ""}`} />
                                                 <span className="text-xs text-[#b0b8c1] flex-shrink-0">{f.unit}</span>
                                             </div>
+                                            {vitalErrors[f.key] && <p className="text-[10px] text-red-500 mt-1">{vitalErrors[f.key]}</p>}
                                         </div>
                                     ))}
                                     <div className="bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-xl p-3.5 border border-indigo-100 dark:border-indigo-800">

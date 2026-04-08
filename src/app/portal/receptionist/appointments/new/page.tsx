@@ -61,8 +61,7 @@ export default function NewAppointmentPage() {
             } as any);
             router.push("/portal/receptionist/appointments");
         } catch {
-            alert("Đã đặt lịch hẹn thành công!");
-            router.push("/portal/receptionist/appointments");
+            alert("Đặt lịch hẹn thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }

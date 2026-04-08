@@ -78,8 +78,7 @@ export default function NewMedicinePage() {
             } as any);
             router.push("/admin/medicines");
         } catch {
-            alert("Thêm thuốc thành công!");
-            router.push("/admin/medicines");
+            alert("Thêm thuốc thất bại. Vui lòng thử lại.");
         } finally {
             setSaving(false);
         }
