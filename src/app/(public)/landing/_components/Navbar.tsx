@@ -86,7 +86,7 @@ export function LandingNavbar({ activeSection, scrollTo }: { activeSection: stri
                             )}
                         </div>
                     ) : (
-                        <Link href="/login" className="hidden sm:flex items-center gap-1.5 text-sm font-semibold text-[#4a5568] hover:text-[#3C81C6] transition-colors px-3 py-2 rounded-lg hover:bg-gray-50">
+                        <Link href="/login" className="hidden sm:flex items-center gap-1.5 text-[13px] font-extrabold text-[#1a202c] hover:text-[#3C81C6] transition-colors px-2.5 py-2 rounded-lg hover:bg-blue-50/80">
                             <span className="material-symbols-outlined text-[18px]">person</span>Đăng nhập
                         </Link>
                     )}
