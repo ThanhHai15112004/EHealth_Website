@@ -1,0 +1,1 @@
+﻿src/app/(public)/booking/page.tsx(316,56): error TS2353: Object literal may only specify known properties, and 'branch_id' does not exist in type '{ department_id: string; facility_id: string; start_date?: string | undefined; days?: number | undefined; }'.

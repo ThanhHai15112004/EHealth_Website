@@ -53,3 +53,6 @@ export * from './aiService';
 
 // EHR — Electronic Health Records
 export * from './ehrService';
+
+export * from './facilityService';
+export * from './medicalService';

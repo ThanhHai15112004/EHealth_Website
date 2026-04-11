@@ -35,7 +35,12 @@ export interface Appointment {
 
 export interface CreateAppointmentData {
     patientId: string;
-    doctorId: string;
+    doctorId?: string;
+    facilityId?: string;
+    branchId?: string;
+    specialtyId?: string;
+    serviceId?: string;
+    slot_id?: string;
     date: string;
     time: string;
     type: Appointment['type'];
@@ -65,7 +70,17 @@ export const getAppointments = async (params?: {
     patientId?: string;
 }): Promise<AppointmentListResponse> => {
     try {
-        const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.LIST, { params });
+        const queryParams: any = { ...params };
+        if (params?.patientId) {
+            queryParams.patient_id = params.patientId;
+            delete queryParams.patientId;
+        }
+        if (params?.doctorId) {
+            queryParams.doctor_id = params.doctorId;
+            delete queryParams.doctorId;
+        }
+
+        const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.LIST, { params: queryParams });
         return response.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Lấy danh sách lịch hẹn thất bại');
@@ -92,10 +107,13 @@ export const createAppointment = async (data: CreateAppointmentData): Promise<Ap
         const response = await axiosClient.post(APPOINTMENT_ENDPOINTS.CREATE, {
             patient_id: data.patientId,
             doctor_id: data.doctorId,
-            date: data.date,
+            branch_id: data.branchId,
+            appointment_date: data.date,
+            slot_id: data.slot_id,
+            booking_channel: "WEB",
             time: data.time,
             type: data.type,
-            reason: data.reason,
+            reason_for_visit: data.reason,
         });
         return response.data.data;
     } catch (error: any) {
@@ -130,10 +148,22 @@ export const updateAppointment = async (
 // ============================================
 export const confirmAppointment = async (id: string): Promise<Appointment> => {
     try {
-        const response = await axiosClient.post(APPOINTMENT_ENDPOINTS.CONFIRM(id));
+        const response = await axiosClient.patch(APPOINTMENT_ENDPOINTS.CONFIRM(id));
         return response.data.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Xác nhận lịch hẹn thất bại');
+    }
+};
+
+// ============================================
+// Tạo mã QR cho lịch hẹn đã xác nhận
+// ============================================
+export const generateAppointmentQr = async (id: string): Promise<{ qr_token: string; expires_at: string }> => {
+    try {
+        const response = await axiosClient.post(APPOINTMENT_ENDPOINTS.GENERATE_QR(id));
+        return response.data.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Tạo mã QR thất bại');
     }
 };
 
@@ -175,5 +205,28 @@ export const getAppointmentsByPatient = async (
         return response.data.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Lấy lịch hẹn theo bệnh nhân thất bại');
+    }
+};
+// ============================================
+// L?y danh s�ch slot kh�m (cho b�c si ho?c service)
+// ============================================
+export const getAvailableSlots = async (params: { date?: string; doctor_id?: string; service_id?: string; branch_id?: string }) => {
+    try {
+        const response = await axiosClient.get('/api/appointments/available-slots', { params });
+        return response.data.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'L?y danh s�ch slot th?t b?i');
+    }
+};
+
+// ============================================
+// L?y danh s�ch slot kh�m theo khoa
+// ============================================
+export const getAvailableSlotsByDepartment = async (params: { department_id: string; facility_id: string; branch_id?: string; start_date?: string; days?: number; }) => {
+    try {
+        const response = await axiosClient.get('/api/appointments/available-slots-by-department', { params });
+        return response.data.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'L?y danh s�ch slot theo khoa th?t b?i');
     }
 };

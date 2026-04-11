@@ -9,7 +9,7 @@
  */
 
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { API_CONFIG } from '@/config';
+import { API_CONFIG, AUTH_CONFIG } from '@/config';
 
 // ============================================
 // Khởi tạo Axios Instance
@@ -31,7 +31,7 @@ const axiosClient = axios.create({
 axiosClient.interceptors.request.use(
     (config: InternalAxiosRequestConfig) => {
         // Lấy token từ localStorage (guard SSR Next.js)
-        const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+        const token = typeof window !== 'undefined' ? localStorage.getItem(AUTH_CONFIG.ACCESS_TOKEN_KEY) : null;
 
         if (token && config.headers) {
             config.headers.Authorization = `Bearer ${token}`;
@@ -63,19 +63,23 @@ axiosClient.interceptors.response.use(
 
             try {
                 // Thử refresh token (guard SSR Next.js)
-                const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+                const refreshToken = typeof window !== 'undefined' ? localStorage.getItem(AUTH_CONFIG.REFRESH_TOKEN_KEY) : null;
 
                 if (refreshToken) {
                     const response = await axios.post(
                         `${API_CONFIG.BASE_URL}/api/auth/refresh-token`,
-                        { refresh_token: refreshToken }
+                        { refreshToken: refreshToken }
                     );
 
-                    const newAccessToken = response.data?.data?.access_token;
+                    const newAccessToken = response.data?.data?.accessToken;
+                    const newRefreshToken = response.data?.data?.refreshToken;
 
                     if (newAccessToken) {
                         // Lưu token mới
-                        localStorage.setItem('accessToken', newAccessToken);
+                        localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, newAccessToken);
+                        if (newRefreshToken) {
+                            localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, newRefreshToken);
+                        }
 
                         // Thử lại request ban đầu với token mới
                         if (originalRequest.headers) {
@@ -87,9 +91,9 @@ axiosClient.interceptors.response.use(
             } catch (refreshError) {
                 // Refresh token thất bại - Đăng xuất user
                 if (typeof window !== 'undefined') {
-                    localStorage.removeItem('accessToken');
-                    localStorage.removeItem('refreshToken');
-                    localStorage.removeItem('user');
+                    localStorage.removeItem(AUTH_CONFIG.ACCESS_TOKEN_KEY);
+                    localStorage.removeItem(AUTH_CONFIG.REFRESH_TOKEN_KEY);
+                    localStorage.removeItem(AUTH_CONFIG.USER_KEY);
                     // Thông báo cho AuthContext reset state trước khi redirect
                     window.dispatchEvent(new CustomEvent('auth:logout'));
                     window.location.href = '/login';

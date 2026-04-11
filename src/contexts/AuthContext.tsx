@@ -158,26 +158,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
     };
 
-    // ============================================
-    // Helper: Lấy URL redirect theo role
-    // ============================================
-    const getRedirectUrl = (role: string): string => {
-        switch (role.toLowerCase()) {
-            case 'admin':
-                return '/admin';
-            case 'doctor':
-                return '/portal/doctor';
-            case 'pharmacist':
-                return '/portal/pharmacist';
-            case 'staff':
-            case 'receptionist':
-                return '/portal/receptionist';
-            case 'patient':
-                return '/patient';
-            default:
-                return '/login';
-        }
-    };
+    // Sử dụng hàm getRedirectUrl đã export bên dưới
 
     // ============================================
     // Context Value
@@ -210,6 +191,27 @@ export function useAuth() {
     }
 
     return context;
+}
+
+// ============================================
+// Helper: Lấy URL redirect theo role (export để tái sử dụng)
+// ============================================
+export function getRedirectUrl(role: string): string {
+    switch (role.toLowerCase()) {
+        case 'admin':
+            return '/admin';
+        case 'doctor':
+            return '/portal/doctor';
+        case 'pharmacist':
+            return '/portal/pharmacist';
+        case 'staff':
+        case 'receptionist':
+            return '/portal/receptionist';
+        case 'patient':
+            return '/patient';
+        default:
+            return '/';
+    }
 }
 
 export default AuthContext;

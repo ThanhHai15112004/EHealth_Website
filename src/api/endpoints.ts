@@ -204,6 +204,7 @@ export const SPECIALTY_ENDPOINTS = {
     DETAIL: (id: string) => `/api/specialties/${id}`,            // GET: chi tiết
     UPDATE: (id: string) => `/api/specialties/${id}`,            // PUT: cập nhật
     DELETE: (id: string) => `/api/specialties/${id}`,            // DELETE: xóa mềm
+    SPECIALTY_SERVICES: (id: string) => `/api/specialty-services/${id}/services`, // GET: danh sách dịch vụ thuộc chuyên khoa
 };
 
 // ============================================
@@ -353,6 +354,8 @@ export const DOCTOR_ENDPOINTS = {
     DELETE: (id: string) => `/api/doctors/${id}`,
     BY_DEPARTMENT: (departmentId: string) => `/api/doctors/department/${departmentId}`,
     SCHEDULE: (doctorId: string) => `/api/doctors/${doctorId}/schedule`,
+    // Doctor Services Maps
+    SERVICES: (doctorId: string) => `/api/doctor-services/${doctorId}/services`,
 };
 
 export const PATIENT_ENDPOINTS = {
@@ -362,6 +365,7 @@ export const PATIENT_ENDPOINTS = {
     UPDATE: (id: string) => `/api/patients/${id}`,
     STATUS: (id: string) => `/api/patients/${id}/status`,
     LINK: '/api/patients/link',
+    BY_ACCOUNT: (accountId: string) => `/api/patients/account/${accountId}`,
     UPDATE_CONTACT: (patientId: string) => `/api/patients/${patientId}/contact`,
     ADD_CONTACT: (patientId: string) => `/api/patients/${patientId}/contacts`,
     EDIT_CONTACT: (patientId: string, contactId: string) => `/api/patients/${patientId}/contacts/${contactId}`,
@@ -379,7 +383,8 @@ export const APPOINTMENT_ENDPOINTS = {
     CREATE: '/api/appointments',
     UPDATE: (id: string) => `/api/appointments/${id}`,
     CANCEL: (id: string) => `/api/appointments/${id}/cancel`,
-    CONFIRM: (id: string) => `/api/appointments/${id}/confirm`,
+    CONFIRM: (id: string) => `/api/appointment-confirmations/${id}/confirm`,
+    GENERATE_QR: (id: string) => `/api/appointment-status/generate-qr/${id}`,
     BY_DOCTOR: (doctorId: string) => `/api/appointments/doctor/${doctorId}`,
     BY_PATIENT: (patientId: string) => `/api/appointments/patient/${patientId}`,
 };
@@ -780,3 +785,4 @@ export const SIGN_OFF_ENDPOINTS = {
     SIGNATURES: (encounterId: string) => `/api/sign-off/${encounterId}/signatures`,
     AUDIT_LOG: (encounterId: string) => `/api/sign-off/${encounterId}/audit-log`,
 };
+

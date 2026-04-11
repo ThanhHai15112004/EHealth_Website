@@ -2,11 +2,11 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { MOCK_PATIENT_PROFILES, getProfilesByUserId, type PatientProfile } from "@/data/patient-profiles-mock";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
 import { useAuth } from "@/contexts/AuthContext";
 import { getAppointments, type Appointment } from "@/services/appointmentService";
 import { filterMockAppointments } from "@/data/patient-mock";
+import { getPatientsByAccountId, type Patient } from "@/services/patientService";
 
 const TABS = [
     { id: "upcoming", label: "Sắp tới", icon: "event_upcoming" },
@@ -19,12 +19,26 @@ export default function AppointmentsPage() {
     const [activeTab, setActiveTab] = useState("upcoming");
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
-    const [selectedProfileId, setSelectedProfileId] = useState("pp-001");
-    const profiles = getProfilesByUserId("patient-001");
+    const [profiles, setProfiles] = useState<Patient[]>([]);
+    const [selectedProfileId, setSelectedProfileId] = useState("");
+
+    // Load profiles first
+    useEffect(() => {
+        if (!user?.id) return;
+        const loadProfiles = async () => {
+            const res = await getPatientsByAccountId(user.id);
+            if (res.success && res.data && res.data.length > 0) {
+                setProfiles(res.data);
+                setSelectedProfileId(res.data[0].patient_id);
+            }
+        };
+        loadProfiles();
+    }, [user?.id]);
 
     useEffect(() => {
+        if (!selectedProfileId) return;
         loadAppointments();
-    }, [activeTab]);
+    }, [activeTab, selectedProfileId]);
 
     const loadAppointments = async () => {
         const statusMap: Record<string, string> = {
@@ -35,17 +49,17 @@ export default function AppointmentsPage() {
         try {
             setLoading(true);
             const res = await getAppointments({
-                patientId: user?.id,
+                patientId: selectedProfileId,
                 status: statusMap[activeTab],
                 limit: 20,
             });
             if (res.data && res.data.length > 0) {
                 setAppointments(res.data);
             } else {
-                setAppointments(filterMockAppointments(statusMap[activeTab]));
+                setAppointments([]);
             }
         } catch {
-            setAppointments(filterMockAppointments(statusMap[activeTab]));
+            setAppointments([]);
         } finally {
             setLoading(false);
         }
@@ -58,13 +72,15 @@ export default function AppointmentsPage() {
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">Lịch hẹn của tôi</h1>
                     <p className="text-sm text-gray-500 mt-0.5">Quản lý tất cả lịch hẹn khám bệnh</p>
-                    <div className="flex items-center gap-2 mt-3">
-                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>person</span>
-                        <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
-                            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-[#1e242b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 font-medium">
-                            {profiles.map(p => <option key={p.id} value={p.id}>{p.fullName} — {p.relationshipLabel}</option>)}
-                        </select>
-                    </div>
+                    {profiles.length > 0 && (
+                        <div className="flex items-center gap-2 mt-3">
+                            <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>person</span>
+                            <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
+                                className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-[#1e242b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 font-medium">
+                                {profiles.map(p => <option key={p.patient_id} value={p.patient_id}>{p.full_name}</option>)}
+                            </select>
+                        </div>
+                    )}
                 </div>
                 <Link href="/booking"
                     className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white text-sm font-semibold rounded-xl shadow-md shadow-[#3C81C6]/20 hover:shadow-lg transition-all active:scale-[0.97]">
@@ -127,16 +143,16 @@ export default function AppointmentsPage() {
                             <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                                 {/* Date badge */}
                                 <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10 flex flex-col items-center justify-center flex-shrink-0">
-                                    <span className="text-lg font-bold text-[#3C81C6] leading-none">{apt.date?.split("-")[2] || "--"}</span>
-                                    <span className="text-[10px] text-[#3C81C6]/70 font-medium">T{apt.date?.split("-")[1] || "--"}</span>
+                                    <span className="text-lg font-bold text-[#3C81C6] leading-none">{(apt as any).appointment_date?.split("-")[2] || apt.date?.split("-")[2] || "--"}</span>
+                                    <span className="text-[10px] text-[#3C81C6]/70 font-medium">T{(apt as any).appointment_date?.split("-")[1] || apt.date?.split("-")[1] || "--"}</span>
                                 </div>
 
                                 {/* Info */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <h3 className="font-semibold text-gray-900 group-hover:text-[#3C81C6] transition-colors">{apt.doctorName || "Bác sĩ"}</h3>
-                                            <p className="text-sm text-gray-500 mt-0.5">{apt.departmentName || "Chuyên khoa"}</p>
+                                            <h3 className="font-semibold text-gray-900 group-hover:text-[#3C81C6] transition-colors">{(apt as any).doctor_name || apt.doctorName || "Bác sĩ"}</h3>
+                                            <p className="text-sm text-gray-500 mt-0.5">{(apt as any).department_name || apt.departmentName || "Chuyên khoa"}</p>
                                         </div>
                                         <AppointmentStatusBadge status={apt.status} />
                                     </div>

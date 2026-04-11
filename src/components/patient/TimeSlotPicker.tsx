@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 
 interface TimeSlot {
+    id?: string;
     time: string;
     available: boolean;
     remaining?: number;
@@ -13,6 +14,8 @@ interface TimeSlotPickerProps {
     onDateChange: (date: string) => void;
     selectedTime: string;
     onTimeChange: (time: string) => void;
+    selectedSlotId?: string;
+    onSlotIdChange?: (id: string) => void;
     slots?: TimeSlot[];
     loading?: boolean;
     availableDates?: string[];
@@ -81,7 +84,7 @@ function getCalendarDays(year: number, month: number): { date: string; day: numb
     return days;
 }
 
-export function TimeSlotPicker({ selectedDate, onDateChange, selectedTime, onTimeChange, slots, loading, availableDates }: TimeSlotPickerProps) {
+export function TimeSlotPicker({ selectedDate, onDateChange, selectedTime, onTimeChange, selectedSlotId, onSlotIdChange, slots, loading, availableDates }: TimeSlotPickerProps) {
     const today = new Date();
     const [viewYear, setViewYear] = useState(today.getFullYear());
     const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -213,6 +216,12 @@ export function TimeSlotPicker({ selectedDate, onDateChange, selectedTime, onTim
                     <div className="flex items-center justify-center py-8">
                         <div className="w-8 h-8 border-3 border-[#3C81C6]/20 border-t-[#3C81C6] rounded-full animate-spin" />
                     </div>
+                ) : timeSlots.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-gray-500 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200">
+                        <span className="material-symbols-outlined text-gray-300 mb-2" style={{ fontSize: "32px" }}>event_busy</span>
+                        <p className="text-sm font-medium">Không có lịch khám trong ngày này</p>
+                        <p className="text-xs mt-1">Vui lòng chọn một ngày khác</p>
+                    </div>
                 ) : (
                     <div className="space-y-4">
                         {/* Legend */}
@@ -244,7 +253,7 @@ export function TimeSlotPicker({ selectedDate, onDateChange, selectedTime, onTim
                                 </div>
                                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                                     {morningSlots.map(slot => (
-                                        <SlotButton key={slot.time} slot={slot} selected={selectedTime === slot.time} onClick={() => slot.available && onTimeChange(slot.time)} />
+                                        <SlotButton key={slot.time} slot={slot} selected={selectedTime === slot.time || (selectedSlotId !== undefined && selectedSlotId === slot.id)} onClick={() => { if (slot.available) { onTimeChange(slot.time); if (onSlotIdChange && slot.id) onSlotIdChange(slot.id); } }} />
                                     ))}
                                 </div>
                             </div>
@@ -259,7 +268,7 @@ export function TimeSlotPicker({ selectedDate, onDateChange, selectedTime, onTim
                                 </div>
                                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                                     {afternoonSlots.map(slot => (
-                                        <SlotButton key={slot.time} slot={slot} selected={selectedTime === slot.time} onClick={() => slot.available && onTimeChange(slot.time)} />
+                                        <SlotButton key={slot.time} slot={slot} selected={selectedTime === slot.time || (selectedSlotId !== undefined && selectedSlotId === slot.id)} onClick={() => { if (slot.available) { onTimeChange(slot.time); if (onSlotIdChange && slot.id) onSlotIdChange(slot.id); } }} />
                                     ))}
                                 </div>
                             </div>

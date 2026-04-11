@@ -88,8 +88,8 @@ export default function NewUserPage() {
                 phoneNumber: formData.phone,
                 role: formData.role,
                 password: formData.password,
-                gender: formData.gender || undefined,
-                dateOfBirth: formData.dateOfBirth || undefined,
+                gender: (formData.gender?.toUpperCase() as 'MALE' | 'FEMALE') || undefined,
+                dob: formData.dateOfBirth || undefined,
                 address: formData.address || undefined,
                 ...(isCustomer ? {
                     insuranceNumber: formData.insuranceNumber || undefined,

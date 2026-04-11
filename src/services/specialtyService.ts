@@ -18,6 +18,7 @@ export interface Specialty {
     code: string;
     name: string;
     description?: string;
+    logo_url?: string;
     isActive?: boolean;
     createdAt: string;
     updatedAt: string;
@@ -35,6 +36,12 @@ export const getSpecialties = async (params?: {
 }): Promise<{ data: Specialty[]; pagination?: any }> => {
     try {
         const response = await axiosClient.get(SPECIALTY_ENDPOINTS.LIST, { params });
+        if (response.data && Array.isArray(response.data.data)) {
+            response.data.data = response.data.data.map((item: any) => ({
+                ...item,
+                id: item.specialties_id || item.id,
+            }));
+        }
         return response.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Lấy danh sách chuyên khoa thất bại');
@@ -84,10 +91,33 @@ export const deleteSpecialty = async (id: string): Promise<void> => {
     }
 };
 
+/** GET /api/specialties/by-facility/:facilityId — Lấy chuyên khoa kèm department_id theo cơ sở */
+export const getSpecialtiesByFacility = async (facilityId: string): Promise<any[]> => {
+    try {
+        const response = await axiosClient.get(`/api/specialties/by-facility/${facilityId}`);
+        return response.data.data;
+    } catch (error: any) {
+        return [];
+    }
+};
+
+export const getServicesBySpecialty = async (id: string, facilityId?: string): Promise<any[]> => {
+    try {
+        const query = facilityId ? `?facilityId=${facilityId}` : '';
+        const response = await axiosClient.get(SPECIALTY_ENDPOINTS.SPECIALTY_SERVICES(id) + query);
+        return response.data.data;
+    } catch (error: any) {
+        // Return empty array on failure
+        return [];
+    }
+};
+
 export default {
     getSpecialties,
     createSpecialty,
     getSpecialtyById,
     updateSpecialty,
     deleteSpecialty,
+    getSpecialtiesByFacility,
+    getServicesBySpecialty,
 };

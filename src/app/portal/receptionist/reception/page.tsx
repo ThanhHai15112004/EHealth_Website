@@ -125,7 +125,7 @@ export default function ReceptionPage() {
             if (isNewPatient && newPatient.name && newPatient.phone) {
                 const created = await createPatient({
                     full_name: newPatient.name,
-                    date_of_birth: newPatient.age ? `${new Date().getFullYear() - parseInt(newPatient.age)}-01-01` : undefined,
+                    date_of_birth: newPatient.age ? `${new Date().getFullYear() - parseInt(newPatient.age)}-01-01` : '1900-01-01',
                     gender: newPatient.gender === "male" ? "MALE" : "FEMALE",
                     contact: { phone_number: newPatient.phone, street_address: newPatient.address },
                 });

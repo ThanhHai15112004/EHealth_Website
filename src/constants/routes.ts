@@ -9,7 +9,7 @@ export const ROUTES = {
     LOGIN: "/login",
     FORGOT_PASSWORD: "/forgot-password",
     OTP: "/otp",
-    LANDING: "/landing",
+    LANDING: "/",
     SPECIALTIES: "/specialties",
     DOCTORS: "/doctors",
     DOCTOR_DETAIL: (id: string) => `/doctors/${id}`,

@@ -137,6 +137,21 @@ export const getPatientDetail = async (patientId: string): Promise<{ success: bo
 };
 
 /**
+ * Lấy danh sách hồ sơ bệnh nhân theo User ID
+ */
+export const getPatientsByAccountId = async (accountId: string): Promise<{ success: boolean; data?: Patient[]; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_ENDPOINTS.BY_ACCOUNT(accountId));
+        return response.data;
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Không thể lấy danh sách hồ sơ bệnh nhân',
+        };
+    }
+};
+
+/**
  * Tạo hồ sơ bệnh nhân mới
  */
 export const createPatient = async (data: CreatePatientRequest): Promise<{ success: boolean; data?: Patient; message?: string }> => {

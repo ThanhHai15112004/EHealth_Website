@@ -5,8 +5,8 @@ import { ToastProvider } from "@/contexts/ToastContext";
 import { FloatingChatBox } from "@/components/shared/FloatingChatBox";
 
 export const metadata: Metadata = {
-    title: "E-Health Admin",
-    description: "Hệ thống quản trị Y tế Số",
+    title: "EHealth Hospital — Bệnh viện Đa khoa hàng đầu | Đặt lịch khám online",
+    description: "Hệ thống Y tế Thông minh EHealth — Đặt lịch khám online, theo dõi sức khoẻ 24/7, đội ngũ 120+ bác sĩ chuyên khoa.",
 };
 
 export default function RootLayout({

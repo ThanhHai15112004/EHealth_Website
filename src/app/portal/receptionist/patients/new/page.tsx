@@ -60,7 +60,7 @@ export default function NewPatientPage() {
         try {
             await createPatient({
                 full_name: fd.name,
-                date_of_birth: fd.dob || undefined,
+                date_of_birth: fd.dob || '1900-01-01',
                 gender: fd.gender === "Nam" ? "MALE" : "FEMALE",
                 identity_type: fd.cccd ? "CCCD" : undefined,
                 identity_number: fd.cccd || undefined,
