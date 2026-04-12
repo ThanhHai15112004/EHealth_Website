@@ -22,4 +22,10 @@ export const billingService = {
 
     reconcile: (params?: Record<string, any>) =>
         axiosClient.get(BILLING_ENDPOINTS.RECONCILIATION, { params }),
+
+    getInvoicesByPatient: (patientId: string, params?: Record<string, any>) =>
+        axiosClient.get(BILLING_ENDPOINTS.BY_PATIENT(patientId), { params }),
+
+    getPaymentsByPatient: (patientId: string, params?: Record<string, any>) =>
+        axiosClient.get(BILLING_ENDPOINTS.PAYMENTS, { params: { patient_id: patientId, ...params } }),
 };

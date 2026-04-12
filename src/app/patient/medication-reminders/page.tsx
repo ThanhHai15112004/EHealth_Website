@@ -3,13 +3,37 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { MOCK_PATIENT_PROFILES, type PatientProfile } from "@/data/patient-profiles-mock";
-import {
-    MOCK_MEDICATION_REMINDERS, MOCK_MEDICATION_LOGS,
-    type MedicationReminder, type MedicationLog,
-} from "@/data/medication-reminders-mock";
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from "@/utils/localStorage";
 import { validateRequired, validateDateRange } from "@/utils/validation";
+import { getPatientsByAccountId } from "@/services/patientService";
+
+// Type definitions (previously from mock data)
+interface MedicationReminder {
+    id: string;
+    profileId: string;
+    medicationName: string;
+    dosage: string;
+    frequency: number;
+    timesOfDay: string[];
+    instructions: string;
+    startDate: string;
+    endDate: string;
+    prescriptionId?: string;
+    isActive: boolean;
+    color: string;
+    createdAt: string;
+}
+
+interface MedicationLog {
+    id: string;
+    reminderId: string;
+    profileId: string;
+    date: string;
+    scheduledTime: string;
+    status: "taken" | "missed" | "skipped";
+    actualTime?: string;
+    note?: string;
+}
 
 type TabKey = "today" | "list" | "stats";
 
@@ -26,14 +50,18 @@ export default function MedicationRemindersPage() {
     const { user } = useAuth();
     const { showToast } = useToast();
 
-    // Load profiles từ localStorage (sync với patient-profiles page)
-    const [profiles, setProfiles] = useState<PatientProfile[]>([]);
+    // Sử dụng user ID từ AuthContext thay vì mock profiles
+    const userId = user?.id || "";
+    
+    // Profiles
+    const [profiles, setProfiles] = useState<any[]>([]);
     const [selectedProfileId, setSelectedProfileId] = useState("");
+    
     const [activeTab, setActiveTab] = useState<TabKey>("today");
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
 
-    // Persisted data
+    // Persisted data (localStorage only — không có API backend cho medication reminders)
     const [reminders, setReminders] = useState<MedicationReminder[]>([]);
     const [logs, setLogs] = useState<MedicationLog[]>([]);
     const [loaded, setLoaded] = useState(false);
@@ -46,32 +74,32 @@ export default function MedicationRemindersPage() {
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
 
-    // Load on mount — lấy profiles từ localStorage để sync với patient-profiles page
+    // Fetches profiles from DB
     useEffect(() => {
-        // Load profiles
-        const storedProfiles = loadFromStorage<PatientProfile[]>(STORAGE_KEYS.PATIENT_PROFILES, []);
-        const activeProfiles = storedProfiles.length > 0
-            ? storedProfiles.filter(p => p.isActive)
-            : MOCK_PATIENT_PROFILES.filter(p => p.isActive);
-        setProfiles(activeProfiles);
-        if (activeProfiles.length > 0) {
-            setSelectedProfileId(activeProfiles[0].id);
-        }
+        if (!userId) return;
+        const loadProfiles = async () => {
+            try {
+                const res = await getPatientsByAccountId(userId);
+                if (res.success && res.data && res.data.length > 0) {
+                    setProfiles(res.data);
+                    setSelectedProfileId(res.data[0].id);
+                }
+            } catch (error) {
+                console.error("Failed to load profiles", error);
+            }
+        };
+        loadProfiles();
+    }, [userId]);
 
-        // Load reminders
+    // Load on mount — chỉ từ localStorage, không gọi API
+    useEffect(() => {
         const storedReminders = loadFromStorage<MedicationReminder[]>(STORAGE_KEYS.MEDICATION_REMINDERS, []);
         const storedLogs = loadFromStorage<MedicationLog[]>(STORAGE_KEYS.MEDICATION_LOGS, []);
-        if (storedReminders.length > 0) {
-            setReminders(storedReminders);
-            setLogs(storedLogs);
-        } else {
-            setReminders(MOCK_MEDICATION_REMINDERS);
-            setLogs(MOCK_MEDICATION_LOGS);
-            saveToStorage(STORAGE_KEYS.MEDICATION_REMINDERS, MOCK_MEDICATION_REMINDERS);
-            saveToStorage(STORAGE_KEYS.MEDICATION_LOGS, MOCK_MEDICATION_LOGS);
-        }
+        // Lọc reminders theo profile hiện tại
+        setReminders(selectedProfileId ? storedReminders.filter(r => r.profileId === selectedProfileId) : storedReminders);
+        setLogs(storedLogs);
         setLoaded(true);
-    }, []);
+    }, [selectedProfileId]);
 
     // Persist helpers
     const persistReminders = useCallback((newReminders: MedicationReminder[]) => {
@@ -85,7 +113,7 @@ export default function MedicationRemindersPage() {
     }, []);
 
     // Computed data
-    const profileReminders = useMemo(() => reminders.filter(r => r.profileId === selectedProfileId), [reminders, selectedProfileId]);
+    const profileReminders = reminders;
     const activeRems = useMemo(() => profileReminders.filter(r => r.isActive), [profileReminders]);
 
     const todaySchedule = useMemo(() => {
@@ -281,15 +309,37 @@ export default function MedicationRemindersPage() {
                     <p className="text-sm text-[#687582] mt-1">Theo dõi và quản lý việc dùng thuốc hàng ngày</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    {profiles.length > 0 && (
-                        <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
-                            className="px-3 py-2 border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl text-sm bg-white dark:bg-[#1e242b] text-[#121417] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30">
-                            {profiles.map(p => <option key={p.id} value={p.id}>{p.fullName} ({p.relationshipLabel})</option>)}
-                        </select>
-                    )}
-                    {/* Bệnh nhân không được tự thêm thuốc — chỉ bác sĩ kê đơn */}
+                    <button onClick={openCreate}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-[0.97]">
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
+                        Thêm nhắc thuốc
+                    </button>
                 </div>
             </div>
+
+            {/* Profile Selector */}
+            {profiles.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar">
+                    {profiles.map(p => (
+                        <div
+                            key={p.id}
+                            onClick={() => setSelectedProfileId(p.id)}
+                            className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
+                        >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
+                                {p.full_name?.charAt(0)?.toUpperCase() || "U"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-bold truncate ${selectedProfileId === p.id ? 'text-[#3C81C6]' : 'text-gray-900 dark:text-white'}`}>{p.full_name}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{(p as any).phone_number || (p as any).contact?.phone_number || "Chưa có SĐT"}</p>
+                            </div>
+                            {selectedProfileId === p.id && (
+                                <span className="material-symbols-outlined text-[#3C81C6] shrink-0" style={{ fontSize: "20px" }}>check_circle</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* Stats summary cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

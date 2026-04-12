@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
+import { getPatientsByAccountId } from "@/services/patientService";
 import {
     MOCK_TELE_SESSIONS, MOCK_TELE_CHAT,
     type TeleMockSession, type TeleChatMessage,
@@ -14,11 +16,31 @@ const TABS = [
 ];
 
 export default function TelemedicinePage() {
+    const { user } = useAuth();
+    const [profiles, setProfiles] = useState<any[]>([]);
+    const [selectedProfileId, setSelectedProfileId] = useState("");
+    
     const [activeTab, setActiveTab] = useState("upcoming");
     const [selectedSession, setSelectedSession] = useState<TeleMockSession | null>(null);
     const [showChat, setShowChat] = useState(false);
     const [showRating, setShowRating] = useState(false);
     const [chatInput, setChatInput] = useState("");
+
+    useEffect(() => {
+        if (!user?.id) return;
+        const loadProfiles = async () => {
+            try {
+                const res = await getPatientsByAccountId(user.id);
+                if (res.success && res.data && res.data.length > 0) {
+                    setProfiles(res.data);
+                    setSelectedProfileId(res.data[0].id);
+                }
+            } catch (error) {
+                console.error("Failed to load profiles", error);
+            }
+        };
+        loadProfiles();
+    }, [user?.id]);
 
     const filtered = MOCK_TELE_SESSIONS.filter(s => {
         if (activeTab === "upcoming") return s.status === "scheduled" || s.status === "in_progress";
@@ -37,6 +59,30 @@ export default function TelemedicinePage() {
                     <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>videocam</span>Đặt lịch online
                 </Link>
             </div>
+
+            {/* Profile Selector */}
+            {profiles.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar mt-2">
+                    {profiles.map(p => (
+                        <div
+                            key={p.id}
+                            onClick={() => setSelectedProfileId(p.id)}
+                            className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
+                        >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
+                                {p.full_name?.charAt(0)?.toUpperCase() || "U"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-bold truncate ${selectedProfileId === p.id ? 'text-[#3C81C6]' : 'text-gray-900 dark:text-white'}`}>{p.full_name}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{(p as any).phone_number || (p as any).contact?.phone_number || "Chưa có SĐT"}</p>
+                            </div>
+                            {selectedProfileId === p.id && (
+                                <span className="material-symbols-outlined text-[#3C81C6] shrink-0" style={{ fontSize: "20px" }}>check_circle</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
 
             {/* Info Banner */}
             <div className="bg-gradient-to-r from-[#3C81C6]/5 to-[#60a5fa]/5 border border-[#3C81C6]/10 rounded-2xl p-5 flex items-start gap-4">

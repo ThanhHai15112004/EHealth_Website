@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getPatientsByAccountId, type Patient } from "@/services/patientService";
+import { billingService } from "@/services/billingService";
+import { medicalServiceApi, type MedicalService } from "@/services/medicalService";
 import {
-    MOCK_INVOICES, MOCK_TRANSACTIONS, MOCK_SERVICE_PRICES,
-    type Invoice, type Transaction, type ServicePrice,
+    type Invoice, type Transaction
 } from "@/data/patient-portal-mock";
 
 const TABS = [
@@ -14,7 +15,10 @@ const TABS = [
     { id: "prices", label: "Bảng giá", icon: "payments" },
 ];
 
-const formatVND = (n: number) => n.toLocaleString("vi-VN") + "đ";
+const formatVND = (n: number | string) => {
+    const val = Number(n);
+    return (isNaN(val) ? 0 : val).toLocaleString("vi-VN") + "đ";
+};
 
 export default function BillingPage() {
     const { user } = useAuth();
@@ -24,22 +28,116 @@ export default function BillingPage() {
     const [priceCategory, setPriceCategory] = useState("all");
     const [profiles, setProfiles] = useState<Patient[]>([]);
     const [selectedProfileId, setSelectedProfileId] = useState("");
+    const [invoices, setInvoices] = useState<Invoice[]>([]);
+    const [transactions, setTransactions] = useState<Transaction[]>([]);
+    const [servicePrices, setServicePrices] = useState<MedicalService[]>([]);
+    const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         if (!user?.id) return;
         const loadProfiles = async () => {
-            const res = await getPatientsByAccountId(user.id);
-            if (res.success && res.data && res.data.length > 0) {
-                setProfiles(res.data);
-                setSelectedProfileId(res.data[0].patient_id);
+            try {
+                const res = await getPatientsByAccountId(user.id);
+                if (res.success && res.data && res.data.length > 0) {
+                    setProfiles(res.data);
+                    setSelectedProfileId(res.data[0].id);
+                } else {
+                    setLoading(false);
+                }
+            } catch (error) {
+                console.error("Failed to load profiles", error);
+                setLoading(false);
             }
         };
         loadProfiles();
     }, [user?.id]);
 
-    const pending = MOCK_INVOICES.filter(i => i.status === "pending" || i.status === "overdue");
-    const paid = MOCK_INVOICES.filter(i => i.status === "paid" || i.status === "refunded");
-    const categories = ["all", ...Array.from(new Set(MOCK_SERVICE_PRICES.map(s => s.category)))];
+    useEffect(() => {
+        if (!selectedProfileId) return;
+        const fetchData = async () => {
+            setLoading(true);
+            try {
+                // Fetch invoices
+                const resInvoices = await billingService.getInvoicesByPatient(selectedProfileId).catch(() => ({ data: { data: [] } }));
+                const backendInvoices = resInvoices.data?.data || [];
+                
+                if (backendInvoices.length > 0) {
+                     const mappedInvoices: Invoice[] = backendInvoices.map((inv: any) => ({
+                        id: inv.invoices_id,
+                        code: inv.invoice_code || `INV-${inv.invoices_id.substring(0, 6)}`,
+                        patientId: selectedProfileId,
+                        date: new Date(inv.created_at).toLocaleDateString('vi-VN'),
+                        doctorName: inv.created_by_name || "Bác sĩ",
+                        department: inv.facility_name || "Khoa Khám bệnh",
+                        total: parseFloat(inv.total_amount || 0),
+                        status: inv.status === 'PAID' ? "paid" : inv.status === 'CANCELLED' ? "refunded" : "pending",
+                        subtotal: parseFloat(inv.total_amount || 0) + parseFloat(inv.discount_amount || 0),
+                        discount: parseFloat(inv.discount_amount || 0),
+                        insuranceCovered: parseFloat(inv.insurance_amount || 0),
+                        paidAt: inv.status === 'PAID' ? new Date(inv.updated_at).toLocaleDateString('vi-VN') : undefined,
+                        paymentMethod: "Payment Gateway", // Fallback, could be fetched from payments
+                        items: inv.items?.map((item: any) => ({
+                            name: item.item_name,
+                            quantity: item.quantity,
+                            unitPrice: parseFloat(item.unit_price),
+                            total: parseFloat(item.subtotal)
+                        })) || []
+                    }));
+                    setInvoices(mappedInvoices);
+                } else {
+                     setInvoices([]);
+                }
+                
+                // Fetch transactions
+                const resTrans = await billingService.getTransactions({ patientId: selectedProfileId }).catch(() => ({ data: { data: [] } }));
+                const backendTrans = resTrans.data?.data || [];
+                if (backendTrans.length > 0) {
+                    const mappedTrans: Transaction[] = backendTrans.map((tx: any) => ({
+                        id: tx.payment_transactions_id,
+                        invoiceCode: tx.invoice_code || "Unknown",
+                        amount: parseFloat(tx.amount || 0),
+                        type: tx.transaction_type === 'REFUND' ? "refund" : "payment",
+                        date: new Date(tx.created_at).toLocaleDateString('vi-VN'),
+                        method: tx.payment_method === 'CASH' ? "Tiền mặt" : tx.payment_method === 'CREDIT_CARD' ? "Thẻ tín dụng" : "Chuyển khoản",
+                        status: tx.status === 'SUCCESS' ? "success" : "failed",
+                        description: `Thanh toán hóa đơn ${tx.invoice_code || ''}`
+                    }));
+                    setTransactions(mappedTrans);
+                } else {
+                     setTransactions([]);
+                }
+
+                // Fetch medical services
+                let resServices: any = await medicalServiceApi.getFacilityActiveServices("1").catch(() => null);
+                if (!resServices?.data?.length) {
+                    resServices = await medicalServiceApi.getMasterList({ limit: 100, status: 'active' }).catch(() => ({ data: [] }));
+                }
+                setServicePrices(resServices?.data || []);
+            } catch (error) {
+                console.error("Failed to fetch billing data", error);
+                setInvoices([]);
+                setTransactions([]);
+                setServicePrices([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchData();
+    }, [selectedProfileId]);
+
+    const pending = invoices.filter(i => i.status === "pending" || i.status === "overdue");
+    const paid = invoices.filter(i => i.status === "paid" || i.status === "refunded");
+    
+    const getCategoryName = (s: any) => {
+        const group = s.service_group || s.category_name || s.category;
+        if (group === 'KHAM') return 'Khám bệnh';
+        if (group === 'XN') return 'Xét nghiệm';
+        if (group === 'CDHA') return 'Chẩn đoán hình ảnh';
+        if (group === 'THUTHUAT') return 'Thủ thuật';
+        return group || "Dịch vụ y tế";
+    };
+
+    const categories = ["all", ...Array.from(new Set(servicePrices.map(getCategoryName)))];
 
     const totalPending = pending.reduce((s, i) => s + i.total, 0);
 
@@ -49,15 +147,6 @@ export default function BillingPage() {
                 <div>
                     <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Thanh toán & Hóa đơn</h1>
                     <p className="text-sm text-[#687582] mt-0.5">Quản lý hóa đơn, thanh toán và tra cứu bảng giá</p>
-                    {profiles.length > 0 && (
-                        <div className="flex items-center gap-2 mt-3">
-                            <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>person</span>
-                            <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
-                                className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-[#1e242b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 font-medium">
-                                {profiles.map(p => <option key={p.patient_id} value={p.patient_id}>{p.full_name}</option>)}
-                            </select>
-                        </div>
-                    )}
                 </div>
                 {totalPending > 0 && (
                     <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl">
@@ -67,13 +156,37 @@ export default function BillingPage() {
                 )}
             </div>
 
+            {/* Profile Selector */}
+            {profiles.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar">
+                    {profiles.map(p => (
+                        <div
+                            key={p.id}
+                            onClick={() => setSelectedProfileId(p.id)}
+                            className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
+                        >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
+                                {p.full_name?.charAt(0)?.toUpperCase() || "U"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-bold truncate ${selectedProfileId === p.id ? 'text-[#3C81C6]' : 'text-gray-900 dark:text-white'}`}>{p.full_name}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{(p as any).phone_number || (p as any).contact?.phone_number || "Chưa có SĐT"}</p>
+                            </div>
+                            {selectedProfileId === p.id && (
+                                <span className="material-symbols-outlined text-[#3C81C6] shrink-0" style={{ fontSize: "20px" }}>check_circle</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
                     { label: "Chờ thanh toán", value: pending.length, icon: "pending_actions", color: "from-amber-500 to-orange-500", amount: formatVND(totalPending) },
                     { label: "Đã thanh toán", value: paid.length, icon: "check_circle", color: "from-green-500 to-emerald-600", amount: formatVND(paid.reduce((s, i) => s + i.total, 0)) },
-                    { label: "BHYT đã chi trả", value: "", icon: "health_and_safety", color: "from-blue-500 to-indigo-600", amount: formatVND(MOCK_INVOICES.reduce((s, i) => s + i.insuranceCovered, 0)) },
-                    { label: "Tổng chi phí", value: "", icon: "account_balance", color: "from-violet-500 to-purple-600", amount: formatVND(MOCK_INVOICES.reduce((s, i) => s + i.subtotal, 0)) },
+                    { label: "BHYT đã chi trả", value: "", icon: "health_and_safety", color: "from-blue-500 to-indigo-600", amount: formatVND(invoices.reduce((s, i) => s + i.insuranceCovered, 0)) },
+                    { label: "Tổng chi phí", value: "", icon: "account_balance", color: "from-violet-500 to-purple-600", amount: formatVND(invoices.reduce((s, i) => s + i.subtotal, 0)) },
                 ].map(s => (
                     <div key={s.label} className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
                         <div className="flex items-center gap-2 mb-2">
@@ -105,7 +218,21 @@ export default function BillingPage() {
             {/* Content */}
             {activeTab === "pending" && (
                 <div className="space-y-4">
-                    {pending.length === 0 ? (
+                    {loading ? (
+                        <div className="flex justify-center py-10">
+                            <span className="material-symbols-outlined animate-spin text-[#3C81C6]" style={{ fontSize: "32px" }}>progress_activity</span>
+                        </div>
+                    ) : profiles.length === 0 ? (
+                        <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
+                            <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-4" style={{ fontSize: "64px" }}>person_add</span>
+                            <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Chưa có hồ sơ bệnh nhân</h3>
+                            <p className="text-sm text-[#687582] mb-6">Vui lòng thêm hồ sơ bệnh nhân để xem viện phí</p>
+                            <a href="/patient/medical-records" className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all">
+                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
+                                Thêm hồ sơ
+                            </a>
+                        </div>
+                    ) : pending.length === 0 ? (
                         <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
                             <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-3" style={{ fontSize: "56px" }}>payments</span>
                             <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Không có hóa đơn chờ thanh toán</h3>
@@ -121,34 +248,47 @@ export default function BillingPage() {
 
             {activeTab === "history" && (
                 <div className="space-y-4">
-                    {paid.map(inv => (
-                        <InvoiceCard key={inv.id} invoice={inv} onView={() => setSelectedInvoice(inv)} />
-                    ))}
-                    {MOCK_TRANSACTIONS.length > 0 && (
-                        <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
-                            <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
-                                <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>swap_vert</span>Lịch sử giao dịch
-                            </h3>
-                            <div className="space-y-2">
-                                {MOCK_TRANSACTIONS.map(tx => (
-                                    <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-[#f6f7f8] dark:bg-[#13191f]">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${tx.type === "payment" ? "bg-green-50 dark:bg-green-500/10 text-green-600" : "bg-red-50 dark:bg-red-500/10 text-red-600"}`}>
-                                                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{tx.type === "payment" ? "arrow_upward" : "arrow_downward"}</span>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-semibold text-[#121417] dark:text-white">{tx.description}</p>
-                                                <p className="text-xs text-[#687582]">{tx.date} • {tx.method} • {tx.invoiceCode}</p>
-                                            </div>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className={`text-sm font-bold ${tx.type === "payment" ? "text-green-600" : "text-red-600"}`}>{tx.type === "payment" ? "-" : "+"}{formatVND(tx.amount)}</p>
-                                            <span className="text-[10px] font-medium text-green-600 bg-green-50 dark:bg-green-500/10 px-2 py-0.5 rounded-full">Thành công</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+                    {loading ? (
+                        <div className="flex justify-center py-10">
+                            <span className="material-symbols-outlined animate-spin text-[#3C81C6]" style={{ fontSize: "32px" }}>progress_activity</span>
                         </div>
+                    ) : paid.length === 0 && transactions.length === 0 ? (
+                         <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
+                            <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-3" style={{ fontSize: "56px" }}>history</span>
+                            <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Chưa có lịch sử giao dịch</h3>
+                        </div>
+                    ) : (
+                        <>
+                            {paid.map(inv => (
+                                <InvoiceCard key={inv.id} invoice={inv} onView={() => setSelectedInvoice(inv)} />
+                            ))}
+                            {transactions.length > 0 && (
+                                <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
+                                    <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
+                                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>swap_vert</span>Lịch sử giao dịch
+                                    </h3>
+                                    <div className="space-y-2">
+                                        {transactions.map(tx => (
+                                            <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-[#f6f7f8] dark:bg-[#13191f]">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${tx.type === "payment" ? "bg-green-50 dark:bg-green-500/10 text-green-600" : "bg-red-50 dark:bg-red-500/10 text-red-600"}`}>
+                                                        <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{tx.type === "payment" ? "arrow_upward" : "arrow_downward"}</span>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-[#121417] dark:text-white">{tx.description}</p>
+                                                        <p className="text-xs text-[#687582]">{tx.date} • {tx.method} • {tx.invoiceCode}</p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className={`text-sm font-bold ${tx.type === "payment" ? "text-green-600" : "text-red-600"}`}>{tx.type === "payment" ? "-" : "+"}{formatVND(tx.amount)}</p>
+                                                    <span className="text-[10px] font-medium text-green-600 bg-green-50 dark:bg-green-500/10 px-2 py-0.5 rounded-full">Thành công</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             )}
@@ -169,14 +309,22 @@ export default function BillingPage() {
                             <thead><tr className="text-xs font-semibold text-[#687582] uppercase border-b border-[#e5e7eb] dark:border-[#2d353e] bg-[#f6f7f8] dark:bg-[#13191f]">
                                 <th className="text-left py-3 px-5">Dịch vụ</th><th className="text-center py-3 px-3">Danh mục</th><th className="text-right py-3 px-3">Giá</th><th className="text-center py-3 px-5">BHYT (%)</th>
                             </tr></thead>
-                            <tbody>{MOCK_SERVICE_PRICES.filter(s => priceCategory === "all" || s.category === priceCategory).map(s => (
+                            <tbody>{servicePrices.filter(s => {
+                                const cat = getCategoryName(s);
+                                return priceCategory === "all" || cat === priceCategory;
+                            }).map((s) => {
+                                const cat = getCategoryName(s);
+                                const price = (s as any).base_price || s.price;
+                                const insPrice = (s as any).insurance_price;
+                                const insurancePercentage = insPrice && price ? Math.round((insPrice / price) * 100) : ((s as any).insuranceRate || 0);
+                                return (
                                 <tr key={s.id} className="border-b border-[#e5e7eb]/50 dark:border-[#2d353e]/50 hover:bg-[#f6f7f8] dark:hover:bg-[#13191f]">
-                                    <td className="py-3 px-5"><p className="font-medium text-[#121417] dark:text-white">{s.name}</p><p className="text-xs text-[#687582]">{s.description}</p></td>
-                                    <td className="py-3 px-3 text-center"><span className="px-2 py-0.5 text-xs bg-[#f6f7f8] dark:bg-[#13191f] text-[#687582] rounded-md">{s.category}</span></td>
-                                    <td className="py-3 px-3 text-right font-bold text-[#121417] dark:text-white">{formatVND(s.price)}</td>
-                                    <td className="py-3 px-5 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${s.insuranceRate > 0 ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600" : "bg-gray-100 dark:bg-gray-700 text-[#687582]"}`}>{s.insuranceRate > 0 ? `${s.insuranceRate}%` : "—"}</span></td>
+                                    <td className="py-3 px-5"><p className="font-medium text-[#121417] dark:text-white">{(s as any).service_name || s.name}</p><p className="text-xs text-[#687582]">{s.description || s.code || (s as any).service_code}</p></td>
+                                    <td className="py-3 px-3 text-center"><span className="px-2 py-0.5 text-xs bg-[#f6f7f8] dark:bg-[#13191f] text-[#687582] rounded-md">{cat}</span></td>
+                                    <td className="py-3 px-3 text-right font-bold text-[#121417] dark:text-white">{price ? formatVND(price) : "Liên hệ"}</td>
+                                    <td className="py-3 px-5 text-center"><span className={`px-2 py-0.5 rounded-full text-xs font-medium ${insurancePercentage > 0 ? "bg-blue-50 dark:bg-blue-500/10 text-blue-600" : "bg-gray-100 dark:bg-gray-700 text-[#687582]"}`}>{insurancePercentage > 0 ? `${insurancePercentage}%` : "—"}</span></td>
                                 </tr>
-                            ))}</tbody>
+                            )})}</tbody>
                         </table>
                     </div>
                 </div>

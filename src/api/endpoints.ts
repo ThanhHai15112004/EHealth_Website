@@ -40,6 +40,7 @@ export const AUTH_ENDPOINTS = {
 // ============================================
 export const PROFILE_ENDPOINTS = {
     ME: '/api/profile/me',                    // GET: lấy profile, PUT: cập nhật profile
+    AVATAR: '/api/profile/avatar',            // POST: upload avatar
     CHANGE_PASSWORD: '/api/profile/password',  // PUT: đổi mật khẩu
     SESSIONS: '/api/profile/sessions',         // GET: xem lịch sử/thiết bị đăng nhập
     SESSIONS_LOGOUT_ALL: '/api/profile/sessions',         // DELETE: đăng xuất tất cả thiết bị khác
@@ -365,6 +366,8 @@ export const PATIENT_ENDPOINTS = {
     UPDATE: (id: string) => `/api/patients/${id}`,
     STATUS: (id: string) => `/api/patients/${id}/status`,
     LINK: '/api/patients/link',
+    LINK_ACCOUNT: (id: string) => `/api/patients/${id}/link-account`,
+    UNLINK_ACCOUNT: (id: string) => `/api/patients/${id}/unlink-account`,
     BY_ACCOUNT: (accountId: string) => `/api/patients/account/${accountId}`,
     UPDATE_CONTACT: (patientId: string) => `/api/patients/${patientId}/contact`,
     ADD_CONTACT: (patientId: string) => `/api/patients/${patientId}/contacts`,
@@ -373,6 +376,9 @@ export const PATIENT_ENDPOINTS = {
     ADD_RELATION: (patientId: string) => `/api/patients/${patientId}/relations`,
     EDIT_RELATION: (patientId: string, relationId: string) => `/api/patients/${patientId}/relations/${relationId}`,
     DELETE_RELATION: (patientId: string, relationId: string) => `/api/patients/${patientId}/relations/${relationId}`,
+    GET_ALL_RELATIONS: (patientId: string) => `/api/patients/${patientId}/relations`,
+    GET_EMERGENCY_CONTACTS: (patientId: string) => `/api/patients/${patientId}/emergency-contacts`,
+    GET_NORMAL_RELATIVES: (patientId: string) => `/api/patients/${patientId}/relatives`,
     MEDICAL_RECORDS: (patientId: string) => `/api/patients/${patientId}/medical-records`,
     PRESCRIPTIONS: (patientId: string) => `/api/patients/${patientId}/prescriptions`,
 };

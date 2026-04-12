@@ -340,14 +340,14 @@ function BookingPageInner() {
                 let profiles: PatientProfile[] = [];
                 const res = await getPatientsByAccountId(user.id);
                 if (res.success && res.data && res.data.length > 0) {
-                    profiles = res.data.map((p, index) => ({
-                        id: p.patient_id,
+                    profiles = res.data.map((p: any, index: number) => ({
+                        id: p.id,
                         userId: user.id || "patient-001",
                         relationship: "self",
                         relationshipLabel: "Bản thân",
                         fullName: p.full_name,
                         phone: p.phone_number,
-                        dob: p.date_of_birth,
+                        dob: p.date_of_birth ? p.date_of_birth.toString().split("T")[0] : "",
                         gender: p.gender === "MALE" ? "male" : p.gender === "FEMALE" ? "female" : "other",
                         address: p.address,
                         idNumber: p.identity_card_number,
@@ -358,7 +358,7 @@ function BookingPageInner() {
                         updatedAt: new Date().toISOString(),
                     } as unknown as PatientProfile));
                 } else {
-                    profiles = getProfilesByUserId("patient-001");
+                    profiles = [];
                 }
                 
                 setPatientProfiles(profiles);
@@ -1100,72 +1100,90 @@ function BookingPageInner() {
                                     </h2>
 
                                     {/* Patient profile selector */}
-                                    {patientProfiles.length > 0 && (
-                                        <div>
-                                            <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-                                                <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "16px" }}>family_restroom</span>
-                                                Chọn hồ sơ bệnh nhân
-                                            </label>
-                                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
-                                                {patientProfiles.map(profile => (
-                                                    <button key={profile.id} onClick={() => applyProfile(profile.id)}
-                                                        className={`p-3 rounded-xl border-2 text-left transition-all ${selectedProfileId === profile.id
-                                                            ? "border-[#3C81C6] bg-[#3C81C6]/[0.04]"
-                                                            : "border-gray-100 hover:border-gray-200"}`}>
-                                                        <div className="flex items-center gap-2 mb-1">
-                                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${selectedProfileId === profile.id ? "bg-[#3C81C6]" : "bg-gray-300"}`}>
-                                                                {profile.fullName.charAt(0)}
+                                    {patientProfiles.length > 0 ? (
+                                        <div className="space-y-6">
+                                            <div>
+                                                <label className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                                                    <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "16px" }}>family_restroom</span>
+                                                    Chọn hồ sơ bệnh nhân
+                                                </label>
+                                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                                                    {patientProfiles.map(profile => (
+                                                        <button key={profile.id} onClick={() => applyProfile(profile.id)}
+                                                            className={`p-3 rounded-xl border-2 text-left transition-all ${selectedProfileId === profile.id
+                                                                ? "border-[#3C81C6] bg-[#3C81C6]/[0.04]"
+                                                                : "border-gray-100 hover:border-gray-200"}`}>
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${selectedProfileId === profile.id ? "bg-[#3C81C6]" : "bg-gray-300"}`}>
+                                                                    {profile.fullName.charAt(0)}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-xs font-bold text-gray-900 truncate">{profile.fullName}</p>
+                                                                    <p className="text-[10px] text-gray-500">{profile.relationshipLabel}</p>
+                                                                </div>
                                                             </div>
-                                                            <div className="min-w-0">
-                                                                <p className="text-xs font-bold text-gray-900 truncate">{profile.fullName}</p>
-                                                                <p className="text-[10px] text-gray-500">{profile.relationshipLabel}</p>
-                                                            </div>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                                <Link href="/patient/patient-profiles"
-                                                    className="p-3 rounded-xl border-2 border-dashed border-gray-200 hover:border-[#3C81C6] flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-[#3C81C6] transition-colors">
-                                                    <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>add</span>
-                                                    <span className="text-[10px] font-medium">Thêm mới</span>
-                                                </Link>
+                                                        </button>
+                                                    ))}
+                                                    <Link href="/patient/profile"
+                                                        className="p-3 rounded-xl border-2 border-dashed border-gray-200 hover:border-[#3C81C6] flex flex-col items-center justify-center gap-1 text-gray-400 hover:text-[#3C81C6] transition-colors">
+                                                        <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>add</span>
+                                                        <span className="text-[10px] font-medium">Thêm mới</span>
+                                                    </Link>
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div>
+                                                    <FormField label="Họ và tên *" icon="person" value={form.fullName} onChange={v => updateForm("fullName", v)} placeholder="Nguyễn Văn A" />
+                                                    {form.fullName && !validateName(form.fullName).valid && <p className="text-xs text-red-500 mt-1">{validateName(form.fullName).message}</p>}
+                                                </div>
+                                                <div>
+                                                    <FormField label="Số điện thoại *" icon="call" value={form.phone} onChange={v => updateForm("phone", v)} placeholder="0901 234 567" type="tel" />
+                                                    {form.phone && !validatePhone(form.phone).valid && <p className="text-xs text-red-500 mt-1">{validatePhone(form.phone).message}</p>}
+                                                </div>
+                                                <FormField label="Ngày sinh" icon="cake" value={form.dob} onChange={v => updateForm("dob", v)} type="date" />
+                                                <div>
+                                                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Giới tính *</label>
+                                                    <div className="flex gap-2">
+                                                        {[{ v: "male", l: "Nam" }, { v: "female", l: "Nữ" }, { v: "other", l: "Khác" }].map(g => (
+                                                            <button key={g.v} onClick={() => updateForm("gender", g.v)}
+                                                                className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all
+                                                                ${form.gender === g.v ? "border-[#3C81C6] bg-[#3C81C6]/[0.06] text-[#3C81C6]" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
+                                                                {g.l}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                                <FormField label="CCCD" icon="badge" value={form.idNumber} onChange={v => updateForm("idNumber", v)} placeholder="001234567890" />
+                                                <FormField label="Số BHYT" icon="health_and_safety" value={form.insuranceNumber} onChange={v => updateForm("insuranceNumber", v)} placeholder="HS4010..." />
+                                            </div>
+
+                                            <FormField label="Địa chỉ" icon="location_on" value={form.address} onChange={v => updateForm("address", v)} placeholder="Số nhà, đường, quận, TP" full />
+
+                                            <div>
+                                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Triệu chứng / Lý do khám</label>
+                                                <textarea value={form.symptoms} onChange={e => updateForm("symptoms", e.target.value)}
+                                                    placeholder="Mô tả triệu chứng hoặc lý do bạn muốn khám..."
+                                                    className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 bg-gray-50 min-h-[100px] resize-none" />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="p-5 bg-orange-50 text-orange-800 rounded-2xl border border-orange-100 flex items-start flex-col gap-3">
+                                            <div className="flex gap-3">
+                                                <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 shrink-0">
+                                                    <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>warning</span>
+                                                </div>
+                                                <div>
+                                                    <p className="font-bold text-base mt-2">Chưa có hồ sơ bệnh nhân</p>
+                                                    <p className="text-sm mt-2 font-medium">Tài khoản này chưa có hồ sơ bệnh nhân. Bạn cần tạo ít nhất một hồ sơ bệnh nhân để có thể đặt lịch khám.</p>
+                                                    <Link href="/patient/profile" className="inline-flex items-center gap-2 mt-4 px-6 py-2.5 bg-white border-2 border-orange-200 text-orange-700 font-bold text-sm rounded-xl hover:bg-orange-100 transition-colors">
+                                                        Tạo hồ sơ ngay
+                                                        <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>arrow_forward</span>
+                                                    </Link>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
-
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div>
-                                            <FormField label="Họ và tên *" icon="person" value={form.fullName} onChange={v => updateForm("fullName", v)} placeholder="Nguyễn Văn A" />
-                                            {form.fullName && !validateName(form.fullName).valid && <p className="text-xs text-red-500 mt-1">{validateName(form.fullName).message}</p>}
-                                        </div>
-                                        <div>
-                                            <FormField label="Số điện thoại *" icon="call" value={form.phone} onChange={v => updateForm("phone", v)} placeholder="0901 234 567" type="tel" />
-                                            {form.phone && !validatePhone(form.phone).valid && <p className="text-xs text-red-500 mt-1">{validatePhone(form.phone).message}</p>}
-                                        </div>
-                                        <FormField label="Ngày sinh" icon="cake" value={form.dob} onChange={v => updateForm("dob", v)} type="date" />
-                                        <div>
-                                            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Giới tính *</label>
-                                            <div className="flex gap-2">
-                                                {[{ v: "male", l: "Nam" }, { v: "female", l: "Nữ" }, { v: "other", l: "Khác" }].map(g => (
-                                                    <button key={g.v} onClick={() => updateForm("gender", g.v)}
-                                                        className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all
-                                                        ${form.gender === g.v ? "border-[#3C81C6] bg-[#3C81C6]/[0.06] text-[#3C81C6]" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                                                        {g.l}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                        <FormField label="CCCD" icon="badge" value={form.idNumber} onChange={v => updateForm("idNumber", v)} placeholder="001234567890" />
-                                        <FormField label="Số BHYT" icon="health_and_safety" value={form.insuranceNumber} onChange={v => updateForm("insuranceNumber", v)} placeholder="HS4010..." />
-                                    </div>
-
-                                    <FormField label="Địa chỉ" icon="location_on" value={form.address} onChange={v => updateForm("address", v)} placeholder="Số nhà, đường, quận, TP" full />
-
-                                    <div>
-                                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Triệu chứng / Lý do khám</label>
-                                        <textarea value={form.symptoms} onChange={e => updateForm("symptoms", e.target.value)}
-                                            placeholder="Mô tả triệu chứng hoặc lý do bạn muốn khám..."
-                                            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 bg-gray-50 min-h-[100px] resize-none" />
-                                    </div>
                                 </>
                             )}
                         </div>

@@ -18,41 +18,57 @@ export type IdentityType = 'CCCD' | 'PASSPORT' | 'OTHER';
 export type RelationType = 'PARENT' | 'SPOUSE' | 'CHILD' | 'SIBLING' | 'OTHER';
 
 export interface Patient {
-    patient_id: string;
+    id: string;
     patient_code: string;
+    account_id: string | null;
     full_name: string;
     date_of_birth: string;
-    gender: PatientGender;
-    identity_type?: IdentityType;
-    identity_number?: string;
+    gender: string;
+    phone_number: string | null;
+    email: string | null;
+    id_card_number: string | null;
+    address: string | null;
+    province_id: number | null;
+    district_id: number | null;
+    ward_id: number | null;
+    emergency_contact_name: string | null;
+    emergency_contact_phone: string | null;
     status: PatientStatus;
     created_at: string;
     updated_at: string;
+    deleted_at: string | null;
+    account_email?: string;
+    account_phone?: string;
 }
 
 export interface CreatePatientRequest {
     full_name: string;
-    date_of_birth: string; // format: YYYY-MM-DD
-    gender?: PatientGender;
-    identity_type?: IdentityType;
-    identity_number?: string;
-    nationality?: string;
-    contact: {
-        phone_number: string;
-        email?: string;
-        street_address?: string;
-        ward?: string;
-        province?: string;
-    };
+    date_of_birth: string;
+    gender: string;
+    phone_number?: string;
+    email?: string;
+    id_card_number?: string;
+    address?: string;
+    province_id?: number;
+    district_id?: number;
+    ward_id?: number;
+    emergency_contact_name?: string;
+    emergency_contact_phone?: string;
 }
 
 export interface UpdatePatientRequest {
     full_name?: string;
     date_of_birth?: string;
-    gender?: PatientGender;
-    identity_type?: IdentityType;
-    identity_number?: string;
-    nationality?: string;
+    gender?: string;
+    phone_number?: string;
+    email?: string;
+    id_card_number?: string;
+    address?: string;
+    province_id?: number;
+    district_id?: number;
+    ward_id?: number;
+    emergency_contact_name?: string;
+    emergency_contact_phone?: string;
 }
 
 export interface PatientContact {
@@ -177,6 +193,36 @@ export const updatePatient = async (patientId: string, data: UpdatePatientReques
         return {
             success: false,
             message: error.response?.data?.message || 'Cập nhật thất bại',
+        };
+    }
+};
+
+/**
+ * Liên kết hồ sơ bệnh nhân với tài khoản hiện tại
+ */
+export const linkAccount = async (patientId: string, accountId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.patch(PATIENT_ENDPOINTS.LINK_ACCOUNT(patientId), { account_id: accountId });
+        return response.data;
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Liên kết hồ sơ thất bại',
+        };
+    }
+};
+
+/**
+ * Hủy liên kết hồ sơ bệnh nhân khỏi tài khoản hiện tại
+ */
+export const unlinkAccount = async (patientId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.patch(PATIENT_ENDPOINTS.UNLINK_ACCOUNT(patientId));
+        return response.data;
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Hủy liên kết hồ sơ thất bại',
         };
     }
 };
@@ -322,5 +368,80 @@ export const deleteRelation = async (patientId: string, relationId: string): Pro
         return response.data;
     } catch (error: any) {
         return { success: false, message: error.response?.data?.message || 'Xóa người thân thất bại' };
+    }
+};
+
+/**
+ * Lấy danh sách tất cả người thân
+ */
+export const getRelations = async (patientId: string): Promise<{ success: boolean; data?: PatientRelation[]; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_ENDPOINTS.GET_ALL_RELATIONS(patientId));
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Lấy danh sách người thân thất bại' };
+    }
+};
+
+/**
+ * Lấy danh sách liên hệ khẩn cấp
+ */
+export const getEmergencyContacts = async (patientId: string): Promise<{ success: boolean; data?: PatientRelation[]; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_ENDPOINTS.GET_EMERGENCY_CONTACTS(patientId));
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Lấy danh sách liên hệ khẩn cấp thất bại' };
+    }
+};
+
+/**
+ * Lấy danh sách người nhà (bình thường)
+ */
+export const getNormalRelatives = async (patientId: string): Promise<{ success: boolean; data?: PatientRelation[]; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_ENDPOINTS.GET_NORMAL_RELATIVES(patientId));
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Lấy danh sách người nhà thất bại' };
+    }
+};
+
+/**
+ * Thêm liên hệ khẩn cấp/người nhà
+ */
+export const addPatientContact = async (patientId: string, data: any): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.post(`/api/patients/${patientId}/contacts`, data);
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Thêm liên hệ thất bại' };
+    }
+};
+
+/**
+ * Cập nhật bảo hiểm
+ */
+export const updatePatientInsurance = async (patientId: string, data: any): Promise<{ success: boolean; message?: string }> => {
+    try {
+        // Mocked or use real endpoint if available
+        const response = await axiosClient.post(`/api/patients/${patientId}/insurances`, data);
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Cập nhật bảo hiểm thất bại' };
+    }
+};
+
+/**
+ * Thêm tài liệu
+ */
+export const uploadPatientDocument = async (patientId: string, data: any): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.post(`/api/patients/${patientId}/documents`, data, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Thêm tài liệu thất bại' };
     }
 };

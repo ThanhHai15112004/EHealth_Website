@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
 import { getAppointmentById, cancelAppointment, type Appointment } from "@/services/appointmentService";
-import { getMockAppointmentById } from "@/data/patient-mock";
+import { useToast } from "@/contexts/ToastContext";
 
 const STATUS_TIMELINE = [
     { status: "pending", label: "Đã đặt lịch", icon: "edit_calendar" },
@@ -34,14 +34,15 @@ export default function AppointmentDetailPage() {
     const loadAppointment = async () => {
         try {
             setLoading(true);
-            const apt = await getAppointmentById(id);
-            if (apt && apt.id) {
-                setAppointment(apt);
+            const res = await getAppointmentById(id);
+            if (res.data) {
+                setAppointment(res.data);
             } else {
-                setAppointment(getMockAppointmentById(id));
+                setAppointment(null);
             }
-        } catch {
-            setAppointment(getMockAppointmentById(id));
+        } catch (error) {
+            console.error(error);
+            setAppointment(null);
         } finally {
             setLoading(false);
         }

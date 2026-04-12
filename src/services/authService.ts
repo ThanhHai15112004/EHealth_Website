@@ -70,9 +70,15 @@ export interface AuthResponse {
 // ============================================
 export const login = async (credentials: LoginCredentials): Promise<AuthResponse> => {
     try {
-        // Swagger: clientInfo là object nested, không phải top-level fields
-        const deviceId = credentials.clientInfo?.deviceId
-            || `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        // Sử dụng deviceId cố định cho mỗi trình duyệt để tái sử dụng session
+        let deviceId = credentials.clientInfo?.deviceId;
+        if (!deviceId) {
+            deviceId = localStorage.getItem('ehealth_device_id') || '';
+            if (!deviceId) {
+                deviceId = `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                localStorage.setItem('ehealth_device_id', deviceId);
+            }
+        }
         const response = await axiosClient.post(AUTH_ENDPOINTS.LOGIN_EMAIL, {
             email: credentials.email,
             password: credentials.password,
@@ -110,8 +116,14 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
 // ============================================
 export const loginByPhone = async (credentials: LoginPhoneCredentials): Promise<AuthResponse> => {
     try {
-        const deviceId = credentials.clientInfo?.deviceId
-            || `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        let deviceId = credentials.clientInfo?.deviceId;
+        if (!deviceId) {
+            deviceId = localStorage.getItem('ehealth_device_id') || '';
+            if (!deviceId) {
+                deviceId = `web_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+                localStorage.setItem('ehealth_device_id', deviceId);
+            }
+        }
         const response = await axiosClient.post(AUTH_ENDPOINTS.LOGIN_PHONE, {
             phone: credentials.phone,
             password: credentials.password,

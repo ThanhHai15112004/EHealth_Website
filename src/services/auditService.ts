@@ -1,16 +1,13 @@
-import axiosClient from '@/api/axiosClient';
-import { AUDIT_LOG_ENDPOINTS } from '@/api/endpoints';
+import { ActivityLog } from "@/types";
 
 export const auditService = {
-    getLogs: (params?: Record<string, any>) =>
-        axiosClient.get(AUDIT_LOG_ENDPOINTS.LIST, { params }),
-
-    getDetail: (id: string) =>
-        axiosClient.get(AUDIT_LOG_ENDPOINTS.DETAIL(id)),
-
-    exportExcel: (params?: Record<string, any>) =>
-        axiosClient.get(AUDIT_LOG_ENDPOINTS.EXPORT_EXCEL, {
-            params,
-            responseType: 'blob',
-        }),
+    getLogs: async (params?: { limit?: number }) => {
+        // Return mock data that shapes what the UI expects
+        return {
+            success: true,
+            data: {
+                items: [],
+            }
+        };
+    }
 };

@@ -141,10 +141,12 @@ export const filterMockDoctors = (params?: {
     return { data, pagination: { page, limit, total, totalPages } };
 };
 
-export const filterMockAppointments = (statusFilter?: string): Appointment[] => {
-    if (!statusFilter) return MOCK_APPOINTMENTS;
+export const filterMockAppointments = (patientId?: string, statusFilter?: string): Appointment[] => {
+    let filtered = MOCK_APPOINTMENTS;
+    if (patientId) filtered = filtered.filter(a => a.patientId === patientId);
+    if (!statusFilter) return filtered;
     const statuses = statusFilter.split(",").map(s => s.trim());
-    return MOCK_APPOINTMENTS.filter(a => statuses.includes(a.status));
+    return filtered.filter(a => statuses.includes(a.status));
 };
 
 export const getMockAppointmentById = (id: string): Appointment | null => {

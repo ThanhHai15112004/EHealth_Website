@@ -5,7 +5,6 @@ import Link from "next/link";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
 import { useAuth } from "@/contexts/AuthContext";
 import { getAppointments, type Appointment } from "@/services/appointmentService";
-import { filterMockAppointments } from "@/data/patient-mock";
 import { getPatientsByAccountId, type Patient } from "@/services/patientService";
 
 const TABS = [
@@ -26,10 +25,16 @@ export default function AppointmentsPage() {
     useEffect(() => {
         if (!user?.id) return;
         const loadProfiles = async () => {
-            const res = await getPatientsByAccountId(user.id);
-            if (res.success && res.data && res.data.length > 0) {
-                setProfiles(res.data);
-                setSelectedProfileId(res.data[0].patient_id);
+            try {
+                const res = await getPatientsByAccountId(user.id);
+                if (res.success && res.data && res.data.length > 0) {
+                    setProfiles(res.data);
+                    setSelectedProfileId(res.data[0].id);
+                } else {
+                    setLoading(false);
+                }
+            } catch (error) {
+                setLoading(false);
             }
         };
         loadProfiles();
@@ -70,17 +75,8 @@ export default function AppointmentsPage() {
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Lịch hẹn của tôi</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">Quản lý tất cả lịch hẹn khám bệnh</p>
-                    {profiles.length > 0 && (
-                        <div className="flex items-center gap-2 mt-3">
-                            <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>person</span>
-                            <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
-                                className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-[#1e242b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 font-medium">
-                                {profiles.map(p => <option key={p.patient_id} value={p.patient_id}>{p.full_name}</option>)}
-                            </select>
-                        </div>
-                    )}
+                    <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Lịch hẹn của tôi</h1>
+                    <p className="text-sm text-[#687582] mt-0.5">Quản lý tất cả lịch hẹn khám bệnh</p>
                 </div>
                 <Link href="/booking"
                     className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white text-sm font-semibold rounded-xl shadow-md shadow-[#3C81C6]/20 hover:shadow-lg transition-all active:scale-[0.97]">
@@ -89,14 +85,38 @@ export default function AppointmentsPage() {
                 </Link>
             </div>
 
+            {/* Profile Selector */}
+            {profiles.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar mt-2">
+                    {profiles.map(p => (
+                        <div
+                            key={p.id}
+                            onClick={() => setSelectedProfileId(p.id)}
+                            className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
+                        >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
+                                {p.full_name?.charAt(0)?.toUpperCase() || "U"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-bold truncate ${selectedProfileId === p.id ? 'text-[#3C81C6]' : 'text-gray-900 dark:text-white'}`}>{p.full_name}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{(p as any).phone_number || (p as any).contact?.phone_number || "Chưa có SĐT"}</p>
+                            </div>
+                            {selectedProfileId === p.id && (
+                                <span className="material-symbols-outlined text-[#3C81C6] shrink-0" style={{ fontSize: "20px" }}>check_circle</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* Tabs */}
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+            <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
                 {TABS.map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all
-                        ${activeTab === tab.id ? "bg-white text-[#3C81C6] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all
+                        ${activeTab === tab.id ? "bg-[#3C81C6] text-white shadow-sm shadow-[#3C81C6]/20" : "bg-white dark:bg-[#1e242b] text-[#687582] hover:bg-gray-50 dark:hover:bg-[#252d36] border border-[#e5e7eb] dark:border-[#2d353e]"}`}>
                         <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{tab.icon}</span>
-                        <span className="hidden sm:inline">{tab.label}</span>
+                        {tab.label}
                     </button>
                 ))}
             </div>
@@ -116,6 +136,23 @@ export default function AppointmentsPage() {
                             </div>
                         </div>
                     ))}
+                </div>
+            ) : profiles.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-gray-100 py-16 text-center">
+                    <span className="material-symbols-outlined text-gray-300 mb-4" style={{ fontSize: "64px" }}>
+                        person_add
+                    </span>
+                    <h3 className="text-lg font-semibold text-gray-700 mb-1">
+                        Chưa có hồ sơ bệnh nhân
+                    </h3>
+                    <p className="text-sm text-gray-400 mb-6">
+                        Vui lòng thêm hồ sơ bệnh nhân để có thể xem và đặt lịch khám
+                    </p>
+                    <Link href="/patient/medical-records"
+                        className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all">
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
+                        Thêm hồ sơ ngay
+                    </Link>
                 </div>
             ) : appointments.length === 0 ? (
                 <div className="bg-white rounded-2xl border border-gray-100 py-16 text-center">

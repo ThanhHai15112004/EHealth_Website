@@ -3,11 +3,8 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { getPatientsByAccountId, type Patient } from "@/services/patientService";
-import {
-    MOCK_VITAL_SIGNS, MOCK_HEALTH_TIMELINE, MOCK_MEDICAL_HISTORY,
-    MOCK_LAB_RESULTS, MOCK_MEDICATIONS,
-    type VitalSign, type HealthTimelineItem, type MedicalHistoryItem, type LabResult, type Medication,
-} from "@/data/patient-portal-mock";
+import { ehrService } from "@/services/ehrService";
+import { medicalRecordService } from "@/services/medicalRecordService";
 
 const TABS = [
     { id: "overview", label: "Tổng quan", icon: "dashboard" },
@@ -23,35 +20,113 @@ export default function HealthRecordsPage() {
     const [activeTab, setActiveTab] = useState("overview");
     const [profiles, setProfiles] = useState<Patient[]>([]);
     const [selectedProfileId, setSelectedProfileId] = useState("");
-    const latestVital = MOCK_VITAL_SIGNS[0];
+    
+    const [loading, setLoading] = useState(false);
+    const [latestVital, setLatestVital] = useState<any>(null);
+    const [timeline, setTimeline] = useState<any[]>([]);
+    const [history, setHistory] = useState<any[]>([]);
+    const [labResults, setLabResults] = useState<any[]>([]);
+    const [medications, setMedications] = useState<any[]>([]);
+    const [vitals, setVitals] = useState<any[]>([]);
 
     useEffect(() => {
         if (!user?.id) return;
         const loadProfiles = async () => {
-            const res = await getPatientsByAccountId(user.id);
-            if (res.success && res.data && res.data.length > 0) {
-                setProfiles(res.data);
-                setSelectedProfileId(res.data[0].patient_id);
+            try {
+                const res = await getPatientsByAccountId(user.id);
+                if (res.success && res.data && res.data.length > 0) {
+                    setProfiles(res.data);
+                    setSelectedProfileId(res.data[0].id);
+                }
+            } catch (error) {
+                console.error("Failed to load profiles", error);
             }
         };
         loadProfiles();
     }, [user?.id]);
+    
+    useEffect(() => {
+        if (!selectedProfileId) return;
+        
+        const fetchEhrData = async () => {
+            setLoading(true);
+            try {
+                // Fetch basic EHR data concurrently
+                const [
+                    encountersRes,
+                    vitalsRes,
+                    timelineRes,
+                    historyRes,
+                    allergiesRes
+                ] = await Promise.all([
+                    medicalRecordService.getByPatient(selectedProfileId).catch(() => ({ data: { data: [] } })),
+                    ehrService.getVitalHistory(selectedProfileId).catch(() => ({ data: { data: [] } })),
+                    ehrService.getTimeline(selectedProfileId).catch(() => ({ data: { data: [] } })),
+                    ehrService.getMedicalHistory(selectedProfileId).catch(() => ({ data: { data: [] } })),
+                    ehrService.getAllergies(selectedProfileId).catch(() => ({ data: { data: [] } }))
+                ]);
+                
+                // Set data or fallback immediately ensuring UI state does not break
+                const timelineData = timelineRes.data?.data || timelineRes.data || [];
+                const historyData = historyRes.data?.data || historyRes.data || [];
+                const vitalsData = vitalsRes.data?.data || vitalsRes.data || [];
+                const latestVitalCall = await ehrService.getLatestVitals(selectedProfileId).catch(() => ({ data: { data: null } }));
+
+                setLatestVital(latestVitalCall.data?.data || latestVitalCall.data || vitalsData[0] || null);
+                setTimeline(Array.isArray(timelineData) ? timelineData : []);
+                setHistory(Array.isArray(historyData) ? historyData : []);
+                setVitals(Array.isArray(vitalsData) ? vitalsData : []);
+                
+                // Meds and Labs are normally inside timeline.
+                setMedications([]);
+                setLabResults([]);
+            } catch (error) {
+                console.error("Failed to load EHR data:", error);
+                // Fallback hard states during testing
+                setLatestVital(null);
+                setTimeline([]);
+                setHistory([]);
+                setVitals([]);
+                setMedications([]);
+                setLabResults([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+        
+        fetchEhrData();
+    }, [selectedProfileId]);
 
     return (
         <div className="space-y-6">
             <div>
                 <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Hồ sơ sức khỏe điện tử</h1>
                 <p className="text-sm text-[#687582] mt-0.5">Theo dõi toàn diện sức khỏe của bạn qua thời gian</p>
-                {profiles.length > 0 && (
-                    <div className="flex items-center gap-2 mt-3">
-                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>person</span>
-                        <select value={selectedProfileId} onChange={e => setSelectedProfileId(e.target.value)}
-                            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-[#1e242b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 font-medium">
-                            {profiles.map(p => <option key={p.patient_id} value={p.patient_id}>{p.full_name}</option>)}
-                        </select>
-                    </div>
-                )}
             </div>
+
+            {/* Profile Selector */}
+            {profiles.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar mt-2">
+                    {profiles.map(p => (
+                        <div
+                            key={p.id}
+                            onClick={() => setSelectedProfileId(p.id)}
+                            className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
+                        >
+                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
+                                {p.full_name?.charAt(0)?.toUpperCase() || "U"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <p className={`text-sm font-bold truncate ${selectedProfileId === p.id ? 'text-[#3C81C6]' : 'text-gray-900 dark:text-white'}`}>{p.full_name}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{(p as any).phone_number || (p as any).contact?.phone_number || "Chưa có SĐT"}</p>
+                            </div>
+                            {selectedProfileId === p.id && (
+                                <span className="material-symbols-outlined text-[#3C81C6] shrink-0" style={{ fontSize: "20px" }}>check_circle</span>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            )}
 
             <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
                 {TABS.map(tab => (
@@ -64,26 +139,59 @@ export default function HealthRecordsPage() {
                 ))}
             </div>
 
-            <div>
-                {activeTab === "overview" && <OverviewTab vital={latestVital} />}
-                {activeTab === "timeline" && <TimelineTab items={MOCK_HEALTH_TIMELINE} />}
-                {activeTab === "history" && <MedicalHistoryTab items={MOCK_MEDICAL_HISTORY} />}
-                {activeTab === "lab" && <LabResultsTab results={MOCK_LAB_RESULTS} />}
-                {activeTab === "medications" && <MedicationsTab medications={MOCK_MEDICATIONS} />}
-                {activeTab === "vitals" && <VitalsTab vitals={MOCK_VITAL_SIGNS} />}
+            <div className="min-h-[400px]">
+                {loading ? (
+                    <div className="flex justify-center items-center h-full py-20">
+                        <span className="material-symbols-outlined animate-spin text-[#3C81C6]" style={{ fontSize: "40px" }}>progress_activity</span>
+                    </div>
+                ) : profiles.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-gray-100 py-16 text-center">
+                        <span className="material-symbols-outlined text-gray-300 mb-4" style={{ fontSize: "64px" }}>
+                            person_add
+                        </span>
+                        <h3 className="text-lg font-semibold text-gray-700 mb-1">
+                            Chưa có hồ sơ bệnh nhân
+                        </h3>
+                        <p className="text-sm text-gray-400 mb-6">
+                            Vui lòng thêm hồ sơ bệnh nhân để xem theo dõi hồ sơ y tế
+                        </p>
+                        <a href="/patient/medical-records"
+                            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all">
+                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
+                            Thêm hồ sơ
+                        </a>
+                    </div>
+                ) : (
+                    <>
+                        {activeTab === "overview" && <OverviewTab vital={latestVital} history={history} medications={medications} timeline={timeline} />}
+                        {activeTab === "timeline" && <TimelineTab items={timeline} />}
+                        {activeTab === "history" && <MedicalHistoryTab items={history} />}
+                        {activeTab === "lab" && <LabResultsTab results={labResults} />}
+                        {activeTab === "medications" && <MedicationsTab medications={medications} />}
+                        {activeTab === "vitals" && <VitalsTab vitals={vitals} />}
+                    </>
+                )}
             </div>
         </div>
     );
 }
 
-function OverviewTab({ vital }: { vital: VitalSign }) {
+function OverviewTab({ vital, history, medications, timeline }: { vital: any; history: any[]; medications: any[]; timeline: any[] }) {
+    if (!vital) {
+        return (
+             <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-10 text-center">
+                 <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-2" style={{ fontSize: "48px" }}>monitor_heart</span>
+                 <p className="text-gray-500 font-medium">Chưa có chỉ số sinh hiệu</p>
+             </div>
+        );
+    }
     const healthCards = [
-        { label: "Huyết áp", value: `${vital.bloodPressureSystolic}/${vital.bloodPressureDiastolic}`, unit: "mmHg", icon: "bloodtype", color: "from-red-500 to-rose-600", ok: vital.bloodPressureSystolic <= 130 },
-        { label: "Nhịp tim", value: `${vital.heartRate}`, unit: "bpm", icon: "cardiology", color: "from-pink-500 to-red-500", ok: true },
-        { label: "BMI", value: vital.bmi.toFixed(1), unit: "", icon: "monitor_weight", color: "from-blue-500 to-indigo-600", ok: vital.bmi >= 18.5 && vital.bmi <= 25 },
-        { label: "SpO2", value: `${vital.spo2 || 98}`, unit: "%", icon: "pulmonology", color: "from-cyan-500 to-teal-600", ok: true },
-        { label: "Đường huyết", value: `${vital.bloodSugar || 95}`, unit: "mg/dL", icon: "water_drop", color: "from-amber-500 to-orange-500", ok: true },
-        { label: "Nhiệt độ", value: vital.temperature.toFixed(1), unit: "°C", icon: "thermostat", color: "from-green-500 to-emerald-600", ok: true },
+        { label: "Huyết áp", value: `${vital?.bloodPressureSystolic || "--"}/${vital?.bloodPressureDiastolic || "--"}`, unit: "mmHg", icon: "bloodtype", color: "from-red-500 to-rose-600", ok: (vital?.bloodPressureSystolic || 0) <= 130 },
+        { label: "Nhịp tim", value: `${vital?.heartRate || "--"}`, unit: "bpm", icon: "cardiology", color: "from-pink-500 to-red-500", ok: true },
+        { label: "BMI", value: vital?.bmi?.toFixed(1) || "--", unit: "", icon: "monitor_weight", color: "from-blue-500 to-indigo-600", ok: vital?.bmi >= 18.5 && vital?.bmi <= 25 },
+        { label: "SpO2", value: `${vital?.spo2 || "--"}`, unit: "%", icon: "pulmonology", color: "from-cyan-500 to-teal-600", ok: true },
+        { label: "Đường huyết", value: `${vital?.bloodSugar || "--"}`, unit: "mg/dL", icon: "water_drop", color: "from-amber-500 to-orange-500", ok: true },
+        { label: "Nhiệt độ", value: vital?.temperature?.toFixed(1) || "--", unit: "°C", icon: "thermostat", color: "from-green-500 to-emerald-600", ok: true },
     ];
 
     return (
@@ -115,9 +223,9 @@ function OverviewTab({ vital }: { vital: VitalSign }) {
                         <span className="material-symbols-outlined text-red-500" style={{ fontSize: "20px" }}>warning</span>Dị ứng
                     </h3>
                     <div className="flex flex-wrap gap-2">
-                        {MOCK_MEDICAL_HISTORY.filter(h => h.type === "allergy").map(a => (
+                        {history.filter(h => h.type === "allergy").length > 0 ? history.filter(h => h.type === "allergy").map(a => (
                             <span key={a.id} className="px-3 py-1.5 bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-400 text-xs font-semibold rounded-lg border border-red-100 dark:border-red-500/20">{a.name}</span>
-                        ))}
+                        )) : <p className="text-sm text-gray-500 italic">Không có ghi nhận dị ứng</p>}
                     </div>
                 </div>
                 <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
@@ -125,12 +233,12 @@ function OverviewTab({ vital }: { vital: VitalSign }) {
                         <span className="material-symbols-outlined text-green-500" style={{ fontSize: "20px" }}>medication</span>Thuốc đang dùng
                     </h3>
                     <div className="space-y-2">
-                        {MOCK_MEDICATIONS.filter(m => m.status === "active").map(m => (
+                        {medications.filter(m => m.status === "active").length > 0 ? medications.filter(m => m.status === "active").map(m => (
                             <div key={m.id} className="flex items-center gap-2 p-2 bg-[#f6f7f8] dark:bg-[#13191f] rounded-lg">
                                 <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "16px" }}>pill</span>
                                 <div><p className="text-sm font-semibold text-[#121417] dark:text-white">{m.name}</p><p className="text-xs text-[#687582]">{m.frequency}</p></div>
                             </div>
-                        ))}
+                        )) : <p className="text-sm text-gray-500 italic">Hiện không có thuốc đang dùng</p>}
                     </div>
                 </div>
             </div>
@@ -140,10 +248,10 @@ function OverviewTab({ vital }: { vital: VitalSign }) {
                     <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>timeline</span>Hoạt động gần đây
                 </h3>
                 <div className="space-y-3">
-                    {MOCK_HEALTH_TIMELINE.slice(0, 4).map(item => (
-                        <div key={item.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-[#f6f7f8] dark:hover:bg-[#13191f] transition-colors">
-                            <div className={`w-9 h-9 rounded-lg ${item.color} flex items-center justify-center flex-shrink-0`}>
-                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{item.icon}</span>
+                    {timeline.length > 0 ? timeline.slice(0, 4).map((item, idx) => (
+                        <div key={item.id || idx} className="flex items-start gap-3 p-2 rounded-lg hover:bg-[#f6f7f8] dark:hover:bg-[#13191f] transition-colors">
+                            <div className={`w-9 h-9 rounded-lg ${item.color || "bg-blue-100 text-blue-600"} flex items-center justify-center flex-shrink-0`}>
+                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{item.icon || "receipt_long"}</span>
                             </div>
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm font-semibold text-[#121417] dark:text-white truncate">{item.title}</p>
@@ -151,14 +259,20 @@ function OverviewTab({ vital }: { vital: VitalSign }) {
                             </div>
                             <span className="text-xs text-[#687582] whitespace-nowrap">{item.date}</span>
                         </div>
-                    ))}
+                    )) : <p className="text-sm text-gray-500 italic">Chưa có hoạt động gần đây</p>}
                 </div>
             </div>
         </div>
     );
 }
 
-function TimelineTab({ items }: { items: HealthTimelineItem[] }) {
+function TimelineTab({ items }: { items: any[] }) {
+    if (items.length === 0) return (
+         <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
+            <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Chưa có dòng thời gian</h3>
+            <p className="text-sm text-[#687582]">Bạn chưa có bản ghi sức khỏe nào được ghi nhận</p>
+        </div>
+    );
     return (
         <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
             <h3 className="text-lg font-bold text-[#121417] dark:text-white mb-6">Dòng thời gian sức khỏe</h3>
@@ -188,7 +302,12 @@ function TimelineTab({ items }: { items: HealthTimelineItem[] }) {
     );
 }
 
-function MedicalHistoryTab({ items }: { items: MedicalHistoryItem[] }) {
+function MedicalHistoryTab({ items }: { items: any[] }) {
+    if (items.length === 0) return (
+         <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
+            <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Không ghi nhận tiền sử bệnh</h3>
+        </div>
+    );
     const cfg: Record<string, { label: string; icon: string; color: string }> = {
         chronic: { label: "Bệnh mãn tính", icon: "medical_information", color: "text-red-500 bg-red-50 dark:bg-red-500/10" },
         allergy: { label: "Dị ứng", icon: "warning", color: "text-amber-500 bg-amber-50 dark:bg-amber-500/10" },
@@ -196,11 +315,12 @@ function MedicalHistoryTab({ items }: { items: MedicalHistoryItem[] }) {
         family: { label: "Tiền sử gia đình", icon: "group", color: "text-purple-500 bg-purple-50 dark:bg-purple-500/10" },
         risk_factor: { label: "Yếu tố nguy cơ", icon: "report", color: "text-orange-500 bg-orange-50 dark:bg-orange-500/10" },
     };
-    const grouped = items.reduce((acc, item) => { (acc[item.type] ||= []).push(item); return acc; }, {} as Record<string, MedicalHistoryItem[]>);
+    const grouped = items.reduce((acc, item) => { (acc[item.type] ||= []).push(item); return acc; }, {} as Record<string, any[]>);
 
     return (
         <div className="space-y-4">
-            {Object.entries(grouped).map(([type, group]) => {
+            {Object.entries(grouped).map(([type, groupArray]) => {
+                const group = groupArray as any[];
                 const c = cfg[type] || { label: type, icon: "info", color: "text-gray-500 bg-gray-50" };
                 return (
                     <div key={type} className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
@@ -212,7 +332,7 @@ function MedicalHistoryTab({ items }: { items: MedicalHistoryItem[] }) {
                             <span className="ml-auto text-xs bg-[#f6f7f8] dark:bg-[#13191f] text-[#687582] px-2 py-0.5 rounded-full">{group.length}</span>
                         </h3>
                         <div className="space-y-3">
-                            {group.map(item => (
+                            {group.map((item: any) => (
                                 <div key={item.id} className="flex items-start gap-3 p-3 rounded-xl bg-[#f6f7f8] dark:bg-[#13191f]">
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2">
@@ -234,7 +354,13 @@ function MedicalHistoryTab({ items }: { items: MedicalHistoryItem[] }) {
     );
 }
 
-function LabResultsTab({ results }: { results: LabResult[] }) {
+function LabResultsTab({ results }: { results: any[] }) {
+    if (!results || results.length === 0) return (
+        <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
+            <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-3" style={{ fontSize: "56px" }}>biotech</span>
+            <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Chưa có kết quả xét nghiệm</h3>
+        </div>
+    );
     const [expandedId, setExpandedId] = useState<string | null>(null);
     return (
         <div className="space-y-4">
@@ -262,7 +388,7 @@ function LabResultsTab({ results }: { results: LabResult[] }) {
                                 <thead><tr className="text-xs font-semibold text-[#687582] uppercase">
                                     <th className="text-left py-2">Chỉ số</th><th className="text-center py-2">Kết quả</th><th className="text-center py-2">Đ.vị</th><th className="text-center py-2">Tham chiếu</th><th className="text-right py-2">Đánh giá</th>
                                 </tr></thead>
-                                <tbody>{result.results.map((r, i) => (
+                                <tbody>{result.results.map((r: any, i: number) => (
                                     <tr key={i} className="border-t border-[#e5e7eb]/50 dark:border-[#2d353e]/50">
                                         <td className="py-2.5 font-medium text-[#121417] dark:text-white">{r.name}</td>
                                         <td className={`py-2.5 text-center font-bold ${r.status === "normal" ? "text-green-600" : "text-red-600"}`}>{r.value}</td>
@@ -284,7 +410,13 @@ function LabResultsTab({ results }: { results: LabResult[] }) {
     );
 }
 
-function MedicationsTab({ medications }: { medications: Medication[] }) {
+function MedicationsTab({ medications }: { medications: any[] }) {
+    if (!medications || medications.length === 0) return (
+        <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
+            <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-3" style={{ fontSize: "56px" }}>medication</span>
+            <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Không có đơn thuốc nào</h3>
+        </div>
+    );
     const active = medications.filter(m => m.status === "active");
     const done = medications.filter(m => m.status !== "active");
     return (
@@ -327,7 +459,13 @@ function MedicationsTab({ medications }: { medications: Medication[] }) {
     );
 }
 
-function VitalsTab({ vitals }: { vitals: VitalSign[] }) {
+function VitalsTab({ vitals }: { vitals: any[] }) {
+    if (!vitals || vitals.length === 0) return (
+        <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
+            <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-3" style={{ fontSize: "56px" }}>favorite</span>
+            <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Chưa có chỉ số sinh hiệu</h3>
+        </div>
+    );
     return (
         <div className="space-y-6">
             <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
@@ -338,10 +476,10 @@ function VitalsTab({ vitals }: { vitals: VitalSign[] }) {
                     {vitals.slice().reverse().map(v => (
                         <div key={v.id} className="flex-1 flex flex-col items-center gap-1 group">
                             <div className="flex gap-1 items-end w-full justify-center" style={{ height: "120px" }}>
-                                <div className="w-3 bg-gradient-to-t from-red-500 to-rose-400 rounded-t-md" style={{ height: `${(v.bloodPressureSystolic / 160) * 100}%` }} />
-                                <div className="w-3 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-md" style={{ height: `${(v.bloodPressureDiastolic / 160) * 100}%` }} />
+                                <div className="w-3 bg-gradient-to-t from-red-500 to-rose-400 rounded-t-md" style={{ height: `${((v.bloodPressureSystolic || 120) / 160) * 100}%` }} />
+                                <div className="w-3 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-md" style={{ height: `${((v.bloodPressureDiastolic || 80) / 160) * 100}%` }} />
                             </div>
-                            <span className="text-[10px] text-[#687582]">{v.date.slice(5)}</span>
+                            <span className="text-[10px] text-[#687582]">{v.date ? v.date.slice(5) : ""}</span>
                         </div>
                     ))}
                 </div>
@@ -363,11 +501,11 @@ function VitalsTab({ vitals }: { vitals: VitalSign[] }) {
                         <tbody>{vitals.map(v => (
                             <tr key={v.id} className="border-b border-[#e5e7eb]/50 dark:border-[#2d353e]/50 hover:bg-[#f6f7f8] dark:hover:bg-[#13191f]">
                                 <td className="py-3 font-medium text-[#121417] dark:text-white">{v.date}</td>
-                                <td className={`py-3 text-center ${v.bloodPressureSystolic > 130 ? "text-red-600 font-bold" : "text-[#121417] dark:text-white"}`}>{v.bloodPressureSystolic}/{v.bloodPressureDiastolic}</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.heartRate}</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.spo2}%</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.weight}kg</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.bmi.toFixed(1)}</td>
+                                <td className={`py-3 text-center ${(v.bloodPressureSystolic || 0) > 130 ? "text-red-600 font-bold" : "text-[#121417] dark:text-white"}`}>{v.bloodPressureSystolic || "--"}/{v.bloodPressureDiastolic || "--"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.heartRate || "--"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.spo2 ? `${v.spo2}%` : "--"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.weight ? `${v.weight}kg` : "--"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.bmi ? v.bmi.toFixed(1) : "--"}</td>
                             </tr>
                         ))}</tbody>
                     </table>

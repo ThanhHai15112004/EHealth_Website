@@ -148,6 +148,7 @@ export interface Invoice {
     code: string;
     date: string;
     dueDate?: string;
+    patientId?: string; // Newly added
     patientName: string;
     items: { name: string; quantity: number; unitPrice: number; total: number }[];
     subtotal: number;

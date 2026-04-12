@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import axiosClient from "@/api/axiosClient";
 import { PROFILE_ENDPOINTS, PATIENT_ENDPOINTS } from "@/api/endpoints";
 import { validateName, validatePhone, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
+import { getPatientsByAccountId } from "@/services/patientService";
 
 const TABS = [
     { id: "personal", label: "Thông tin cá nhân", icon: "person" },
@@ -40,6 +41,8 @@ interface FamilyMember {
 export default function ProfilePage() {
     const { user, updateUser } = useAuth();
     const { showToast } = useToast();
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
     const [activeTab, setActiveTab] = useState("personal");
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -55,11 +58,61 @@ export default function ProfilePage() {
     });
     const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
     const [showAddFamily, setShowAddFamily] = useState(false);
+    const [primaryPatientId, setPrimaryPatientId] = useState<string | null>(null);
     const [newFamily, setNewFamily] = useState<Partial<FamilyMember>>({ name: "", dob: "", gender: "male", relation: "", phone: "" });
 
     // Password change
     const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
     const [errors, setErrors] = useState<Record<string, string>>({});
+
+    const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            showToast("Vui lòng chọn file hình ảnh", "error");
+            return;
+        }
+
+        if (file.size > 5 * 1024 * 1024) {
+            showToast("Kích thước ảnh không được vượt quá 5MB", "error");
+            return;
+        }
+
+        try {
+            setIsUploadingAvatar(true);
+            const formData = new FormData();
+            formData.append('avatar', file);
+
+            const res = await axiosClient.post(PROFILE_ENDPOINTS.AVATAR, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+            });
+
+            const data = res.data?.data || res.data;
+            let avatarUrl = data?.avatarUrl || data?.avatar_url || data?.url || data?.file_path;
+            if (Array.isArray(avatarUrl)) {
+                 avatarUrl = avatarUrl[0]?.url || avatarUrl[0];
+            }
+
+            if ((res.data?.success || res.data?.status === 'success') && avatarUrl) {
+                setProfile(prev => ({ ...prev, avatar: avatarUrl }));
+                updateUser({ avatar: avatarUrl });
+                showToast("Cập nhật ảnh đại diện thành công", "success");
+            } else {
+                throw new Error("Lỗi khi kết nối hoặc URL rỗng");
+            }
+        } catch (error: any) {
+            console.error("Upload avatar error:", error);
+            showToast(error.response?.data?.message || "Lỗi khi tải ảnh lên", "error");
+        } finally {
+            setIsUploadingAvatar(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
 
     const validateProfile = (): boolean => {
         const errs: Record<string, string> = {};
@@ -89,6 +142,59 @@ export default function ProfilePage() {
         loadProfile();
     }, []);
 
+    useEffect(() => {
+        if (user?.id) {
+            initFamilyMembers();
+        }
+    }, [user?.id]);
+
+    const initFamilyMembers = async () => {
+        if (!user?.id) return;
+        try {
+            const patientsRes = await getPatientsByAccountId(user.id);
+            if (patientsRes.success && patientsRes.data && patientsRes.data.length > 0) {
+                const pId = patientsRes.data[0].id; // assuming first is primary
+                setPrimaryPatientId(pId);
+                await loadFamilyMembers(pId);
+            } else {
+                setFamilyMembers([]);
+            }
+        } catch (err: any) {
+            console.error("Failed to init family members", err);
+        }
+    };
+
+    const loadFamilyMembers = async (pId: string = primaryPatientId as string) => {
+        if (!pId) return;
+        try {
+            const res = await axiosClient.get(PATIENT_ENDPOINTS.GET_ALL_RELATIONS(pId));
+            const responseData = res.data?.data || res.data;
+            if (Array.isArray(responseData)) {
+                setFamilyMembers(responseData.map((r: any) => ({
+                    id: r.relation_id || r.patient_contacts_id || r.id,
+                    name: r.full_name || r.contact_name || r.name,
+                    dob: r.dob || "",
+                    gender: r.gender || "MALE",
+                    relation: r.relationship || r.relation_type_name || r.relation,
+                    phone: r.phone_number || r.phone || "",
+                })));
+            }
+        } catch (err: any) {
+            console.error("Failed to load family members", err);
+        }
+    };
+
+    /** Convert ISO/any date string to yyyy-MM-dd for <input type="date"> */
+    const toDateInputValue = (raw: string | undefined | null): string => {
+        if (!raw) return "";
+        // Already yyyy-MM-dd
+        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+        // ISO string like "2000-04-11T17:00:00.000Z"
+        const d = new Date(raw);
+        if (isNaN(d.getTime())) return "";
+        return d.toISOString().split("T")[0];
+    };
+
     const loadProfile = async () => {
         try {
             const res = await axiosClient.get(PROFILE_ENDPOINTS.ME);
@@ -98,12 +204,14 @@ export default function ProfilePage() {
                     fullName: data.full_name || data.fullName || user?.fullName || "",
                     phone: data.phone_number || data.phone || user?.phone || "",
                     email: data.email || user?.email || "",
-                    dob: data.dob || data.dateOfBirth || "",
+                    dob: toDateInputValue(data.dob || data.dateOfBirth || data.date_of_birth),
                     gender: data.gender || "MALE",
                     idNumber: data.identity_card_number || data.idNumber || data.citizenId || "",
                     insuranceNumber: data.insuranceNumber || data.healthInsuranceId || "",
                     address: data.address || "",
-                    avatar: data.avatar_url?.[0]?.url || data.avatar,
+                    avatar: (Array.isArray(data.avatar_url) && data.avatar_url.length > 0) 
+                        ? data.avatar_url[data.avatar_url.length - 1].url 
+                        : (data.avatar_url?.url || data.avatar),
                 });
             }
         } catch { /* use defaults */ }
@@ -159,10 +267,19 @@ export default function ProfilePage() {
     const handleAddFamily = async () => {
         if (!newFamily.name || !newFamily.relation) return;
         try {
-            if (user?.id) {
-                await axiosClient.post(PATIENT_ENDPOINTS.ADD_RELATION(user.id), newFamily);
+            if (primaryPatientId) {
+                // relation is ID if selected from a list, otherwise just a string. 
+                // Wait, if it expects relationship, let's pass relation_type_id or relationship.
+                await axiosClient.post(PATIENT_ENDPOINTS.ADD_RELATION(primaryPatientId), {
+                    contact_name: newFamily.name,
+                    relation_type_id: newFamily.relation, // Wait, relations API might expect relation_type_id
+                    phone_number: newFamily.phone,
+                    is_emergency_contact: false,
+                });
+                await loadFamilyMembers(primaryPatientId);
+            } else {
+                setFamilyMembers(prev => [...prev, { ...newFamily, id: `fm-${Date.now()}` } as FamilyMember]);
             }
-            setFamilyMembers(prev => [...prev, { ...newFamily, id: `fm-${Date.now()}` } as FamilyMember]);
             setShowAddFamily(false);
             setNewFamily({ name: "", dob: "", gender: "male", relation: "", phone: "" });
             showToast("Thêm người thân thành công!", "success");
@@ -187,12 +304,32 @@ export default function ProfilePage() {
             {/* Profile card */}
             <div className="bg-white rounded-2xl border border-gray-100 p-6 flex flex-col sm:flex-row items-center sm:items-start gap-5">
                 <div className="relative">
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-[#3C81C6]/20">
-                        {profile.fullName?.charAt(0)?.toUpperCase() || "U"}
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-[#3C81C6]/20 overflow-hidden">
+                        {profile.avatar ? (
+                            <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                        ) : (
+                            profile.fullName?.charAt(0)?.toUpperCase() || "U"
+                        )}
+                        {isUploadingAvatar && (
+                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                            </div>
+                        )}
                     </div>
-                    <button className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 shadow-sm transition-colors">
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploadingAvatar}
+                        className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 shadow-sm transition-colors disabled:opacity-50"
+                    >
                         <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>edit</span>
                     </button>
+                    <input
+                        type="file"
+                        ref={fileInputRef}
+                        onChange={handleAvatarUpload}
+                        accept="image/*"
+                        className="hidden"
+                    />
                 </div>
                 <div className="text-center sm:text-left">
                     <h2 className="text-xl font-bold text-gray-900">{profile.fullName || "Bệnh nhân"}</h2>
@@ -242,7 +379,7 @@ export default function ProfilePage() {
                             ) : (
                                 <div className="flex gap-2">
                                     <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm font-medium text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50">Huỷ</button>
-                                    <button onClick={handleSave} disabled={saving}
+                                    <button onClick={handleSave} disabled={saving} aria-label="Lưu thông tin"
                                         className="px-4 py-2 text-sm font-semibold text-white bg-[#3C81C6] rounded-xl hover:bg-[#2a6da8] disabled:opacity-50 transition-colors">
                                         {saving ? "Đang lưu..." : "Lưu"}
                                     </button>
