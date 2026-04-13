@@ -427,7 +427,7 @@ function ActivityTab({ userId }: { userId: string }) {
     useEffect(() => {
         const fetchAuditLogs = async () => {
             try {
-                const { axiosClient } = await import('@/api/axiosClient');
+                const axiosClient = (await import('@/api/axiosClient')).default;
                 const { AUDIT_LOG_ENDPOINTS } = await import('@/api/endpoints');
                 
                 const res = await axiosClient.get(AUDIT_LOG_ENDPOINTS.LIST, { 
