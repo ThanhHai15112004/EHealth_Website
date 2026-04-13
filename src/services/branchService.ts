@@ -2,6 +2,18 @@ import axiosClient from "@/api/axiosClient";
 import { BRANCH_ENDPOINTS } from "@/api/endpoints";
 import { unwrap, unwrapList } from "@/api/response";
 
+export interface Branch {
+  id: string;
+  name: string;
+  code?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  facilityId?: string;
+  status?: "active" | "inactive";
+  createdAt?: string;
+}
+
 export const branchService = {
   getList: async (params?: any) => {
     const res = await axiosClient.get(BRANCH_ENDPOINTS.LIST, { params });

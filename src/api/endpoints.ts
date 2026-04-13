@@ -371,6 +371,7 @@ export const PATIENT_ENDPOINTS = {
     DELETE_RELATION: (patientId: string, relationId: string) => `/api/patients/${patientId}/relations/${relationId}`,
     MEDICAL_RECORDS: (patientId: string) => `/api/patients/${patientId}/medical-records`,
     PRESCRIPTIONS: (patientId: string) => `/api/patients/${patientId}/prescriptions`,
+    AUDIT_LOGS: (patientId: string) => `/api/patients/${patientId}/audit-logs`,
 };
 
 export const APPOINTMENT_ENDPOINTS = {
@@ -539,6 +540,10 @@ export const EHR_ENDPOINTS = {
     PROFILE: (patientId: string) => `/api/ehr/patients/${patientId}/profile`,
     RISK_FACTORS: (patientId: string) => `/api/ehr/patients/${patientId}/risk-factors`,
     NOTES: (patientId: string) => `/api/ehr/patients/${patientId}/notes`,
+    // Aliases (POST endpoints — dùng chung path với GET)
+    ADD_HEALTH_METRIC: (patientId: string) => `/api/ehr/patients/${patientId}/vitals`,
+    ADD_ALLERGY: (patientId: string) => `/api/ehr/patients/${patientId}/allergies`,
+    ADD_MEDICAL_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/medical-histories`,
 };
 
 // ============================================
