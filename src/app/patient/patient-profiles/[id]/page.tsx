@@ -7,7 +7,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { getPatientDetail } from "@/services/patientService";
 import PatientDetail from "../PatientDetail";
 import { type PatientProfile } from "@/data/patient-profiles-mock";
-import { mapToProfile } from "../page";
+import { mapToProfile } from "@/utils/patientMapper";
 
 export default function PatientProfileDetailPage() {
     const { id } = useParams<{ id: string }>();

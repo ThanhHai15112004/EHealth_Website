@@ -13,7 +13,7 @@
 // ============================================
 export const API_CONFIG = {
     // URL của Backend API
-    BASE_URL: process.env.NEXT_PUBLIC_API_URL || 'https://dev.thanhhaishopwebsite.id.vn',
+    BASE_URL: process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://dev.thanhhaishopwebsite.id.vn'),
 
     // Thời gian timeout cho mỗi request (30 giây)
     TIMEOUT: 30000,
