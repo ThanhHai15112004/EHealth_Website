@@ -6,17 +6,10 @@ import { dispensingService } from "@/services/dispensingService";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 import { AIDispensingAssistant } from "@/components/portal/ai";
 
-const MOCK_DISPENSING = {
-    id: "DT003", patient: "Trần Văn Cường", patientId: "BN-24933", age: 58, gender: "Nam", phone: "0903 *** 789",
-    doctor: "BS. Ngô Đức", dept: "Tim mạch", diagnosis: "Tăng huyết áp, Đái tháo đường type 2",
-    date: "25/02/2025", note: "Uống thuốc đều đặn, tái khám sau 1 tháng",
-    medicines: [
-        { name: "Amlodipine 5mg", qty: "30 viên", dosage: "Uống 1 viên mỗi sáng", lot: "LOT-2025-001", expiry: "12/2026" },
-        { name: "Aspirin 81mg", qty: "30 viên", dosage: "Uống 1 viên sau ăn trưa", lot: "LOT-2025-002", expiry: "09/2026" },
-        { name: "Atorvastatin 10mg", qty: "30 viên", dosage: "Uống 1 viên mỗi tối", lot: "LOT-2025-003", expiry: "06/2026" },
-        { name: "Losartan 50mg", qty: "30 viên", dosage: "Uống 1 viên mỗi sáng", lot: "LOT-2025-004", expiry: "03/2027" },
-        { name: "Metformin 500mg", qty: "60 viên", dosage: "Uống 1 viên x 2 lần/ngày", lot: "LOT-2025-005", expiry: "01/2027" },
-    ],
+type RxData = {
+    id: string; patient: string; patientId: string; age: number; gender: string; phone: string;
+    doctor: string; dept: string; diagnosis: string; date: string; note: string;
+    medicines: { name: string; qty: string; dosage: string; lot?: string; expiry?: string }[];
 };
 
 export default function DispensingPage() {
@@ -30,7 +23,7 @@ export default function DispensingPage() {
     const [completed, setCompleted] = useState(false);
     const [dispenseError, setDispenseError] = useState("");
     const [loading, setLoading] = useState(false);
-    const [rx, setRx] = useState(MOCK_DISPENSING);
+    const [rx, setRx] = useState<RxData | null>(null);
 
     useEffect(() => {
         if (!prescriptionId) return;
@@ -39,13 +32,13 @@ export default function DispensingPage() {
         dispensingService.getPrescription(prescriptionId)
             .then(res => {
                 const data = res?.data ?? res;
-                if (data && data.id) setRx(prev => ({ ...prev, ...data }));
+                if (data && data.id) setRx(data as RxData);
             })
-            .catch(() => {/* keep mock */})
+            .catch(() => { setRx(null); })
             .finally(() => setLoading(false));
     }, [prescriptionId]);
 
-    const allChecked = rx.medicines.every((_, i) => checkedMeds[i]);
+    const allChecked = (rx?.medicines ?? []).every((_, i) => checkedMeds[i]);
 
     const toggleMed = (idx: number) => {
         setCheckedMeds(prev => ({ ...prev, [idx]: !prev[idx] }));
@@ -56,10 +49,10 @@ export default function DispensingPage() {
         setDispensing(true);
         setDispenseError("");
         try {
-            const id = prescriptionId || rx.id;
+            const id = prescriptionId || rx?.id || "";
             await dispensingService.dispense(id, {
-                items: rx.medicines.map((m, i) => ({ ...m, dispensed: checkedMeds[i] })),
-                note: `Cấp phát cho ${rx.patient}`,
+                items: (rx?.medicines ?? []).map((m, i) => ({ ...m, dispensed: checkedMeds[i] })),
+                note: `Cấp phát cho ${rx?.patient ?? ""}`,
             });
             setCompleted(true);
         } catch (err: any) {
@@ -73,7 +66,7 @@ export default function DispensingPage() {
     const handleCancel = async () => {
         if (!confirm("Bạn có chắc muốn hủy đơn thuốc này?")) return;
         try {
-            const id = prescriptionId || rx.id;
+            const id = prescriptionId || rx?.id || "";
             await dispensingService.cancel(id, "Hủy bởi dược sĩ");
             router.back();
         } catch {
@@ -89,7 +82,7 @@ export default function DispensingPage() {
                         <span className="material-symbols-outlined text-green-500 text-4xl">check_circle</span>
                     </div>
                     <h1 className="text-xl font-bold text-[#121417] dark:text-white mb-2">Cấp phát thành công!</h1>
-                    <p className="text-sm text-[#687582] mb-6">Đơn thuốc {rx.id} đã được cấp phát cho bệnh nhân {rx.patient}.</p>
+                    <p className="text-sm text-[#687582] mb-6">Đơn thuốc {rx?.id} đã được cấp phát cho bệnh nhân {rx?.patient}.</p>
                     <div className="flex items-center justify-center gap-3">
                         <button onClick={() => router.push("/portal/pharmacist/prescriptions")} className="px-5 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-bold transition-colors">
                             Về danh sách đơn
@@ -107,6 +100,19 @@ export default function DispensingPage() {
         return (
             <div className="p-6 flex items-center justify-center py-20">
                 <div className="w-8 h-8 border-4 border-[#3C81C6] border-t-transparent rounded-full animate-spin" />
+            </div>
+        );
+    }
+
+    if (!rx) {
+        return (
+            <div className="p-6 md:p-8">
+                <div className="max-w-4xl mx-auto text-center py-20">
+                    <span className="material-symbols-outlined text-5xl text-gray-300 dark:text-gray-600 mb-3 block">receipt_long</span>
+                    <p className="text-sm text-[#687582] dark:text-gray-400">
+                        {prescriptionId ? "Không tìm thấy đơn thuốc. Vui lòng kiểm tra lại." : "Vui lòng chọn đơn thuốc cần cấp phát từ danh sách."}
+                    </p>
+                </div>
             </div>
         );
     }
@@ -169,7 +175,7 @@ export default function DispensingPage() {
                 <div className="p-4 border-b border-[#dde0e4] dark:border-[#2d353e]">
                     <h2 className="text-base font-bold text-[#121417] dark:text-white flex items-center gap-2">
                         <span className="material-symbols-outlined text-[#3C81C6]">medication</span>
-                        Checklist thuốc ({Object.values(checkedMeds).filter(Boolean).length}/{rx.medicines.length})
+                        Checklist thuốc ({Object.values(checkedMeds).filter(Boolean).length}/{rx.medicines?.length ?? 0})
                     </h2>
                 </div>
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">

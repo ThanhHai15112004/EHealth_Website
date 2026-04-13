@@ -2,8 +2,27 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { AI_QUICK_PROMPTS, type AiChatMessage } from "@/data/patient-portal-mock";
 import { aiService, type HealthChatSession } from "@/services/aiService";
+
+interface AiChatMessage {
+    id: string;
+    role: "user" | "ai";
+    message: string;
+    timestamp: string;
+    suggestions?: string[];
+    specialtyRecommendation?: { name: string; icon: string; reason: string };
+}
+
+const AI_QUICK_PROMPTS = [
+    { icon: "sentiment_stressed", label: "Đau đầu", prompt: "Tôi bị đau đầu" },
+    { icon: "thermostat", label: "Sốt", prompt: "Tôi bị sốt" },
+    { icon: "gastroenterology", label: "Đau bụng", prompt: "Tôi bị đau bụng" },
+    { icon: "pulmonology", label: "Ho / Khó thở", prompt: "Tôi bị ho và khó thở" },
+    { icon: "dermatology", label: "Da liễu", prompt: "Tôi bị nổi mẩn ngứa" },
+    { icon: "cardiology", label: "Đau ngực", prompt: "Tôi bị đau ngực" },
+    { icon: "psychology", label: "Mệt mỏi / Stress", prompt: "Tôi thường xuyên mệt mỏi và stress" },
+    { icon: "visibility", label: "Mắt mờ", prompt: "Mắt tôi nhìn mờ gần đây" },
+];
 
 const SESSION_KEY = "ehealth_ai_session_id";
 

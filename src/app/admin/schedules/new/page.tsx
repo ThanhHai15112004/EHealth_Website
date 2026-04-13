@@ -7,21 +7,13 @@ import { scheduleService } from "@/services/scheduleService";
 import { staffService, unwrapStaffList } from "@/services/staffService";
 import { getDepartments, unwrapDepartments } from "@/services/departmentService";
 
-const FALLBACK_DOCTORS = [
-    { id: "1", name: "BS. Nguyễn Văn An" }, { id: "2", name: "BS. Trần Thị Bình" },
-    { id: "3", name: "BS. Lê Văn Cường" }, { id: "4", name: "BS. Phạm Thị Dung" },
-    { id: "5", name: "BS. Hoàng Văn Em" },
-];
-
-const FALLBACK_DEPTS = ["Khoa Nội", "Khoa Ngoại", "Khoa Nhi", "Khoa Sản", "Khoa Tim mạch", "Khoa Thần kinh", "Cấp cứu"];
-
 export default function NewSchedulePage() {
     const router = useRouter();
     const [saving, setSaving] = useState(false);
-    const [doctorList, setDoctorList] = useState(FALLBACK_DOCTORS);
-    const [deptList, setDeptList] = useState(FALLBACK_DEPTS);
+    const [doctorList, setDoctorList] = useState<{ id: string; name: string }[]>([]);
+    const [deptList, setDeptList] = useState<string[]>([]);
     const [formData, setFormData] = useState({
-        doctorId: "", department: "Khoa Nội", shift: "MORNING",
+        doctorId: "", department: "", shift: "MORNING",
         dateStart: new Date().toISOString().split("T")[0],
         dateEnd: "", repeat: "none", note: "",
     });
@@ -30,19 +22,19 @@ export default function NewSchedulePage() {
         staffService.getList({ role: 'DOCTOR', limit: 200 })
             .then((res: any) => {
                 const items = unwrapStaffList(res);
-                if (items.length > 0) {
-                    setDoctorList(items.map(d => ({ id: d.id, name: d.fullName })));
-                }
+                setDoctorList(items.map(d => ({ id: d.id, name: d.fullName })));
             })
-            .catch(() => {});
+            .catch(() => {
+                // API không khả dụng, hiển thị trống
+            });
         getDepartments({ limit: 100 })
             .then((res: any) => {
                 const items = unwrapDepartments(res);
-                if (items.length > 0) {
-                    setDeptList(items.map(d => d.name));
-                }
+                setDeptList(items.map(d => d.name));
             })
-            .catch(() => {});
+            .catch(() => {
+                // API không khả dụng, hiển thị trống
+            });
     }, []);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {

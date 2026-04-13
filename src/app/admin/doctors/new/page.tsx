@@ -29,19 +29,11 @@ const SHIFT_OPTIONS = [
     { value: "night", label: "Đêm", time: "19:00 - 7:00" },
 ];
 
-const MOCK_DEPARTMENTS_FALLBACK = [
-    { id: "1", name: "Khoa Nội" },
-    { id: "2", name: "Khoa Ngoại" },
-    { id: "3", name: "Khoa Nhi" },
-    { id: "4", name: "Khoa Sản" },
-    { id: "5", name: "Khoa Tim mạch" },
-];
-
 export default function NewDoctorPage() {
     const router = useRouter();
     const [saving, setSaving] = useState(false);
     const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-    const [departments, setDepartments] = useState<{ id: string; name: string }[]>(MOCK_DEPARTMENTS_FALLBACK);
+    const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
 
     useEffect(() => {
         getDepartments({ limit: 100 })
@@ -51,7 +43,7 @@ export default function NewDoctorPage() {
                     setDepartments(items.map(d => ({ id: d.id, name: d.name })));
                 }
             })
-            .catch(() => { /* fallback đã được set */ });
+            .catch(() => { /* API không khả dụng */ });
     }, []);
     const [formData, setFormData] = useState({
         fullName: "", email: "", phone: "", gender: "male",

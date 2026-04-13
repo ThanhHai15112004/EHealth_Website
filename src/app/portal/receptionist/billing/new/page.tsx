@@ -40,22 +40,6 @@ interface PricingPolicy {
     discountAmount?: number;
 }
 
-// ─── Fallback service catalog ────────────────────────────────────────────────
-const FALLBACK_SERVICES: ServiceItem[] = [
-    { name: "Khám tổng quát",           price: 200000,  quantity: 1, category: "Khám" },
-    { name: "Khám chuyên khoa",         price: 350000,  quantity: 1, category: "Khám" },
-    { name: "Xét nghiệm máu cơ bản",   price: 250000,  quantity: 1, category: "Xét nghiệm" },
-    { name: "Xét nghiệm máu nâng cao", price: 500000,  quantity: 1, category: "Xét nghiệm" },
-    { name: "Xét nghiệm nước tiểu",    price: 100000,  quantity: 1, category: "Xét nghiệm" },
-    { name: "Chụp X-quang",            price: 300000,  quantity: 1, category: "Chẩn đoán hình ảnh" },
-    { name: "Siêu âm tổng quát",       price: 350000,  quantity: 1, category: "Chẩn đoán hình ảnh" },
-    { name: "Siêu âm tim",             price: 500000,  quantity: 1, category: "Chẩn đoán hình ảnh" },
-    { name: "Điện tâm đồ (ECG)",       price: 150000,  quantity: 1, category: "Kỹ thuật" },
-    { name: "CT Scan",                 price: 2000000, quantity: 1, category: "Chẩn đoán hình ảnh" },
-    { name: "MRI",                     price: 3500000, quantity: 1, category: "Chẩn đoán hình ảnh" },
-    { name: "Nội soi dạ dày",          price: 800000,  quantity: 1, category: "Kỹ thuật" },
-];
-
 const PAYMENT_METHODS = ["Tiền mặt", "Chuyển khoản", "Thẻ tín dụng", "Ví điện tử", "QR SePay"];
 
 const fmt = (n: number) => (n || 0).toLocaleString("vi-VN") + "đ";
@@ -76,7 +60,7 @@ export default function NewBillingPage() {
     const [loadingEncounters, setLoadingEncounters] = useState(false);
 
     // ── Catalog / Services ───────────────────────────────────────────────────
-    const [catalog, setCatalog]           = useState<ServiceItem[]>(FALLBACK_SERVICES);
+    const [catalog, setCatalog]           = useState<ServiceItem[]>([]);
     const [selectedServices, setSelectedServices] = useState<number[]>([]);
     const [catalogCategory, setCatalogCategory] = useState("all");
     const [loadingCatalog, setLoadingCatalog] = useState(false);

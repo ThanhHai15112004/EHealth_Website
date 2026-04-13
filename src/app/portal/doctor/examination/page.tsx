@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { MOCK_PATIENT_QUEUE } from "@/lib/mock-data/doctor";
 import { emrService } from "@/services/emrService";
 import { encounterService } from "@/services/encounterService";
 import { prescriptionService } from "@/services/prescriptionService";
@@ -50,6 +49,15 @@ const LAB_TESTS = [
 
 const PAIN_LOCATIONS = ["Đầu", "Ngực", "Bụng", "Lưng", "Tay", "Chân", "Khớp", "Cổ", "Họng", "Toàn thân"];
 
+/* ──────── Types ──────── */
+type PatientInfo = {
+    id: string; fullName: string; phone: string; gender: string;
+    dob: string; age: number; reason: string; priority: string;
+    queueNumber: number; checkInTime: string; allergies?: string[]; avatar?: string;
+    birthDate?: string;
+    medicalHistory?: string[];
+};
+
 /* ──────── Component ──────── */
 export default function ExaminationPage() {
     const router = useRouter();
@@ -60,11 +68,8 @@ export default function ExaminationPage() {
     const { user } = useAuth();
     const toast = useToast();
 
-    // Patient state — fallback to mock
-    const [patient, setPatient] = useState<typeof MOCK_PATIENT_QUEUE[0] | null>(() => {
-        if (!patientId) return null;
-        return MOCK_PATIENT_QUEUE.find(p => p.id === patientId) || null;
-    });
+    // Patient state — load từ API
+    const [patient, setPatient] = useState<PatientInfo | null>(null);
     const [patientLoading, setPatientLoading] = useState(false);
     const [emrId, setEmrId] = useState<string | null>(null);
     const [currentEncounterId, setCurrentEncounterId] = useState<string | null>(encounterId);
@@ -150,7 +155,7 @@ export default function ExaminationPage() {
                     } as any));
                 }
             })
-            .catch(() => {/* dùng mock sẵn */})
+            .catch(() => { setPatient(null); })
             .finally(() => setPatientLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [patientId]);

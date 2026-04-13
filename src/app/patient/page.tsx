@@ -5,13 +5,21 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { getAppointments, type Appointment } from "@/services/appointmentService";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
-import { filterMockAppointments } from "@/data/patient-mock";
-import { MOCK_TELE_SESSIONS, MOCK_VITAL_SIGNS, type VitalSign } from "@/data/patient-portal-mock";
-import { MOCK_MEDICATION_REMINDERS, MOCK_MEDICATION_LOGS, getTodaySchedule, getActiveReminders, type MedicationReminder, type MedicationLog } from "@/data/medication-reminders-mock";
 import { loadFromStorage, STORAGE_KEYS } from "@/utils/localStorage";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 import { AISymptomCheckerWidget, AIHealthCoach, AIAppointmentSuggester } from "@/components/portal/ai";
 import { ehrService } from "@/services/ehrService";
+import { telemedicineService, type TelemedicineSession } from "@/services/telemedicineService";
+
+interface MedicationReminder {
+    id: string; profileId: string; medicationName: string; dosage: string;
+    frequency: number; timesOfDay: string[]; instructions?: string;
+    startDate: string; endDate?: string; isActive: boolean; color: string;
+}
+interface MedicationLog {
+    id: string; reminderId: string; profileId: string; date: string;
+    time: string; status: "taken" | "missed" | "skipped"; note?: string;
+}
 
 export default function PatientDashboard() {
     const { user } = useAuth();
@@ -19,8 +27,11 @@ export default function PatientDashboard() {
     const [upcomingAppointments, setUpcomingAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
 
-    // Vital signs từ API (fallback mock)
-    const [latestVital, setLatestVital] = useState<VitalSign>(MOCK_VITAL_SIGNS[0]);
+    // Vital signs từ API
+    const [latestVital, setLatestVital] = useState<{
+        bloodPressureSystolic: number; bloodPressureDiastolic: number;
+        heartRate: number; bmi: number; spo2?: number;
+    } | null>(null);
     const [loadingVitals, setLoadingVitals] = useState(true);
 
     // Thuốc đang dùng từ API
@@ -30,12 +41,16 @@ export default function PatientDashboard() {
     const [reminders, setReminders] = useState<MedicationReminder[]>([]);
     const [medLogs, setMedLogs] = useState<MedicationLog[]>([]);
 
+    // Telemedicine sessions từ API
+    const [upcomingTele, setUpcomingTele] = useState<TelemedicineSession[]>([]);
+
     useEffect(() => {
         loadData();
         loadEHRData();
-        // Load medication data
-        const storedRem = loadFromStorage<MedicationReminder[]>(STORAGE_KEYS.MEDICATION_REMINDERS, MOCK_MEDICATION_REMINDERS);
-        const storedLogs = loadFromStorage<MedicationLog[]>(STORAGE_KEYS.MEDICATION_LOGS, MOCK_MEDICATION_LOGS);
+        loadTele();
+        // Load medication data từ localStorage
+        const storedRem = loadFromStorage<MedicationReminder[]>(STORAGE_KEYS.MEDICATION_REMINDERS, []);
+        const storedLogs = loadFromStorage<MedicationLog[]>(STORAGE_KEYS.MEDICATION_LOGS, []);
         setReminders(storedRem);
         setMedLogs(storedLogs);
     }, [user?.id]);
@@ -45,9 +60,9 @@ export default function PatientDashboard() {
             setLoading(true);
             const res = await getAppointments({ patientId: user?.id, status: "pending,confirmed", limit: 5 });
             if (res.data && res.data.length > 0) setUpcomingAppointments(res.data);
-            else setUpcomingAppointments(filterMockAppointments("pending,confirmed"));
+            else setUpcomingAppointments([]);
         } catch {
-            setUpcomingAppointments(filterMockAppointments("pending,confirmed"));
+            setUpcomingAppointments([]);
         } finally { setLoading(false); }
     };
 
@@ -64,17 +79,11 @@ export default function PatientDashboard() {
             if (vitalRes.status === "fulfilled" && vitalRes.value) {
                 const v = vitalRes.value;
                 setLatestVital({
-                    id: v.id ?? v._id ?? "api",
-                    date: v.date ?? v.measuredAt ?? "",
-                    bloodPressureSystolic: v.bloodPressureSystolic ?? v.systolic ?? v.bp_systolic ?? MOCK_VITAL_SIGNS[0].bloodPressureSystolic,
-                    bloodPressureDiastolic: v.bloodPressureDiastolic ?? v.diastolic ?? v.bp_diastolic ?? MOCK_VITAL_SIGNS[0].bloodPressureDiastolic,
-                    heartRate: v.heartRate ?? v.heart_rate ?? v.pulse ?? MOCK_VITAL_SIGNS[0].heartRate,
-                    temperature: v.temperature ?? MOCK_VITAL_SIGNS[0].temperature,
-                    weight: v.weight ?? MOCK_VITAL_SIGNS[0].weight,
-                    height: v.height ?? MOCK_VITAL_SIGNS[0].height,
-                    bmi: v.bmi ?? MOCK_VITAL_SIGNS[0].bmi,
-                    bloodSugar: v.bloodSugar ?? v.blood_sugar ?? v.glucose ?? MOCK_VITAL_SIGNS[0].bloodSugar,
-                    spo2: v.spo2 ?? v.oxygenSaturation ?? MOCK_VITAL_SIGNS[0].spo2,
+                    bloodPressureSystolic: v.bloodPressureSystolic ?? v.systolic ?? v.bp_systolic ?? 0,
+                    bloodPressureDiastolic: v.bloodPressureDiastolic ?? v.diastolic ?? v.bp_diastolic ?? 0,
+                    heartRate: v.heartRate ?? v.heart_rate ?? v.pulse ?? 0,
+                    bmi: v.bmi ?? 0,
+                    spo2: v.spo2 ?? v.oxygenSaturation,
                 });
             }
 
@@ -84,23 +93,39 @@ export default function PatientDashboard() {
                 setActiveMedCount(activeMeds.length);
             }
         } catch {
-            // giữ fallback mock — không throw
+            // API fail → hiển thị "—"
         } finally {
             setLoadingVitals(false);
         }
     };
 
+    const loadTele = async () => {
+        try {
+            const res = await telemedicineService.getList({ patientId: user?.id ?? "", status: "scheduled" });
+            setUpcomingTele(res.data ?? []);
+        } catch {
+            setUpcomingTele([]);
+        }
+    };
+
     const greeting = () => { const h = new Date().getHours(); if (h < 12) return "Chào buổi sáng"; if (h < 18) return "Chào buổi chiều"; return "Chào buổi tối"; };
 
-    const upcomingTele = MOCK_TELE_SESSIONS.filter(s => s.status === "scheduled");
-    const todayMeds = getTodaySchedule("pp-001");
-    const activeMeds = getActiveReminders("pp-001");
+    // Tính today schedule từ localStorage reminders
+    const todayStr = new Date().toISOString().split("T")[0];
+    const activeRemindersList = reminders.filter(r => r.isActive && r.startDate <= todayStr && (!r.endDate || r.endDate >= todayStr));
+    const todayMeds = activeRemindersList.flatMap(r =>
+        r.timesOfDay.map(time => ({
+            time,
+            reminder: r,
+            log: medLogs.find(l => l.reminderId === r.id && l.date === todayStr && l.time === time),
+        }))
+    ).sort((a, b) => a.time.localeCompare(b.time));
 
     const vitalCards = [
-        { label: "Huyết áp", value: `${latestVital.bloodPressureSystolic}/${latestVital.bloodPressureDiastolic}`, unit: "mmHg", icon: "bloodtype", ok: latestVital.bloodPressureSystolic <= 130 },
-        { label: "Nhịp tim", value: `${latestVital.heartRate}`, unit: "bpm", icon: "cardiology", ok: true },
-        { label: "BMI", value: latestVital.bmi.toFixed(1), unit: "", icon: "monitor_weight", ok: latestVital.bmi <= 25 },
-        { label: "SpO2", value: `${latestVital.spo2 ?? 98}`, unit: "%", icon: "pulmonology", ok: true },
+        { label: "Huyết áp", value: latestVital ? `${latestVital.bloodPressureSystolic}/${latestVital.bloodPressureDiastolic}` : "—", unit: "mmHg", icon: "bloodtype", ok: !latestVital || latestVital.bloodPressureSystolic <= 130 },
+        { label: "Nhịp tim", value: latestVital ? `${latestVital.heartRate}` : "—", unit: "bpm", icon: "cardiology", ok: true },
+        { label: "BMI", value: latestVital ? latestVital.bmi.toFixed(1) : "—", unit: "", icon: "monitor_weight", ok: !latestVital || latestVital.bmi <= 25 },
+        { label: "SpO2", value: latestVital ? `${latestVital.spo2 ?? "—"}` : "—", unit: "%", icon: "pulmonology", ok: true },
     ];
 
     return (
@@ -123,7 +148,7 @@ export default function PatientDashboard() {
                 {[
                     { icon: "calendar_month", label: "Đặt lịch khám", desc: "Đặt lịch mới", href: "/booking", color: "from-[#3C81C6] to-[#2563eb]" },
                     { icon: "event_note", label: "Lịch hẹn", desc: `${upcomingAppointments.length} sắp tới`, href: "/patient/appointments", color: "from-emerald-500 to-emerald-600" },
-                    { icon: "medication", label: "Nhắc thuốc", desc: activeMedCount !== null ? `${activeMedCount} thuốc đang dùng` : `${activeMeds.length} thuốc đang dùng`, href: "/patient/medication-reminders", color: "from-violet-500 to-violet-600" },
+                    { icon: "medication", label: "Nhắc thuốc", desc: activeMedCount !== null ? `${activeMedCount} thuốc đang dùng` : "Quản lý thuốc", href: "/patient/medication-reminders", color: "from-violet-500 to-violet-600" },
                     { icon: "smart_toy", label: "AI tư vấn", desc: "Hỏi triệu chứng", href: "/patient/ai-consult", color: "from-cyan-500 to-teal-600" },
                 ].map(item => (
                     <Link key={item.label} href={item.href}

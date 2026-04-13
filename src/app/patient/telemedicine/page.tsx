@@ -6,13 +6,6 @@ import { telemedicineService, TelemedicineSession, ChatMessage, ConsultationType
 import { extractErrorMessage } from "@/api/response";
 import { useAuth } from "@/contexts/AuthContext";
 
-// ─── Fallback mock ─────────────────────────────────────────────────────────────
-const FALLBACK_UPCOMING: TelemedicineSession[] = [
-    { id: "TM001", patient: "Tôi", patientId: "p1", doctor: "BS. Nguyễn Văn A", doctorId: "d1", doctorName: "BS. Nguyễn Văn A", date: "28/02/2025", time: "14:00", status: "scheduled", department: "Tim mạch", reason: "Tái khám tăng huyết áp", type: "video", duration: 30 },
-];
-const FALLBACK_COMPLETED: TelemedicineSession[] = [
-    { id: "TM002", patient: "Tôi", patientId: "p1", doctor: "BS. Lê Thị B", doctorId: "d2", doctorName: "BS. Lê Thị B", date: "20/02/2025", time: "10:00", status: "completed", department: "Nội khoa", reason: "Khám sức khỏe", type: "video", duration: 20, diagnosis: "Sức khỏe bình thường", prescription: true, rating: 5 },
-];
 
 const TABS = [
     { id: "upcoming", label: "Sắp diễn ra", icon: "event_upcoming" },
@@ -94,12 +87,11 @@ export default function TelemedicinePage() {
         telemedicineService
             .getList({ patientId, status: "scheduled" })
             .then(res => {
-                const items = res.data ?? [];
-                setUpcoming(items.length > 0 ? items : FALLBACK_UPCOMING);
+                setUpcoming(res.data ?? []);
             })
             .catch(e => {
                 setUpcomingError(extractErrorMessage(e));
-                setUpcoming(FALLBACK_UPCOMING);
+                setUpcoming([]);
             })
             .finally(() => setUpcomingLoading(false));
     }, [patientId]);
@@ -113,12 +105,11 @@ export default function TelemedicinePage() {
         telemedicineService
             .getList({ patientId, status: "completed" })
             .then(res => {
-                const items = res.data ?? [];
-                setHistory(items.length > 0 ? items : FALLBACK_COMPLETED);
+                setHistory(res.data ?? []);
                 setHistoryLoaded(true);
             })
             .catch(() => {
-                setHistory(FALLBACK_COMPLETED);
+                setHistory([]);
                 setHistoryLoaded(true);
             })
             .finally(() => setHistoryLoading(false));

@@ -8,17 +8,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AIRecordSummary, AITrendDetector } from "@/components/portal/ai";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 
-const MOCK_TIMELINE = [
-    { id: 1, date: "20/02/2025", type: "visit", title: "Khám Tim mạch", doctor: "BS. Trần Văn Minh", department: "Tim mạch", details: "Tăng huyết áp - I10. Điều chỉnh liều thuốc.", vitalSigns: { bp: "140/90", hr: "78" } },
-    { id: 2, date: "20/02/2025", type: "lab", title: "Xét nghiệm máu", details: "Glucose: 7.2 mmol/L (cao), HbA1c: 6.8%, Cholesterol: 5.5 mmol/L" },
-    { id: 3, date: "15/01/2025", type: "visit", title: "Khám Nội tiết", doctor: "BS. Lê Thị Hoa", department: "Nội tiết", details: "Tiểu đường type 2, kiểm soát tốt", vitalSigns: { bp: "130/85", hr: "72" } },
-    { id: 4, date: "15/01/2025", type: "prescription", title: "Đơn thuốc #DT002", details: "Metformin 500mg (2 viên/ngày), Glimepiride 2mg (1 viên/ngày)" },
-    { id: 5, date: "10/12/2024", type: "visit", title: "Kiểm tra định kỳ", doctor: "BS. Trần Văn Minh", department: "Tim mạch", details: "Huyết áp ổn định. Duy trì phác đồ hiện tại.", vitalSigns: { bp: "125/80", hr: "70" } },
-    { id: 6, date: "10/12/2024", type: "imaging", title: "X-quang ngực", details: "Bóng tim bình thường, phổi sạch, không thấy bất thường." },
-    { id: 7, date: "05/11/2024", type: "visit", title: "Khám Nội tổng quát", doctor: "BS. Phạm Chí Thanh", department: "Nội tổng quát", details: "Viêm dạ dày - K29. Kê thuốc điều trị 14 ngày." },
-    { id: 8, date: "05/11/2024", type: "prescription", title: "Đơn thuốc #DT003", details: "Omeprazole 20mg (1 viên/sáng trước ăn), Sucralfate 1g (3 viên/ngày)" },
-];
-
 const typeConfig: Record<string, { icon: string; color: string; label: string }> = {
     visit: { icon: "stethoscope", color: "bg-blue-100 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400", label: "Lượt khám" },
     lab: { icon: "science", color: "bg-purple-100 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400", label: "Xét nghiệm" },
@@ -33,7 +22,7 @@ export default function MedicalRecordsPage() {
     const [patientFilter, setPatientFilter] = useState("");
     const [loading, setLoading] = useState(false);
     usePageAIContext({ pageKey: "medical-records", patientId: "BN001", patientName: "Nguyễn Văn An" });
-    const [timeline, setTimeline] = useState(MOCK_TIMELINE);
+    const [timeline, setTimeline] = useState<any[]>([]);
 
     useEffect(() => {
         if (!user?.id) return;
@@ -64,7 +53,7 @@ export default function MedicalRecordsPage() {
                     setTimeline(mapped as any);
                 }
             })
-            .catch(() => {/* keep mock */})
+            .catch(() => { setTimeline([]); })
             .finally(() => setLoading(false));
     }, [user?.id]);
 
@@ -80,11 +69,11 @@ export default function MedicalRecordsPage() {
     });
 
     // Group by date
-    const grouped = filtered.reduce((acc, item) => {
+    const grouped: Record<string, any[]> = filtered.reduce((acc: Record<string, any[]>, item) => {
         if (!acc[item.date]) acc[item.date] = [];
         acc[item.date].push(item);
         return acc;
-    }, {} as Record<string, typeof timeline>);
+    }, {});
 
     return (
         <div className="p-6 md:p-8"><div className="max-w-5xl mx-auto space-y-6">

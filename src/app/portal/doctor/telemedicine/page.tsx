@@ -7,17 +7,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { AITelemedicineBrief } from "@/components/portal/ai";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 
-// ─── Fallback mock ─────────────────────────────────────────────────────────────
-const FALLBACK_SESSIONS: TelemedicineSession[] = [
-    { id: "TM001", patient: "Nguyễn Văn An", patientId: "BN001", doctor: "BS. Trần Văn Minh", date: "28/02/2025", time: "14:00", status: "scheduled", department: "Tim mạch", reason: "Tái khám tăng huyết áp" },
-    { id: "TM002", patient: "Lê Thị Bình", patientId: "BN002", doctor: "BS. Trần Văn Minh", date: "28/02/2025", time: "15:30", status: "in_progress", department: "Tim mạch", reason: "Tư vấn kết quả xét nghiệm" },
-    { id: "TM003", patient: "Phạm Thị Dung", patientId: "BN004", doctor: "BS. Trần Văn Minh", date: "27/02/2025", time: "10:00", status: "completed", department: "Tim mạch", reason: "Khám định kỳ" },
-    { id: "TM004", patient: "Vũ Thị Fương", patientId: "BN006", doctor: "BS. Trần Văn Minh", date: "27/02/2025", time: "11:30", status: "completed", department: "Tim mạch", reason: "Tư vấn dùng thuốc" },
-    { id: "TM005", patient: "Trần Văn Cường", patientId: "BN003", doctor: "BS. Trần Văn Minh", date: "26/02/2025", time: "09:00", status: "cancelled", department: "Tim mạch", reason: "Tái khám" },
-];
-
-const FALLBACK_STATS: DoctorStats = { today: 3, inProgress: 1, completed: 12, cancelled: 2 };
-
 const STATUS_MAP: Record<string, { label: string; style: string }> = {
     scheduled:   { label: "Đã lên lịch",   style: "bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400" },
     in_progress: { label: "Đang diễn ra",   style: "bg-green-50 text-green-600 dark:bg-green-900/20 dark:text-green-400" },
@@ -31,12 +20,12 @@ export default function TelemedicinePage() {
     const { user } = useAuth();
 
     // ── Sessions ──
-    const [sessions, setSessions] = useState<TelemedicineSession[]>(FALLBACK_SESSIONS);
+    const [sessions, setSessions] = useState<TelemedicineSession[]>([]);
     const [sessionsLoading, setSessionsLoading] = useState(true);
     const [filter, setFilter] = useState("all");
 
     // ── Stats ──
-    const [stats, setStats] = useState<DoctorStats>(FALLBACK_STATS);
+    const [stats, setStats] = useState<DoctorStats>({ today: 0, inProgress: 0, completed: 0, cancelled: 0 });
 
     // ── Room (video) ──
     const [showRoom, setShowRoom] = useState<string | null>(null);
@@ -90,10 +79,9 @@ export default function TelemedicinePage() {
             .getList({ doctorId: user?.id, limit: 50 })
             .then(res => {
                 const items = res.data ?? [];
-                if (items.length > 0) setSessions(items);
-                // else keep fallback
+                setSessions(items);
             })
-            .catch(() => { /* keep fallback */ })
+            .catch(() => { setSessions([]); })
             .finally(() => setSessionsLoading(false));
     }, [user?.id]);
 
@@ -102,7 +90,7 @@ export default function TelemedicinePage() {
         telemedicineService
             .getStats({ doctorId: user?.id })
             .then(s => setStats(s))
-            .catch(() => { /* keep fallback */ });
+            .catch(() => { /* stats empty state */ });
     }, [loadSessions, user?.id]);
 
     // ─────────────────────────────────────────────────────────────

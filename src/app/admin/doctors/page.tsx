@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
-import { MOCK_DOCTORS, MOCK_DOCTOR_STATS, MOCK_DEPARTMENTS } from "@/lib/mock-data/admin";
 import { DOCTOR_STATUS } from "@/constants/status";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
 import { DoctorFormModal } from "@/features/doctors/components/doctor-form-modal";
@@ -18,7 +17,7 @@ type SortOrder = "asc" | "desc";
 export default function DoctorsPage() {
     // State
     const router = useRouter();
-    const [doctors, setDoctors] = useState<Doctor[]>(MOCK_DOCTORS);
+    const [doctors, setDoctors] = useState<Doctor[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [departmentFilter, setDepartmentFilter] = useState<string>("all");
@@ -28,8 +27,8 @@ export default function DoctorsPage() {
     const [sortField, setSortField] = useState<SortField>("fullName");
     const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
-    const [stats, setStats] = useState(MOCK_DOCTOR_STATS);
-    const [departments, setDepartments] = useState(MOCK_DEPARTMENTS);
+    const [stats, setStats] = useState({ totalDoctors: 0, activeDoctors: 0, pendingAssignment: 0, avgPerformance: 0 });
+    const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
 
     useEffect(() => {
         setIsLoading(true);
@@ -42,7 +41,6 @@ export default function DoctorsPage() {
                 const items = unwrapStaffList(doctorsResult.value);
                 if (items.length > 0) {
                     setDoctors(items.map((d) => ({
-                        ...MOCK_DOCTORS[0],
                         id: d.id,
                         userId: d.id,
                         code: d.code ?? d.id,
@@ -53,10 +51,14 @@ export default function DoctorsPage() {
                         phone: d.phone ?? "",
                         email: d.email ?? "",
                         rating: d.rating ?? 0,
-                        status: d.status === "ACTIVE" ? "active" : d.status === "INACTIVE" ? "inactive" : "active",
+                        reviewCount: 0,
+                        status: d.status === "ACTIVE" ? "ACTIVE" : d.status === "INACTIVE" ? "OFFLINE" : "OFFLINE",
                         avatar: d.avatar,
                         experience: d.experience ?? 0,
-                    })) as unknown as typeof MOCK_DOCTORS);
+                        workingSchedule: [],
+                        createdAt: d.createdAt ?? "",
+                        updatedAt: d.updatedAt ?? "",
+                    })) as unknown as Doctor[]);
                     const active = items.filter(d => d.status === "ACTIVE").length;
                     setStats(prev => ({ ...prev, totalDoctors: items.length, activeDoctors: active }));
                 }
@@ -64,7 +66,7 @@ export default function DoctorsPage() {
             if (deptsResult.status === 'fulfilled') {
                 const items = unwrapDepartments(deptsResult.value);
                 if (items.length > 0) {
-                    setDepartments(items.map(d => ({ ...MOCK_DEPARTMENTS[0], id: d.id, name: d.name })) as typeof MOCK_DEPARTMENTS);
+                    setDepartments(items.map(d => ({ id: d.id, name: d.name })));
                 }
             }
         }).finally(() => setIsLoading(false));

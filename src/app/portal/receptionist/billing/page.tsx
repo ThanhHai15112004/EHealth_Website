@@ -6,15 +6,6 @@ import { billingService } from "@/services/billingService";
 import { unwrapList } from "@/api/response";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 
-// ─── Mock fallback ──────────────────────────────────────────────────────────
-const MOCK_INVOICES = [
-    { id: "HD001", invoiceNumber: "HD001", patient: "Nguyễn Văn An", patientName: "Nguyễn Văn An", patientId: "BN001", date: "28/02/2025", createdAt: "2025-02-28", services: "Khám Tim mạch + Xét nghiệm máu", total: 850000, insurance: 680000, insuranceCovered: 680000, paid: 170000, status: "paid", paymentMethod: "Tiền mặt", items: [] },
-    { id: "HD002", invoiceNumber: "HD002", patient: "Lê Thị Bình", patientName: "Lê Thị Bình", patientId: "BN002", date: "28/02/2025", createdAt: "2025-02-28", services: "Khám Nội tiết + Siêu âm", total: 1200000, insurance: 960000, insuranceCovered: 960000, paid: 0, status: "pending", paymentMethod: "", items: [] },
-    { id: "HD003", invoiceNumber: "HD003", patient: "Trần Văn Cường", patientName: "Trần Văn Cường", patientId: "BN003", date: "27/02/2025", createdAt: "2025-02-27", services: "Khám Tim mạch + ECG", total: 650000, insurance: 520000, insuranceCovered: 520000, paid: 130000, status: "paid", paymentMethod: "Chuyển khoản", items: [] },
-    { id: "HD004", invoiceNumber: "HD004", patient: "Phạm Thị Dung", patientName: "Phạm Thị Dung", patientId: "BN004", date: "27/02/2025", createdAt: "2025-02-27", services: "Khám Tổng quát", total: 350000, insurance: 0, insuranceCovered: 0, paid: 350000, status: "paid", paymentMethod: "Tiền mặt", items: [] },
-    { id: "HD005", invoiceNumber: "HD005", patient: "Hoàng Văn Em", patientName: "Hoàng Văn Em", patientId: "BN005", date: "26/02/2025", createdAt: "2025-02-26", services: "Khám Nhi khoa + Xét nghiệm", total: 500000, insurance: 400000, insuranceCovered: 400000, paid: 100000, status: "partial", paymentMethod: "QR Pay", items: [] },
-    { id: "HD006", invoiceNumber: "HD006", patient: "Vũ Thị Fương", patientName: "Vũ Thị Fương", patientId: "BN006", date: "26/02/2025", createdAt: "2025-02-26", services: "Khám Da liễu", total: 280000, insurance: 0, insuranceCovered: 0, paid: 0, status: "cancelled", paymentMethod: "", items: [] },
-];
 
 const STATUS_MAP: Record<string, { label: string; style: string }> = {
     pending:   { label: "Chờ thanh toán", style: "bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400" },
@@ -33,7 +24,7 @@ const FILTER_TABS = [
     { k: "refunded",  l: "Đã hoàn" },
 ];
 
-type Invoice = typeof MOCK_INVOICES[0] & Record<string, any>;
+type Invoice = { id: string; invoiceNumber: string; patient: string; patientName: string; patientId: string; date: string; createdAt: string; services: string; total: number; insurance: number; insuranceCovered: number; paid: number; status: string; paymentMethod: string; items: any[] } & Record<string, any>;
 
 const fmt = (n: number) => (n || 0).toLocaleString("vi-VN") + "đ";
 
@@ -41,7 +32,7 @@ export default function BillingPage() {
     usePageAIContext({ pageKey: 'billing' });
     const router = useRouter();
 
-    const [invoices, setInvoices]         = useState<Invoice[]>(MOCK_INVOICES as Invoice[]);
+    const [invoices, setInvoices]         = useState<Invoice[]>([]);
     const [filter, setFilter]             = useState("all");
     const [dateFrom, setDateFrom]         = useState("");
     const [dateTo, setDateTo]             = useState("");
@@ -83,7 +74,8 @@ export default function BillingPage() {
                 setInvoices(normalized);
             }
         } catch {
-            setError("Không thể tải danh sách hóa đơn. Đang hiển thị dữ liệu mẫu.");
+            setInvoices([]);
+            setError("Không thể tải danh sách hóa đơn. Vui lòng thử lại.");
         } finally {
             setLoading(false);
         }

@@ -3,45 +3,6 @@
 import { useState, useEffect } from "react";
 import { getRoles, deleteRole, toggleRoleStatus, getRolePermissions, assignPermissions, createRole } from "@/services/permissionService";
 
-// Mock data — Vai trò & Quyền hạn
-const INITIAL_ROLES = [
-    {
-        id: "ROLE_ADMIN", name: "Quản trị viên", code: "ADMIN",
-        description: "Toàn quyền quản lý hệ thống",
-        users: 3, status: "active",
-        permissions: ["user.read", "user.write", "user.delete", "doctor.read", "doctor.write", "doctor.delete", "medicine.read", "medicine.write", "medicine.delete", "report.read", "report.export", "settings.write"],
-    },
-    {
-        id: "ROLE_DOCTOR", name: "Bác sĩ", code: "DOCTOR",
-        description: "Khám bệnh, kê đơn, quản lý bệnh nhân",
-        users: 45, status: "active",
-        permissions: ["patient.read", "patient.write", "prescription.read", "prescription.write", "examination.read", "examination.write", "report.read"],
-    },
-    {
-        id: "ROLE_PHARMACIST", name: "Dược sĩ", code: "PHARMACIST",
-        description: "Quản lý thuốc, cấp phát đơn thuốc",
-        users: 12, status: "active",
-        permissions: ["medicine.read", "medicine.write", "prescription.read", "dispensing.write", "inventory.read", "inventory.write"],
-    },
-    {
-        id: "ROLE_RECEPTIONIST", name: "Lễ tân", code: "RECEPTIONIST",
-        description: "Tiếp nhận bệnh nhân, đặt lịch hẹn",
-        users: 8, status: "active",
-        permissions: ["patient.read", "patient.write", "appointment.read", "appointment.write", "billing.read", "billing.write"],
-    },
-    {
-        id: "ROLE_NURSE", name: "Y tá / Điều dưỡng", code: "NURSE",
-        description: "Hỗ trợ bác sĩ, theo dõi bệnh nhân",
-        users: 20, status: "active",
-        permissions: ["patient.read", "vital_signs.write", "examination.read", "report.read"],
-    },
-    {
-        id: "ROLE_ACCOUNTANT", name: "Kế toán", code: "ACCOUNTANT",
-        description: "Quản lý tài chính, báo cáo doanh thu",
-        users: 4, status: "inactive",
-        permissions: ["report.read", "report.export", "billing.read", "billing.write", "revenue.read"],
-    },
-];
 
 const PERMISSION_GROUPS = [
     { group: "Người dùng", permissions: [{ key: "user.read", label: "Xem" }, { key: "user.write", label: "Sửa" }, { key: "user.delete", label: "Xóa" }] },
@@ -60,10 +21,18 @@ const PERMISSION_GROUPS = [
     { group: "Cài đặt", permissions: [{ key: "settings.write", label: "Thay đổi" }] },
 ];
 
-type Role = typeof INITIAL_ROLES[number];
+interface Role {
+    id: string;
+    name: string;
+    code: string;
+    description: string;
+    users: number;
+    status: string;
+    permissions: string[];
+}
 
 export default function RolesPage() {
-    const [roles, setRoles] = useState(INITIAL_ROLES);
+    const [roles, setRoles] = useState<Role[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [loadingPermissions, setLoadingPermissions] = useState(false);
     const [savingPermissions, setSavingPermissions] = useState(false);
@@ -74,7 +43,6 @@ export default function RolesPage() {
             .then((data) => {
                 if (Array.isArray(data) && data.length > 0) {
                     setRoles(data.map((r) => ({
-                        ...INITIAL_ROLES[0],
                         id: r.id ?? r.name,
                         name: r.displayName ?? r.name ?? "",
                         code: r.name ?? "",
@@ -85,7 +53,7 @@ export default function RolesPage() {
                     })));
                 }
             })
-            .catch(() => {/* keep mock */})
+            .catch(() => { /* API không khả dụng, hiển thị trống */ })
             .finally(() => setIsLoading(false));
     };
 

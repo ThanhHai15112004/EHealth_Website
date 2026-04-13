@@ -3,7 +3,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
-import { MOCK_MEDICINES, MOCK_MEDICINE_STATS } from "@/lib/mock-data/admin";
 import { getDrugs } from "@/services/medicineService";
 import { MEDICINE_STATUS } from "@/constants/status";
 import { DropdownMenu } from "@/components/ui/dropdown-menu";
@@ -35,7 +34,7 @@ function formatCurrency(num: number): string {
 export default function MedicinesPage() {
     // State
     const router = useRouter();
-    const [medicines, setMedicines] = useState<Medicine[]>(MOCK_MEDICINES);
+    const [medicines, setMedicines] = useState<Medicine[]>([]);
     const [searchQuery, setSearchQuery] = useState("");
     const [categoryFilter, setCategoryFilter] = useState<string>("all");
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -45,7 +44,7 @@ export default function MedicinesPage() {
     const [sortField, setSortField] = useState<SortField>("name");
     const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
-    const [stats, setStats] = useState(MOCK_MEDICINE_STATS);
+    const [stats, setStats] = useState({ expiringSoon: 0 });
 
     useEffect(() => {
         getDrugs({ limit: 200 })
@@ -53,7 +52,6 @@ export default function MedicinesPage() {
                 const items: any[] = res?.data ?? [];
                 if (items.length > 0) {
                     setMedicines(items.map((d: any) => ({
-                        ...MOCK_MEDICINES[0],
                         id: d.id,
                         code: d.code ?? d.id,
                         name: d.name ?? "",
@@ -61,12 +59,15 @@ export default function MedicinesPage() {
                         unit: d.unit ?? "",
                         price: d.price ?? 0,
                         stock: d.quantity ?? d.stock ?? 0,
+                        stockLevel: d.stockLevel ?? "NORMAL",
                         minStock: d.minQuantity ?? d.minStock ?? 0,
                         manufacturer: d.manufacturer ?? "",
                         expiryDate: d.expiryDate ?? d.expiry_date ?? "",
                         activeIngredient: d.activeIngredient ?? d.active_ingredient ?? "",
-                        status: d.status ?? "available",
+                        status: d.status ?? "IN_BUSINESS",
                         description: d.description ?? "",
+                        createdAt: d.createdAt ?? d.created_at ?? "",
+                        updatedAt: d.updatedAt ?? d.updated_at ?? "",
                     })) as Medicine[]);
                     const total = items.length;
                     const lowStock = items.filter((d: any) => d.status === "low_stock").length;
@@ -74,7 +75,7 @@ export default function MedicinesPage() {
                     setStats(prev => ({ ...prev, totalMedicines: total, lowStockCount: lowStock, outOfStockCount: outOfStock }));
                 }
             })
-            .catch(() => {/* keep mock */});
+            .catch(() => { /* API không khả dụng, hiển thị trống */ });
     }, []);
 
     // Filtered and sorted medicines

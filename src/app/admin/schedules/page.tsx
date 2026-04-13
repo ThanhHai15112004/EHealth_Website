@@ -29,43 +29,6 @@ const STATUS_STYLES = {
     LEAVE: { label: "Nghỉ phép", bg: "bg-orange-100 dark:bg-orange-900/30", text: "text-orange-700 dark:text-orange-400" },
 };
 
-const DOCTORS = [
-    { id: "1", name: "BS. Nguyễn Văn An", dept: "Khoa Nội" },
-    { id: "2", name: "BS. Trần Thị Bình", dept: "Khoa Ngoại" },
-    { id: "3", name: "BS. Lê Văn Cường", dept: "Khoa Nhi" },
-    { id: "4", name: "BS. Phạm Thị Dung", dept: "Khoa Sản" },
-    { id: "5", name: "BS. Hoàng Văn Em", dept: "Khoa Tim mạch" },
-    { id: "6", name: "BS. Ngô Thị Pha", dept: "Khoa Da liễu" },
-];
-
-const generateMockSchedules = (): Schedule[] => {
-    const today = new Date();
-    const schedules: Schedule[] = [];
-    for (let i = -7; i <= 14; i++) {
-        const date = new Date(today);
-        date.setDate(today.getDate() + i);
-        const dateStr = date.toISOString().split("T")[0];
-        DOCTORS.forEach((doc, idx) => {
-            const shifts: ("MORNING" | "AFTERNOON" | "NIGHT")[] = ["MORNING", "AFTERNOON", "NIGHT"];
-            const shift = shifts[(idx + i + 20) % 3];
-            const rand = Math.random();
-            let status: Schedule["status"];
-            if (i < 0) status = rand > 0.1 ? "COMPLETED" : "ABSENT";
-            else if (i === 0) status = "ON_DUTY";
-            else status = rand > 0.9 ? "LEAVE" : "SCHEDULED";
-            schedules.push({
-                id: `${doc.id}-${dateStr}`,
-                doctorId: doc.id,
-                doctorName: doc.name,
-                department: doc.dept,
-                shift,
-                date: dateStr,
-                status,
-            });
-        });
-    }
-    return schedules;
-};
 
 function getWeekDates(date: Date): Date[] {
     const d = new Date(date);
@@ -101,7 +64,7 @@ function getMonthDates(date: Date): Date[] {
 const DAY_NAMES = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"];
 
 export default function SchedulesPage() {
-    const [schedules, setSchedules] = useState<Schedule[]>(generateMockSchedules());
+    const [schedules, setSchedules] = useState<Schedule[]>([]);
     const router = useRouter();
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<"week" | "month">("week");
@@ -123,7 +86,7 @@ export default function SchedulesPage() {
                     setSchedules(items);
                 }
             })
-            .catch(() => {/* keep mock */});
+            .catch(() => { /* API không khả dụng, hiển thị trống */ });
     }, []);
 
     const todayStr = new Date().toISOString().split("T")[0];

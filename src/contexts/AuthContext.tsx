@@ -85,7 +85,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
                     setUser(parsed);
                 }
             } catch (error) {
-                console.error('Lỗi khởi tạo auth:', error);
+                if (process.env.NODE_ENV === 'development') {
+                    console.error('Lỗi khởi tạo auth:', error);
+                }
                 localStorage.removeItem(AUTH_CONFIG.ACCESS_TOKEN_KEY);
                 localStorage.removeItem(AUTH_CONFIG.REFRESH_TOKEN_KEY);
                 localStorage.removeItem(AUTH_CONFIG.USER_KEY);

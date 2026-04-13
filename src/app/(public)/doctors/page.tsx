@@ -7,7 +7,6 @@ import { PatientFooter } from "@/components/patient/PatientFooter";
 import { DoctorCard } from "@/components/patient/DoctorCard";
 import { staffService, unwrapStaffList, type StaffMember } from "@/services/staffService";
 import { getSpecialties, type Specialty } from "@/services/specialtyService";
-import { MOCK_SPECIALTIES, filterMockDoctors } from "@/data/patient-mock";
 import type { Doctor } from "@/services/doctorService";
 
 // PublicDoctor kết hợp Doctor và StaffMember để dùng trong page này
@@ -35,19 +34,15 @@ function DoctorsPageInner() {
     const [showFilters, setShowFilters] = useState(false);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const [usingMock, setUsingMock] = useState(false);
+    const [error, setError] = useState(false);
 
     useEffect(() => {
         loadSpecialties();
     }, []);
 
     useEffect(() => {
-        if (usingMock) {
-            loadMockDoctors();
-        } else {
-            loadDoctors();
-        }
-    }, [page, selectedSpecialty, search, usingMock]);
+        loadDoctors();
+    }, [page, selectedSpecialty, search]);
 
     const loadSpecialties = async () => {
         try {
@@ -55,18 +50,17 @@ function DoctorsPageInner() {
             if (res.data && res.data.length > 0) {
                 setSpecialties(res.data);
             } else {
-                setSpecialties(MOCK_SPECIALTIES);
-                setUsingMock(true);
+                setSpecialties([]);
             }
         } catch {
-            setSpecialties(MOCK_SPECIALTIES);
-            setUsingMock(true);
+            setSpecialties([]);
         }
     };
 
     const loadDoctors = async () => {
         try {
             setLoading(true);
+            setError(false);
             const res = await staffService.getList({
                 page,
                 limit: 12,
@@ -75,48 +69,32 @@ function DoctorsPageInner() {
                 departmentId: selectedSpecialty || undefined,
             });
             const items = unwrapStaffList(res);
-            if (items.length > 0) {
-                // Map StaffMember → PublicDoctor shape dùng trong DoctorCard
-                const mapped: PublicDoctor[] = items.map((d) => ({
-                    id: d.id,
-                    code: d.code ?? '',
-                    fullName: d.fullName,
-                    departmentId: d.departmentId ?? '',
-                    departmentName: d.departmentName ?? '',
-                    specialization: d.specialization ?? '',
-                    qualification: d.qualification ?? '',
-                    phone: d.phone,
-                    email: d.email,
-                    rating: d.rating ?? 0,
-                    status: d.status === 'ACTIVE' ? 'active' : 'inactive' as any,
-                    avatar: d.avatar,
-                    experience: d.experience ?? 0,
-                }));
-                setDoctors(mapped);
-                // Pagination từ response gốc
-                const pagination = (res as any)?.data?.pagination ?? (res as any)?.pagination;
-                if (pagination?.totalPages) setTotalPages(pagination.totalPages);
-            } else {
-                setUsingMock(true);
-            }
+            // Map StaffMember → PublicDoctor shape dùng trong DoctorCard
+            const mapped: PublicDoctor[] = items.map((d) => ({
+                id: d.id,
+                code: d.code ?? '',
+                fullName: d.fullName,
+                departmentId: d.departmentId ?? '',
+                departmentName: d.departmentName ?? '',
+                specialization: d.specialization ?? '',
+                qualification: d.qualification ?? '',
+                phone: d.phone,
+                email: d.email,
+                rating: d.rating ?? 0,
+                status: d.status === 'ACTIVE' ? 'active' : 'inactive' as any,
+                avatar: d.avatar,
+                experience: d.experience ?? 0,
+            }));
+            setDoctors(mapped);
+            // Pagination từ response gốc
+            const pagination = (res as any)?.data?.pagination ?? (res as any)?.pagination;
+            if (pagination?.totalPages) setTotalPages(pagination.totalPages);
         } catch {
-            setUsingMock(true);
+            setDoctors([]);
+            setError(true);
         } finally {
             setLoading(false);
         }
-    };
-
-    const loadMockDoctors = () => {
-        setLoading(true);
-        const result = filterMockDoctors({
-            search: search || undefined,
-            departmentId: selectedSpecialty || undefined,
-            page,
-            limit: 12,
-        });
-        setDoctors(result.data as PublicDoctor[]);
-        setTotalPages(result.pagination.totalPages);
-        setLoading(false);
     };
 
     const clearFilters = () => {
@@ -268,6 +246,15 @@ function DoctorsPageInner() {
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        ) : error ? (
+                            <div className="text-center py-20 bg-white rounded-2xl border border-red-100">
+                                <span className="material-symbols-outlined text-red-300 mb-3" style={{ fontSize: "64px" }}>cloud_off</span>
+                                <p className="text-gray-700 text-lg font-medium">Không thể tải danh sách bác sĩ</p>
+                                <p className="text-gray-400 text-sm mt-1 mb-4">Vui lòng thử lại sau</p>
+                                <button onClick={loadDoctors} className="px-4 py-2 text-sm font-medium text-white bg-[#3C81C6] rounded-xl hover:bg-[#2a6da8] transition-colors">
+                                    Thử lại
+                                </button>
                             </div>
                         ) : doctors.length === 0 ? (
                             <div className="text-center py-20 bg-white rounded-2xl border border-gray-100">

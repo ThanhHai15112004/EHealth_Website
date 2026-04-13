@@ -9,18 +9,11 @@ import { staffService } from "@/services/staffService";
 import { getPatients } from "@/services/patientService";
 import { useAuth } from "@/contexts/AuthContext";
 
-const FALLBACK_DEPTS = ["Nội tổng quát", "Ngoại tổng quát", "Nhi khoa", "Sản phụ khoa", "Tim mạch", "Thần kinh", "Da liễu", "Mắt", "Tai mũi họng", "Cấp cứu"];
-const FALLBACK_DOCTORS: Record<string, string[]> = {
-    "Nội tổng quát": ["BS. Nguyễn Văn An", "BS. Trần Bình"], "Ngoại tổng quát": ["BS. Lê Cường"],
-    "Nhi khoa": ["BS. Phạm Dung"], "Tim mạch": ["BS. Hoàng Em", "BS. Ngô Đức"],
-    "Da liễu": ["BS. Phạm Hoa"], "Cấp cứu": ["BS. Lý Thanh"],
-};
-
 export default function NewAppointmentPage() {
     const router = useRouter();
     const { user } = useAuth();
     const [saving, setSaving] = useState(false);
-    const [deptList, setDeptList] = useState(FALLBACK_DEPTS);
+    const [deptList, setDeptList] = useState<string[]>([]);
     const [deptIdMap, setDeptIdMap] = useState<Record<string, string>>({});
     const [doctorsByDept, setDoctorsByDept] = useState<Record<string, { id: string; name: string }[]>>({});
     const [formData, setFormData] = useState({
@@ -149,8 +142,7 @@ export default function NewAppointmentPage() {
     };
 
     const availableDoctorsApi = formData.department ? (doctorsByDept[formData.department] || []) : [];
-    const availableDoctorsFallback = formData.department ? (FALLBACK_DOCTORS[formData.department] || []) : [];
-    const availableDoctors = availableDoctorsApi.length > 0 ? availableDoctorsApi.map((d) => d.name) : availableDoctorsFallback;
+    const availableDoctors = availableDoctorsApi.map((d) => d.name);
 
     return (
         <div className="space-y-6">

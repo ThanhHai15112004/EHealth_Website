@@ -12,13 +12,6 @@ const TABS = [
     { key: "staff", label: "Nhân sự", icon: "groups" },
 ];
 
-const MOCK_EQUIPMENT = [
-    { name: "Máy siêu âm GE Vivid", quantity: 2, status: "active" },
-    { name: "Máy điện tim 12 cần", quantity: 3, status: "active" },
-    { name: "Máy đo SpO2", quantity: 5, status: "active" },
-    { name: "Máy monitor theo dõi", quantity: 8, status: "maintenance" },
-    { name: "Máy thở CPAP", quantity: 2, status: "active" },
-];
 
 interface DeptStaff {
     id: string;
@@ -242,23 +235,9 @@ function InfoTab({ department }: { department: Department }) {
                     <span className="material-symbols-outlined text-[#3C81C6]">devices</span>
                     Trang thiết bị
                 </h2>
-                <div className="space-y-3">
-                    {MOCK_EQUIPMENT.map((eq, i) => (
-                        <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-[#3C81C6]/10 flex items-center justify-center">
-                                    <span className="material-symbols-outlined text-[16px] text-[#3C81C6]">medical_services</span>
-                                </div>
-                                <span className="text-sm font-medium text-[#121417] dark:text-white">{eq.name}</span>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <span className="text-xs text-[#687582]">SL: {eq.quantity}</span>
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${eq.status === "active" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"}`}>
-                                    {eq.status === "active" ? "Hoạt động" : "Bảo trì"}
-                                </span>
-                            </div>
-                        </div>
-                    ))}
+                <div className="flex flex-col items-center justify-center py-8 text-center">
+                    <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">inbox</span>
+                    <p className="text-sm text-[#687582] dark:text-gray-400">Chưa có dữ liệu</p>
                 </div>
             </div>
         </div>

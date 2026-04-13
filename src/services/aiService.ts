@@ -4,7 +4,7 @@ import { AI_ENDPOINTS } from '@/api/endpoints';
 // ============================================
 // Health Chat endpoints (local constants — không có trong endpoints.ts)
 // ============================================
-const BASE_URL = 'http://160.250.186.97:3000';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 const HC = {
     SESSIONS: '/api/ai/health-chat/sessions',

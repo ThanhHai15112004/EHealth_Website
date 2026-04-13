@@ -8,7 +8,6 @@ import { staffService } from "@/services/staffService";
 import { getPatients } from "@/services/patientService";
 import { createAppointment } from "@/services/appointmentService";
 
-const MOCK_DEPARTMENTS = ["Nội tổng quát", "Ngoại tổng quát", "Nhi khoa", "Sản phụ khoa", "Tim mạch", "Da liễu", "Mắt", "Cấp cứu"];
 
 export default function NewAppointmentPage() {
     const router = useRouter();
@@ -30,14 +29,10 @@ export default function NewAppointmentPage() {
         getDepartments()
             .then(res => {
                 const items: any[] = (res as any)?.data?.data ?? (res as any)?.data ?? res ?? [];
-                if (Array.isArray(items) && items.length > 0) {
-                    setDeptList(items.map((d: any) => ({ id: d.id ?? "", name: d.name ?? "" })));
-                } else {
-                    setDeptList(MOCK_DEPARTMENTS.map((n, i) => ({ id: String(i + 1), name: n })));
-                }
+                setDeptList(items.map((d: any) => ({ id: d.id ?? "", name: d.name ?? "" })));
             })
             .catch(() => {
-                setDeptList(MOCK_DEPARTMENTS.map((n, i) => ({ id: String(i + 1), name: n })));
+                setDeptList([]);
             });
 
         // Load doctors

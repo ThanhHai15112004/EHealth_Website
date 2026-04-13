@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { MOCK_DOCTORS, MOCK_DEPARTMENTS } from "@/lib/mock-data/admin";
 import type { Doctor } from "@/types";
 import { staffService } from "@/services/staffService";
 import { getDepartments, unwrapDepartments } from "@/services/departmentService";
@@ -27,14 +26,14 @@ export default function EditDoctorPage() {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(true);
 
-    const [departments, setDepartments] = useState(MOCK_DEPARTMENTS);
+    const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
 
     useEffect(() => {
         getDepartments({ limit: 100 })
             .then((res: any) => {
                 const items = unwrapDepartments(res);
                 if (items.length > 0) {
-                    setDepartments(items.map(d => ({ id: d.id, name: d.name })) as typeof MOCK_DEPARTMENTS);
+                    setDepartments(items.map(d => ({ id: d.id, name: d.name })));
                 }
             })
             .catch(() => {});
@@ -46,7 +45,6 @@ export default function EditDoctorPage() {
                 const d = res?.data ?? res;
                 if (d && (d.id || d.staff_id)) {
                     const doc = {
-                        ...MOCK_DOCTORS[0],
                         id: d.id ?? d.staff_id ?? doctorId,
                         fullName: d.full_name ?? d.fullName ?? "",
                         email: d.email ?? "",
@@ -55,7 +53,7 @@ export default function EditDoctorPage() {
                         specialization: d.specialization ?? "",
                         experience: d.experience ?? 0,
                         gender: d.gender ?? "Nam",
-                    } as Doctor;
+                    } as unknown as Doctor;
                     setDoctor(doc);
                     setFormData({
                         fullName: doc.fullName || "",
@@ -69,11 +67,7 @@ export default function EditDoctorPage() {
                 }
             })
             .catch(() => {
-                const found = MOCK_DOCTORS.find((d) => d.id === doctorId);
-                if (found) {
-                    setDoctor(found);
-                    setFormData({ fullName: found.fullName || "", email: found.email || "", phone: found.phone || "", departmentId: found.departmentId || "", specialization: found.specialization || "", experience: String(found.experience || 0), gender: "Nam" });
-                }
+                setDoctor(null);
             })
             .finally(() => setLoading(false));
     }, [doctorId]);

@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { MOCK_DOCTORS } from "@/lib/mock-data/admin";
 import { DOCTOR_STATUS } from "@/constants/status";
 import type { Doctor } from "@/types";
 import { staffService } from "@/services/staffService";
@@ -24,7 +23,6 @@ export default function DoctorDetailPage() {
                 const d = res?.data ?? res;
                 if (d && (d.id || d.staff_id)) {
                     setDoctor({
-                        ...MOCK_DOCTORS[0],
                         id: d.id ?? d.staff_id ?? doctorId,
                         fullName: d.full_name ?? d.fullName ?? "",
                         email: d.email ?? "",
@@ -44,8 +42,7 @@ export default function DoctorDetailPage() {
                 }
             })
             .catch(() => {
-                const found = MOCK_DOCTORS.find((d) => d.id === doctorId);
-                setDoctor(found || null);
+                setDoctor(null);
             })
             .finally(() => setLoading(false));
     }, [doctorId]);

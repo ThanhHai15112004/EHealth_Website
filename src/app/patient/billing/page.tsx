@@ -1,11 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getProfilesByUserId } from "@/data/patient-profiles-mock";
-import {
-    MOCK_INVOICES, MOCK_TRANSACTIONS, MOCK_SERVICE_PRICES,
-    type Invoice, type Transaction, type ServicePrice,
-} from "@/data/patient-portal-mock";
+import type { Invoice, Transaction, ServicePrice } from "@/types/patient-portal";
 import { billingService } from "@/services/billingService";
 import { unwrapList, unwrap } from "@/api/response";
 
@@ -21,13 +17,12 @@ type QRState = "idle" | "loading" | "showing" | "success" | "error";
 
 export default function BillingPage() {
     const [activeTab, setActiveTab]         = useState("pending");
-    const [selectedProfileId, setSelectedProfileId] = useState("pp-001");
-    const profiles = getProfilesByUserId("patient-001");
+    const [selectedProfileId, setSelectedProfileId] = useState("");
 
     // ── Invoices state ────────────────────────────────────────────────────────
-    const [invoices, setInvoices]           = useState<Invoice[]>(MOCK_INVOICES);
-    const [transactions, setTransactions]   = useState<Transaction[]>(MOCK_TRANSACTIONS);
-    const [catalog, setCatalog]             = useState<ServicePrice[]>(MOCK_SERVICE_PRICES);
+    const [invoices, setInvoices]           = useState<Invoice[]>([]);
+    const [transactions, setTransactions]   = useState<Transaction[]>([]);
+    const [catalog, setCatalog]             = useState<ServicePrice[]>([]);
     const [loadingInvoices, setLoadingInvoices] = useState(false);
     const [invoiceError, setInvoiceError]   = useState<string | null>(null);
 
@@ -50,11 +45,8 @@ export default function BillingPage() {
         setLoadingInvoices(true);
         setInvoiceError(null);
         try {
-            // Use selected profile — first profile maps to user patient ID
-            const profile = profiles.find(p => p.id === selectedProfileId);
             const params: Record<string, any> = { limit: 50 };
-            if (profile?.id) params.profileId = profile.id;
-            // patientId would come from auth context in real usage
+            if (selectedProfileId) params.profileId = selectedProfileId;
             const res = await billingService.getInvoices(params);
             const { data } = unwrapList<any>(res);
             if (data.length > 0) {
@@ -107,7 +99,7 @@ export default function BillingPage() {
                     setCatalog(mapped);
                 }
             })
-            .catch(() => { /* keep mock */ });
+            .catch(() => { setCatalog([]); });
     }, []);
 
     const pending = invoices.filter(i => i.status === "pending" || i.status === "overdue");
@@ -201,16 +193,6 @@ export default function BillingPage() {
                 <div>
                     <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Thanh toán & Hóa đơn</h1>
                     <p className="text-sm text-[#687582] mt-0.5">Quản lý hóa đơn, thanh toán và tra cứu bảng giá</p>
-                    <div className="flex items-center gap-2 mt-3">
-                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>person</span>
-                        <select
-                            value={selectedProfileId}
-                            onChange={e => setSelectedProfileId(e.target.value)}
-                            className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-[#1e242b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 font-medium"
-                        >
-                            {profiles.map(p => <option key={p.id} value={p.id}>{p.fullName} — {p.relationshipLabel}</option>)}
-                        </select>
-                    </div>
                 </div>
                 {totalPending > 0 && (
                     <div className="px-4 py-2 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl">

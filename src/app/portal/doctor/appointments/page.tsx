@@ -3,10 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
-import {
-    MOCK_APPOINTMENTS,
-    MOCK_PENDING_APPOINTMENTS,
-} from "@/lib/mock-data/doctor";
 import * as appointmentService from "@/services/appointmentService";
 import { useAuth } from "@/contexts/AuthContext";
 import { AIAppointmentTriage } from "@/components/portal/ai";
@@ -19,8 +15,8 @@ export default function AppointmentsPage() {
     const router = useRouter();
     const { user } = useAuth();
     const [viewMode, setViewMode] = useState<ViewMode>("week");
-    const [appointments, setAppointments] = useState<any[]>(MOCK_APPOINTMENTS);
-    const [pendingRequests, setPendingRequests] = useState<any[]>(MOCK_PENDING_APPOINTMENTS);
+    const [appointments, setAppointments] = useState<any[]>([]);
+    const [pendingRequests, setPendingRequests] = useState<any[]>([]);
     const [selectedAppointment, setSelectedAppointment] = useState<any | null>(null);
     const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
 
@@ -60,7 +56,7 @@ export default function AppointmentsPage() {
                     setPendingRequests(data.filter((a: any) => a.status === 'PENDING'));
                 }
             })
-            .catch(() => { /* keep mock data */ });
+            .catch(() => { setAppointments([]); setPendingRequests([]); });
     }, [user?.id]);
 
     const handleAcceptRequest = async (requestId: string) => {
@@ -83,7 +79,7 @@ export default function AppointmentsPage() {
         }
     };
 
-    const handleAppointmentClick = (appointment: typeof MOCK_APPOINTMENTS[0]) => {
+    const handleAppointmentClick = (appointment: any) => {
         setSelectedAppointment(appointment);
     };
 

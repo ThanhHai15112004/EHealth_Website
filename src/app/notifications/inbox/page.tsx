@@ -12,15 +12,6 @@ import {
 } from "@/services/notificationService";
 import { useToast } from "@/contexts/ToastContext";
 
-const MOCK_INBOX: NotificationItem[] = [
-    { id: "n1", title: "Lịch hẹn mới được xác nhận", content: "Lịch khám của bệnh nhân Nguyễn Văn An vào 08:30 ngày 25/02 đã được xác nhận.", category: "Lịch hẹn", isRead: false, createdAt: "2025-02-24T10:30:00Z" },
-    { id: "n2", title: "Kết quả xét nghiệm sẵn sàng", content: "Kết quả xét nghiệm máu của bệnh nhân Lê Thị Bình (BN-002) đã được cập nhật.", category: "Kết quả XN", isRead: false, createdAt: "2025-02-24T09:15:00Z" },
-    { id: "n3", title: "Nhắc nhở: Lịch khám ngày mai", content: "Bạn có 5 lịch hẹn vào ngày 25/02. Vui lòng chuẩn bị đầy đủ.", category: "Nhắc nhở", isRead: true, createdAt: "2025-02-23T18:00:00Z" },
-    { id: "n4", title: "Đơn thuốc cần xử lý", content: "Đơn thuốc DT-003 của bệnh nhân Trần Văn Cường đang chờ cấp phát.", category: "Đơn thuốc", isRead: true, createdAt: "2025-02-23T14:20:00Z" },
-    { id: "n5", title: "Thanh toán thành công", content: "Hóa đơn HD-001 trị giá 850,000đ đã được thanh toán thành công.", category: "Thanh toán", isRead: true, createdAt: "2025-02-23T11:45:00Z" },
-    { id: "n6", title: "Thông báo bảo trì hệ thống", content: "Hệ thống sẽ bảo trì từ 23:00 đến 01:00 ngày 26/02/2025. Vui lòng lưu dữ liệu trước khi bảo trì.", category: "Hệ thống", isRead: false, createdAt: "2025-02-22T09:00:00Z" },
-];
-
 const CATEGORY_COLORS: Record<string, string> = {
     "Lịch hẹn": "bg-blue-50 text-blue-600 dark:bg-blue-900/20",
     "Kết quả XN": "bg-purple-50 text-purple-600 dark:bg-purple-900/20",
@@ -43,7 +34,7 @@ type FilterType = "all" | "unread" | "read";
 export default function NotificationInboxPage() {
     const router = useRouter();
     const toast = useToast();
-    const [notifications, setNotifications] = useState<NotificationItem[]>(MOCK_INBOX);
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [filter, setFilter] = useState<FilterType>("all");
     const [categoryFilter, setCategoryFilter] = useState<string>("all");
     const [loading, setLoading] = useState(true);
@@ -63,16 +54,14 @@ export default function NotificationInboxPage() {
         try {
             const res = await getNotificationInbox({ page: pageNum, limit: LIMIT });
             const items: NotificationItem[] = res?.data ?? (res as any) ?? [];
-            if (items.length > 0) {
-                if (pageNum === 1) {
-                    setNotifications(items);
-                } else {
-                    setNotifications(prev => [...prev, ...items]);
-                }
-                setHasMore(items.length === LIMIT);
+            if (pageNum === 1) {
+                setNotifications(items);
+            } else {
+                setNotifications(prev => [...prev, ...items]);
             }
+            setHasMore(items.length === LIMIT);
         } catch {
-            /* keep mock */
+            if (pageNum === 1) setNotifications([]);
         } finally {
             setLoading(false);
         }

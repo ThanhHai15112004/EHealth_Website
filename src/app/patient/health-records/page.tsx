@@ -3,12 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
-import { MOCK_PATIENT_PROFILES, getProfilesByUserId, type PatientProfile } from "@/data/patient-profiles-mock";
-import {
-    MOCK_VITAL_SIGNS, MOCK_HEALTH_TIMELINE, MOCK_MEDICAL_HISTORY,
-    MOCK_LAB_RESULTS, MOCK_MEDICATIONS,
-    type VitalSign, type HealthTimelineItem, type MedicalHistoryItem, type LabResult, type Medication,
-} from "@/data/patient-portal-mock";
+import type { PatientProfile } from "@/types/patient-profile";
+import type { VitalSign, HealthTimelineItem, MedicalHistoryItem, LabResult, Medication } from "@/types/patient-portal";
 import { ehrService } from "@/services/ehrService";
 
 const TABS = [
@@ -138,22 +134,33 @@ export default function HealthRecordsPage() {
     usePageAIContext({ pageKey: 'health-records' });
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState("overview");
-    const [selectedProfileId, setSelectedProfileId] = useState("pp-001");
-    const profiles = getProfilesByUserId(user?.id ?? "patient-001");
+    const [selectedProfileId, setSelectedProfileId] = useState(user?.id ?? "");
+    const profiles: PatientProfile[] = user ? [{
+        id: user.id,
+        userId: user.id,
+        fullName: user.fullName || "Bệnh nhân",
+        dob: "",
+        gender: "other",
+        phone: user.phone || "",
+        relationship: "self",
+        relationshipLabel: "Bản thân",
+        isActive: true,
+        isPrimary: true,
+        createdAt: "",
+        updatedAt: "",
+    }] : [];
 
     // Track which tabs đã fetch rồi
     const [fetched, setFetched] = useState<Record<string, boolean>>({});
 
     // ── Data states ────────────────────────────────────────────────────
-    const [latestVital, setLatestVital] = useState<VitalSign>(MOCK_VITAL_SIGNS[0]);
-    const [vitals, setVitals] = useState<VitalSign[]>(MOCK_VITAL_SIGNS);
-    const [timeline, setTimeline] = useState<HealthTimelineItem[]>(MOCK_HEALTH_TIMELINE);
-    const [medHistory, setMedHistory] = useState<MedicalHistoryItem[]>(MOCK_MEDICAL_HISTORY);
-    const [labResults, setLabResults] = useState<LabResult[]>(MOCK_LAB_RESULTS);
-    const [medications, setMedications] = useState<Medication[]>(MOCK_MEDICATIONS);
-    const [allergies, setAllergies] = useState<MedicalHistoryItem[]>(
-        MOCK_MEDICAL_HISTORY.filter(h => h.type === "allergy")
-    );
+    const [latestVital, setLatestVital] = useState<VitalSign | null>(null);
+    const [vitals, setVitals] = useState<VitalSign[]>([]);
+    const [timeline, setTimeline] = useState<HealthTimelineItem[]>([]);
+    const [medHistory, setMedHistory] = useState<MedicalHistoryItem[]>([]);
+    const [labResults, setLabResults] = useState<LabResult[]>([]);
+    const [medications, setMedications] = useState<Medication[]>([]);
+    const [allergies, setAllergies] = useState<MedicalHistoryItem[]>([]);
 
     // ── Loading states per tab ─────────────────────────────────────────
     const [loadingVitals, setLoadingVitals] = useState(false);
@@ -286,14 +293,13 @@ export default function HealthRecordsPage() {
     const handleProfileChange = (profileId: string) => {
         setSelectedProfileId(profileId);
         setFetched({});
-        // reset về fallback mock
-        setLatestVital(MOCK_VITAL_SIGNS[0]);
-        setVitals(MOCK_VITAL_SIGNS);
-        setTimeline(MOCK_HEALTH_TIMELINE);
-        setMedHistory(MOCK_MEDICAL_HISTORY);
-        setLabResults(MOCK_LAB_RESULTS);
-        setMedications(MOCK_MEDICATIONS);
-        setAllergies(MOCK_MEDICAL_HISTORY.filter(h => h.type === "allergy"));
+        setLatestVital(null);
+        setVitals([]);
+        setTimeline([]);
+        setMedHistory([]);
+        setLabResults([]);
+        setMedications([]);
+        setAllergies([]);
     };
 
     return (
@@ -338,18 +344,18 @@ export default function HealthRecordsPage() {
 function OverviewTab({
     vital, allergies, medications, recentTimeline
 }: {
-    vital: VitalSign;
+    vital: VitalSign | null;
     allergies: MedicalHistoryItem[];
     medications: Medication[];
     recentTimeline: HealthTimelineItem[];
 }) {
     const healthCards = [
-        { label: "Huyết áp", value: `${vital.bloodPressureSystolic}/${vital.bloodPressureDiastolic}`, unit: "mmHg", icon: "bloodtype", color: "from-red-500 to-rose-600", ok: vital.bloodPressureSystolic <= 130 },
-        { label: "Nhịp tim", value: `${vital.heartRate}`, unit: "bpm", icon: "cardiology", color: "from-pink-500 to-red-500", ok: true },
-        { label: "BMI", value: vital.bmi.toFixed(1), unit: "", icon: "monitor_weight", color: "from-blue-500 to-indigo-600", ok: vital.bmi >= 18.5 && vital.bmi <= 25 },
-        { label: "SpO2", value: `${vital.spo2 || 98}`, unit: "%", icon: "pulmonology", color: "from-cyan-500 to-teal-600", ok: true },
-        { label: "Đường huyết", value: `${vital.bloodSugar || 95}`, unit: "mg/dL", icon: "water_drop", color: "from-amber-500 to-orange-500", ok: true },
-        { label: "Nhiệt độ", value: vital.temperature.toFixed(1), unit: "°C", icon: "thermostat", color: "from-green-500 to-emerald-600", ok: true },
+        { label: "Huyết áp", value: vital ? `${vital.bloodPressureSystolic}/${vital.bloodPressureDiastolic}` : "—", unit: "mmHg", icon: "bloodtype", color: "from-red-500 to-rose-600", ok: !vital || vital.bloodPressureSystolic <= 130 },
+        { label: "Nhịp tim", value: vital ? `${vital.heartRate}` : "—", unit: "bpm", icon: "cardiology", color: "from-pink-500 to-red-500", ok: true },
+        { label: "BMI", value: vital ? vital.bmi.toFixed(1) : "—", unit: "", icon: "monitor_weight", color: "from-blue-500 to-indigo-600", ok: !vital || (vital.bmi >= 18.5 && vital.bmi <= 25) },
+        { label: "SpO2", value: vital ? `${vital.spo2 || "—"}` : "—", unit: "%", icon: "pulmonology", color: "from-cyan-500 to-teal-600", ok: true },
+        { label: "Đường huyết", value: vital ? `${vital.bloodSugar || "—"}` : "—", unit: "mg/dL", icon: "water_drop", color: "from-amber-500 to-orange-500", ok: true },
+        { label: "Nhiệt độ", value: vital ? vital.temperature.toFixed(1) : "—", unit: "°C", icon: "thermostat", color: "from-green-500 to-emerald-600", ok: true },
     ];
 
     return (

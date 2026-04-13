@@ -18,27 +18,14 @@ import {
 } from "@/services/notificationService";
 import { useToast } from "@/contexts/ToastContext";
 
-const MOCK_CATEGORIES: NotificationCategory[] = [
-    { id: "cat1", name: "Lịch hẹn", code: "APPOINTMENT", description: "Thông báo liên quan đến lịch hẹn", isActive: true },
-    { id: "cat2", name: "Kết quả xét nghiệm", code: "LAB_RESULT", description: "Thông báo kết quả xét nghiệm", isActive: true },
-    { id: "cat3", name: "Thanh toán", code: "BILLING", description: "Thông báo thanh toán và hóa đơn", isActive: true },
-    { id: "cat4", name: "Hệ thống", code: "SYSTEM", description: "Thông báo hệ thống và bảo trì", isActive: false },
-];
-
-const MOCK_TEMPLATES: NotificationTemplate[] = [
-    { id: "t1", categoryId: "cat1", name: "Xác nhận lịch hẹn", subject: "Xác nhận lịch khám ngày {{date}}", content: "Kính gửi {{patientName}}, lịch khám của bạn vào {{time}} ngày {{date}} với {{doctorName}} đã được xác nhận.", variables: ["patientName", "date", "time", "doctorName"], isActive: true },
-    { id: "t2", categoryId: "cat1", name: "Nhắc nhở lịch hẹn", subject: "Nhắc nhở: Lịch khám ngày mai", content: "Kính gửi {{patientName}}, nhắc bạn có lịch khám vào {{time}} ngày {{date}}. Vui lòng đến trước 15 phút.", variables: ["patientName", "date", "time"], isActive: true },
-    { id: "t3", categoryId: "cat2", name: "Kết quả xét nghiệm sẵn sàng", subject: "Kết quả xét nghiệm của bạn đã có", content: "Kính gửi {{patientName}}, kết quả xét nghiệm ngày {{date}} đã được cập nhật. Vui lòng đăng nhập để xem.", variables: ["patientName", "date"], isActive: true },
-    { id: "t4", categoryId: "cat3", name: "Xác nhận thanh toán", subject: "Xác nhận thanh toán hóa đơn {{invoiceId}}", content: "Hóa đơn {{invoiceId}} trị giá {{amount}} đã được thanh toán thành công.", variables: ["invoiceId", "amount"], isActive: true },
-];
 
 type ActiveTab = "categories" | "templates" | "roleconfigs" | "broadcast";
 
 export default function AdminNotifications() {
     const toast = useToast();
     const [activeTab, setActiveTab] = useState<ActiveTab>("categories");
-    const [categories, setCategories] = useState<NotificationCategory[]>(MOCK_CATEGORIES);
-    const [templates, setTemplates] = useState<NotificationTemplate[]>(MOCK_TEMPLATES);
+    const [categories, setCategories] = useState<NotificationCategory[]>([]);
+    const [templates, setTemplates] = useState<NotificationTemplate[]>([]);
     const [roleConfigs, setRoleConfigs] = useState<any[]>([]);
     const [loadingCat, setLoadingCat] = useState(true);
     const [loadingTpl, setLoadingTpl] = useState(true);
@@ -67,15 +54,15 @@ export default function AdminNotifications() {
 
     useEffect(() => {
         getNotificationCategories()
-            .then(data => { if (data.length > 0) setCategories(data); })
-            .catch(() => {})
+            .then(data => { if (data.length > 0) setCategories(data); else setCategories([]); })
+            .catch(() => { setCategories([]); })
             .finally(() => setLoadingCat(false));
     }, []);
 
     useEffect(() => {
         getNotificationTemplates()
-            .then(data => { if (data.length > 0) setTemplates(data); })
-            .catch(() => {})
+            .then(data => { if (data.length > 0) setTemplates(data); else setTemplates([]); })
+            .catch(() => { setTemplates([]); })
             .finally(() => setLoadingTpl(false));
     }, []);
 

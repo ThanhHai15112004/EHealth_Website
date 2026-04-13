@@ -6,14 +6,11 @@ import { usePageAIContext } from "@/hooks/usePageAIContext";
 
 type RxStatus = "pending" | "checking" | "dispensed";
 
-const MOCK_RX = [
-    { id: "DT001", patient: "Nguyễn Văn An", doctor: "BS. Trần Minh", dept: "Nội khoa", date: "25/02/2025", medicines: [{ name: "Amoxicillin 500mg", qty: "20 viên", dosage: "2 viên/ngày" }, { name: "Paracetamol 500mg", qty: "10 viên", dosage: "Khi sốt" }, { name: "Omeprazole 20mg", qty: "14 viên", dosage: "1 viên/ngày" }], diagnosis: "Viêm họng cấp", status: "pending" as RxStatus, priority: false },
-    { id: "DT002", patient: "Lê Thị Bình", doctor: "BS. Phạm Hoa", dept: "Da liễu", date: "25/02/2025", medicines: [{ name: "Cetirizine 10mg", qty: "30 viên", dosage: "1 viên/tối" }, { name: "Hydrocortisone cream", qty: "1 tuýp", dosage: "Bôi 2 lần/ngày" }], diagnosis: "Viêm da dị ứng", status: "pending" as RxStatus, priority: false },
-    { id: "DT003", patient: "Trần Văn Cường", doctor: "BS. Ngô Đức", dept: "Tim mạch", date: "25/02/2025", medicines: [{ name: "Amlodipine 5mg", qty: "30 viên", dosage: "1 viên/sáng" }, { name: "Aspirin 81mg", qty: "30 viên", dosage: "1 viên/ngày" }, { name: "Atorvastatin 10mg", qty: "30 viên", dosage: "1 viên/tối" }], diagnosis: "Tăng HA, ĐTĐ type 2", status: "checking" as RxStatus, priority: true },
-    { id: "DT004", patient: "Phạm Thị Dung", doctor: "BS. Trần Minh", dept: "Nội khoa", date: "25/02/2025", medicines: [{ name: "Vitamin B12", qty: "30 viên", dosage: "1 viên/ngày" }, { name: "Acid folic 5mg", qty: "30 viên", dosage: "1 viên/ngày" }], diagnosis: "Thiếu máu", status: "dispensed" as RxStatus, priority: false },
-    { id: "DT005", patient: "Hoàng Văn Em", doctor: "BS. Lý Thanh", dept: "Nhi khoa", date: "25/02/2025", medicines: [{ name: "Amoxicillin siro", qty: "1 chai", dosage: "5ml x 3 lần/ngày" }, { name: "Paracetamol siro", qty: "1 chai", dosage: "Khi sốt" }], diagnosis: "Viêm đường hô hấp", status: "pending" as RxStatus, priority: true },
-    { id: "DT006", patient: "Vũ Thị Fương", doctor: "BS. Phạm Hoa", dept: "Da liễu", date: "24/02/2025", medicines: [{ name: "Tretinoin cream", qty: "1 tuýp", dosage: "Bôi tối" }], diagnosis: "Mụn trứng cá", status: "dispensed" as RxStatus, priority: false },
-];
+type RxItem = {
+    id: string; patient: string; doctor: string; dept: string; date: string;
+    medicines: { name: string; qty: string; dosage: string }[];
+    diagnosis: string; status: RxStatus; priority: boolean;
+};
 
 const COLUMNS: { key: RxStatus; label: string; icon: string; color: string; bgColor: string }[] = [
     { key: "pending", label: "Chờ cấp phát", icon: "pending_actions", color: "text-amber-600", bgColor: "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800" },
@@ -21,14 +18,12 @@ const COLUMNS: { key: RxStatus; label: string; icon: string; color: string; bgCo
     { key: "dispensed", label: "Đã cấp phát", icon: "check_circle", color: "text-green-600", bgColor: "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" },
 ];
 
-const INTERACTION_WARNINGS: Record<string, { drugs: string[]; warning: string; severity: "high" | "medium" }> = {
-    DT003: { drugs: ["Aspirin 81mg", "Amlodipine 5mg"], warning: "Aspirin có thể tăng tác dụng hạ huyết áp của Amlodipine. Theo dõi HA.", severity: "medium" },
-    DT005: { drugs: ["Amoxicillin siro", "Paracetamol siro"], warning: "Lưu ý liều dùng cho trẻ em theo cân nặng.", severity: "high" },
-};
+// Cảnh báo tương tác thuốc sẽ được load từ API (hiện để trống)
+const INTERACTION_WARNINGS: Record<string, { drugs: string[]; warning: string; severity: "high" | "medium" }> = {};
 
 export default function PharmacistPrescriptions() {
     usePageAIContext({ pageKey: 'prescriptions' });
-    const [rxs, setRxs] = useState(MOCK_RX);
+    const [rxs, setRxs] = useState<RxItem[]>([]);
 
     useEffect(() => {
         const mapStatus = (s: string): RxStatus => {
@@ -59,7 +54,7 @@ export default function PharmacistPrescriptions() {
                     setRxs(mapped);
                 }
             })
-            .catch(() => {/* keep mock */});
+            .catch(() => { setRxs([]); });
     }, []);
     const [search, setSearch] = useState("");
     const [detail, setDetail] = useState<string | null>(null);

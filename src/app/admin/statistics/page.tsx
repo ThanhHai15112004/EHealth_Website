@@ -10,94 +10,7 @@ import { reportService } from "@/services/reportService";
 import { unwrap } from "@/api/response";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 
-/* ──────────────────────────────────────────────────────────────
-   MOCK DATA — Đầy đủ cho 3 kỳ: Tháng, Quý, Năm
-   ────────────────────────────────────────────────────────────── */
-
-// ── Doanh thu theo từng tháng (Triệu VND) ──
-const MONTHLY_ALL = [
-    { label: "T1", value: 450 }, { label: "T2", value: 520 }, { label: "T3", value: 480 },
-    { label: "T4", value: 610 }, { label: "T5", value: 580 }, { label: "T6", value: 720 },
-    { label: "T7", value: 680 }, { label: "T8", value: 850 }, { label: "T9", value: 780 },
-    { label: "T10", value: 920 }, { label: "T11", value: 880 }, { label: "T12", value: 1050 },
-];
-
-// ── Doanh thu theo quý ──
-const QUARTERLY_ALL = [
-    { label: "Q1/2024", value: 1450 },
-    { label: "Q2/2024", value: 1910 },
-    { label: "Q3/2024", value: 2310 },
-    { label: "Q4/2024", value: 2850 },
-];
-
-// ── Doanh thu theo năm ──
-const YEARLY_ALL = [
-    { label: "2020", value: 4500 },
-    { label: "2021", value: 5200 },
-    { label: "2022", value: 6800 },
-    { label: "2023", value: 7500 },
-    { label: "2024", value: 8520 },
-];
-
-// ── Summary cards: dữ liệu thay đổi theo kỳ ──
-const SUMMARY_DATA = {
-    month: { revenue: 1050, revenueChange: 19.3, patients: 1240, patientsChange: 8.3, avgVisit: 56, visitChange: 5.2, rating: 4.8, ratingTrend: "flat" },
-    quarter: { revenue: 2850, revenueChange: 23.4, patients: 3650, patientsChange: 12.1, avgVisit: 148, visitChange: 7.5, rating: 4.8, ratingTrend: "up" },
-    year: { revenue: 8520, revenueChange: 13.6, patients: 14200, patientsChange: 9.8, avgVisit: 156, visitChange: 5.2, rating: 4.8, ratingTrend: "flat" },
-};
-
-// ── Khoa phân bố — thay đổi theo kỳ ──
-const DEPT_BY_PERIOD = {
-    month: [
-        { name: "Khoa Nội", patients: 320, revenue: 120, color: "#3C81C6" },
-        { name: "Khoa Ngoại", patients: 250, revenue: 140, color: "#22c55e" },
-        { name: "Khoa Nhi", patients: 220, revenue: 75, color: "#f59e0b" },
-        { name: "Khoa Sản", patients: 185, revenue: 95, color: "#ec4899" },
-        { name: "Khoa Tim mạch", patients: 160, revenue: 165, color: "#8b5cf6" },
-        { name: "Khoa Da liễu", patients: 105, revenue: 55, color: "#14b8a6" },
-    ],
-    quarter: [
-        { name: "Khoa Nội", patients: 950, revenue: 340, color: "#3C81C6" },
-        { name: "Khoa Ngoại", patients: 740, revenue: 395, color: "#22c55e" },
-        { name: "Khoa Nhi", patients: 640, revenue: 210, color: "#f59e0b" },
-        { name: "Khoa Sản", patients: 540, revenue: 285, color: "#ec4899" },
-        { name: "Khoa Tim mạch", patients: 480, revenue: 470, color: "#8b5cf6" },
-        { name: "Khoa Da liễu", patients: 300, revenue: 150, color: "#14b8a6" },
-    ],
-    year: [
-        { name: "Khoa Nội", patients: 3800, revenue: 1350, color: "#3C81C6" },
-        { name: "Khoa Ngoại", patients: 2960, revenue: 1560, color: "#22c55e" },
-        { name: "Khoa Nhi", patients: 2550, revenue: 840, color: "#f59e0b" },
-        { name: "Khoa Sản", patients: 2160, revenue: 1140, color: "#ec4899" },
-        { name: "Khoa Tim mạch", patients: 1920, revenue: 1860, color: "#8b5cf6" },
-        { name: "Khoa Da liễu", patients: 810, revenue: 420, color: "#14b8a6" },
-    ],
-};
-
-// ── Top Bác sĩ — thay đổi theo kỳ ──
-const TOP_DOCTORS_BY_PERIOD = {
-    month: [
-        { name: "BS. Nguyễn Văn An", dept: "Khoa Tim mạch", patients: 68, rating: 4.9 },
-        { name: "BS. Trần Thị Bình", dept: "Khoa Ngoại", patients: 62, rating: 4.8 },
-        { name: "BS. Lê Văn Cường", dept: "Khoa Nội", patients: 55, rating: 4.9 },
-        { name: "BS. Phạm Thị Dung", dept: "Khoa Sản", patients: 48, rating: 4.7 },
-        { name: "BS. Hoàng Văn Em", dept: "Khoa Nhi", patients: 45, rating: 4.8 },
-    ],
-    quarter: [
-        { name: "BS. Nguyễn Văn An", dept: "Khoa Tim mạch", patients: 195, rating: 4.9 },
-        { name: "BS. Trần Thị Bình", dept: "Khoa Ngoại", patients: 178, rating: 4.8 },
-        { name: "BS. Lê Văn Cường", dept: "Khoa Nội", patients: 162, rating: 4.9 },
-        { name: "BS. Phạm Thị Dung", dept: "Khoa Sản", patients: 140, rating: 4.7 },
-        { name: "BS. Hoàng Văn Em", dept: "Khoa Nhi", patients: 128, rating: 4.8 },
-    ],
-    year: [
-        { name: "BS. Nguyễn Văn An", dept: "Khoa Tim mạch", patients: 780, rating: 4.9 },
-        { name: "BS. Trần Thị Bình", dept: "Khoa Ngoại", patients: 712, rating: 4.8 },
-        { name: "BS. Lê Văn Cường", dept: "Khoa Nội", patients: 648, rating: 4.9 },
-        { name: "BS. Phạm Thị Dung", dept: "Khoa Sản", patients: 560, rating: 4.7 },
-        { name: "BS. Hoàng Văn Em", dept: "Khoa Nhi", patients: 512, rating: 4.8 },
-    ],
-};
+const EMPTY_SUMMARY = { revenue: 0, revenueChange: 0, patients: 0, patientsChange: 0, avgVisit: 0, visitChange: 0, rating: 0, ratingTrend: "flat" };
 
 type Period = "month" | "quarter" | "year";
 
@@ -107,66 +20,66 @@ type Period = "month" | "quarter" | "year";
 export default function StatisticsPage() {
     usePageAIContext({ pageKey: 'statistics' });
     const [timeRange, setTimeRange] = useState<Period>("month");
+    const [summary, setSummary] = useState(EMPTY_SUMMARY);
+    const [chartData, setChartData] = useState<{ label: string; value: number }[]>([]);
+    const [departments, setDepartments] = useState<{ name: string; patients: number; revenue: number; color: string }[]>([]);
+    const [topDoctors, setTopDoctors] = useState<{ name: string; dept: string; patients: number; rating: number }[]>([]);
 
-    // Fetch real report data — overlay onto mock if available
     useEffect(() => {
         reportService.getDashboard()
             .then((res: any) => {
                 const d = unwrap<any>(res);
                 if (!d) return;
-                // Map API response onto SUMMARY_DATA structure
-                const revenue       = Number(d.totalRevenue ?? d.revenue ?? 0) / 1_000_000; // convert to Triệu
+                const revenue       = Number(d.totalRevenue ?? d.revenue ?? 0) / 1_000_000;
                 const patients      = Number(d.totalPatients ?? d.patients ?? 0);
                 const avgVisit      = Number(d.avgDailyVisits ?? d.avgVisit ?? 0);
                 const revenueChange = Number(d.revenueGrowth ?? d.revenueChange ?? 0);
                 const patChange     = Number(d.patientGrowth ?? d.patientChange ?? 0);
                 const visitChange   = Number(d.visitGrowth ?? d.visitChange ?? 0);
                 if (revenue > 0 || patients > 0) {
-                    // Update summary for current period
-                    SUMMARY_DATA[timeRange] = {
-                        ...SUMMARY_DATA[timeRange],
+                    setSummary(prev => ({
+                        ...prev,
                         ...(revenue  > 0 ? { revenue }        : {}),
                         ...(patients > 0 ? { patients }       : {}),
                         ...(avgVisit > 0 ? { avgVisit }       : {}),
                         ...(revenueChange !== 0 ? { revenueChange } : {}),
                         ...(patChange     !== 0 ? { patientsChange: patChange } : {}),
                         ...(visitChange   !== 0 ? { visitChange }   : {}),
-                    };
+                    }));
                 }
             })
-            .catch(() => { /* fallback to mock */ });
+            .catch(() => { /* API không khả dụng */ });
 
         reportService.getRevenue({ period: timeRange })
             .then((res: any) => {
                 const d = unwrap<any>(res);
                 if (!d) return;
-                // Map department data if available
                 if (Array.isArray(d.byDepartment) && d.byDepartment.length > 0) {
-                    const mapped = d.byDepartment.map((dep: any, i: number) => ({
-                        ...DEPT_BY_PERIOD[timeRange][i] ?? DEPT_BY_PERIOD[timeRange][0],
-                        name:     dep.departmentName ?? dep.name ?? DEPT_BY_PERIOD[timeRange][i]?.name ?? "",
+                    const DEPT_COLORS = ["#3C81C6", "#22c55e", "#f59e0b", "#ec4899", "#8b5cf6", "#14b8a6"];
+                    setDepartments(d.byDepartment.map((dep: any, i: number) => ({
+                        name: dep.departmentName ?? dep.name ?? "",
                         patients: Number(dep.patientCount ?? dep.patients ?? 0),
-                        revenue:  Number(dep.revenue ?? dep.amount ?? 0) / 1_000_000,
-                    }));
-                    if (mapped.length > 0) {
-                        DEPT_BY_PERIOD[timeRange] = mapped;
-                    }
+                        revenue: Number(dep.revenue ?? dep.amount ?? 0) / 1_000_000,
+                        color: DEPT_COLORS[i % DEPT_COLORS.length],
+                    })));
+                }
+                if (Array.isArray(d.chartData) && d.chartData.length > 0) {
+                    setChartData(d.chartData.map((c: any) => ({ label: c.label ?? "", value: Number(c.value ?? 0) })));
+                }
+                if (Array.isArray(d.topDoctors) && d.topDoctors.length > 0) {
+                    setTopDoctors(d.topDoctors.map((doc: any) => ({
+                        name: doc.name ?? doc.fullName ?? "",
+                        dept: doc.department ?? doc.dept ?? "",
+                        patients: Number(doc.patientCount ?? doc.patients ?? 0),
+                        rating: Number(doc.rating ?? 0),
+                    })));
                 }
             })
-            .catch(() => { /* fallback */ });
+            .catch(() => { /* API không khả dụng */ });
     }, [timeRange]);
 
-    // Dynamic data based on selected period
-    const summary = SUMMARY_DATA[timeRange];
-    const chartData = useMemo(() => {
-        if (timeRange === "month") return MONTHLY_ALL;
-        if (timeRange === "quarter") return QUARTERLY_ALL;
-        return YEARLY_ALL;
-    }, [timeRange]);
-    const departments = DEPT_BY_PERIOD[timeRange];
-    const topDoctors = TOP_DOCTORS_BY_PERIOD[timeRange];
     const totalPatients = departments.reduce((s, d) => s + d.patients, 0);
-    const maxChartValue = Math.max(...chartData.map(d => d.value));
+    const maxChartValue = chartData.length > 0 ? Math.max(...chartData.map(d => d.value)) : 0;
 
     const periodLabel = timeRange === "month" ? "tháng trước" : timeRange === "quarter" ? "quý trước" : "năm trước";
     const chartTitle = timeRange === "month" ? "Doanh thu theo tháng (Triệu VND)" : timeRange === "quarter" ? "Doanh thu theo quý (Triệu VND)" : "Doanh thu theo năm (Triệu VND)";

@@ -192,7 +192,9 @@ export const logout = async (): Promise<void> => {
             await axiosClient.post(AUTH_ENDPOINTS.LOGOUT, { refreshToken });
         }
     } catch (error) {
-        console.error('Lỗi khi đăng xuất:', error);
+        if (process.env.NODE_ENV === 'development') {
+            console.error('Lỗi khi đăng xuất:', error);
+        }
     } finally {
         localStorage.removeItem(AUTH_CONFIG.ACCESS_TOKEN_KEY);
         localStorage.removeItem(AUTH_CONFIG.REFRESH_TOKEN_KEY);

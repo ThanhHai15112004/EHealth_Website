@@ -6,17 +6,6 @@ import { getAppointments, confirmAppointment, cancelAppointment } from "@/servic
 import { appointmentStatusService } from "@/services/appointmentStatusService";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 
-// Mock data fallback
-const MOCK_APPOINTMENTS = [
-    { id: "LH001", patient: "Nguyễn Văn An", phone: "0901234567", doctor: "BS. Trần Minh", dept: "Nội khoa", date: "25/02/2025", time: "08:30", type: "Tái khám", status: "confirmed", note: "Tái khám theo dõi huyết áp" },
-    { id: "LH002", patient: "Lê Thị Bình", phone: "0912345678", doctor: "BS. Phạm Hoa", dept: "Da liễu", date: "25/02/2025", time: "08:45", type: "Khám mới", status: "confirmed", note: "Ngứa da kéo dài" },
-    { id: "LH003", patient: "Trần Văn Cường", phone: "0923456789", doctor: "BS. Ngô Đức", dept: "Tim mạch", date: "25/02/2025", time: "09:00", type: "Khám mới", status: "pending", note: "Đau ngực, khó thở" },
-    { id: "LH004", patient: "Phạm Thị Dung", phone: "0934567890", doctor: "BS. Trần Minh", dept: "Nội khoa", date: "25/02/2025", time: "09:15", type: "Tái khám", status: "confirmed", note: "Kiểm tra kết quả xét nghiệm" },
-    { id: "LH005", patient: "Hoàng Văn Em", phone: "0945678901", doctor: "BS. Lý Thanh", dept: "Nhi khoa", date: "25/02/2025", time: "09:30", type: "Khám mới", status: "pending", note: "Bé sốt cao, ho" },
-    { id: "LH006", patient: "Vũ Thị Fương", phone: "0956789012", doctor: "BS. Phạm Hoa", dept: "Da liễu", date: "25/02/2025", time: "09:45", type: "Tái khám", status: "cancelled", note: "Bệnh nhân hủy lịch" },
-    { id: "LH007", patient: "Đỗ Quang Giang", phone: "0967890123", doctor: "BS. Ngô Đức", dept: "Tim mạch", date: "25/02/2025", time: "10:00", type: "Khám mới", status: "confirmed", note: "Kiểm tra tim định kỳ" },
-    { id: "LH008", patient: "Bùi Thị Hằng", phone: "0978901234", doctor: "BS. Lý Thanh", dept: "Nhi khoa", date: "25/02/2025", time: "10:15", type: "Khám mới", status: "pending", note: "Bé phát ban" },
-];
 
 const STATUS_MAP: Record<string, { label: string; class: string }> = {
     confirmed: { label: "Đã xác nhận", class: "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600" },
@@ -34,7 +23,7 @@ type AptItem = {
 export default function ReceptionistAppointments() {
     usePageAIContext({ pageKey: 'appointments' });
     const router = useRouter();
-    const [appointments, setAppointments] = useState<AptItem[]>(MOCK_APPOINTMENTS);
+    const [appointments, setAppointments] = useState<AptItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [cancelModal, setCancelModal] = useState<{ id: string; patient: string } | null>(null);
@@ -54,18 +43,15 @@ export default function ReceptionistAppointments() {
             setLoading(true);
             const res = await getAppointments({ limit: 100 });
             const items: any[] = res?.data ?? [];
-            if (items.length > 0) {
-                const mapped = items.map((a: any) => ({
-                    id: a.id ?? "", patient: a.patientName ?? a.patient_name ?? "",
-                    phone: a.phone ?? a.contact?.phone ?? "", doctor: a.doctorName ?? a.doctor_name ?? "",
-                    dept: a.departmentName ?? a.department_name ?? "", date: a.date ?? "",
-                    time: a.time ?? "", type: a.type ?? "", status: a.status ?? "pending", note: a.reason ?? a.notes ?? "",
-                }));
-                setAppointments(mapped);
-            }
-            // else keep mock
+            const mapped = items.map((a: any) => ({
+                id: a.id ?? "", patient: a.patientName ?? a.patient_name ?? "",
+                phone: a.phone ?? a.contact?.phone ?? "", doctor: a.doctorName ?? a.doctor_name ?? "",
+                dept: a.departmentName ?? a.department_name ?? "", date: a.date ?? "",
+                time: a.time ?? "", type: a.type ?? "", status: a.status ?? "pending", note: a.reason ?? a.notes ?? "",
+            }));
+            setAppointments(mapped);
         } catch {
-            // keep mock
+            setAppointments([]);
         } finally {
             setLoading(false);
         }

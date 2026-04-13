@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { UI_TEXT } from "@/constants/ui-text";
-import { MOCK_DOCTOR_PROFILE } from "@/lib/mock-data/doctor";
 import axiosClient from "@/api/axiosClient";
 import { PROFILE_ENDPOINTS } from "@/api/endpoints";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,7 +14,10 @@ export default function SettingsPage() {
     const { user, updateUser } = useAuth();
     const toast = useToast();
     const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
-    const [profile, setProfile] = useState(MOCK_DOCTOR_PROFILE);
+    const [profile, setProfile] = useState<Record<string, any>>({
+        fullName: user?.fullName ?? "", email: user?.email ?? "",
+        phone: user?.phone ?? "", specialty: "", department: "",
+    });
     const [darkMode, setDarkMode] = useState(false);
     const [savingProfile, setSavingProfile] = useState(false);
     const [pwForm, setPwForm] = useState({ current: "", newPw: "", confirm: "" });
@@ -29,7 +31,7 @@ export default function SettingsPage() {
                 const d = res?.data?.data ?? res?.data;
                 if (d) setProfile(prev => ({ ...prev, ...d, fullName: d.fullName ?? d.name ?? prev.fullName }));
             })
-            .catch(() => {/* keep mock */});
+            .catch(() => {/* profile empty state */});
     }, []);
 
     const [notifications, setNotifications] = useState({

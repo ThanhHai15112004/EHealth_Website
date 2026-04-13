@@ -16,27 +16,7 @@ const WIZARD_STEPS = [
     { key: "confirm", label: "Xác nhận", icon: "verified" },
 ];
 
-const MOCK_DEPARTMENTS = [
-    { id: "1", name: "Nội khoa", doctors: ["BS. Trần Minh", "BS. Lê Hoa"] },
-    { id: "2", name: "Da liễu", doctors: ["BS. Phạm Hoa"] },
-    { id: "3", name: "Tim mạch", doctors: ["BS. Ngô Đức", "BS. Hoàng Anh"] },
-    { id: "4", name: "Nhi khoa", doctors: ["BS. Lý Thanh"] },
-    { id: "5", name: "Tai mũi họng", doctors: ["BS. Vũ Nam"] },
-];
 type DeptItem = { id: string; name: string; doctors: string[] };
-
-const TIME_SLOTS = [
-    { time: "08:00", available: false }, { time: "08:30", available: true }, { time: "09:00", available: true },
-    { time: "09:30", available: true }, { time: "10:00", available: false }, { time: "10:30", available: true },
-    { time: "11:00", available: true }, { time: "13:30", available: true }, { time: "14:00", available: true },
-    { time: "14:30", available: false }, { time: "15:00", available: true }, { time: "15:30", available: true },
-];
-
-const MOCK_FOUND_PATIENT = {
-    id: "BN-24902", name: "Trần Văn Bình", age: 56, gender: "Nam",
-    phone: "0912 345 678", address: "123 Lê Lợi, Q.1, TP.HCM",
-    insurance: "HS401012345", lastVisit: "20/01/2025",
-};
 
 export default function ReceptionPage() {
     usePageAIContext({ pageKey: 'reception' });
@@ -44,7 +24,7 @@ export default function ReceptionPage() {
     const [step, setStep] = useState(0);
     const [searchType, setSearchType] = useState<"phone" | "cccd" | "bhyt">("phone");
     const [searchQuery, setSearchQuery] = useState("");
-    const [foundPatient, setFoundPatient] = useState<typeof MOCK_FOUND_PATIENT | null>(null);
+    const [foundPatient, setFoundPatient] = useState<{ id: string; name: string; age: number; gender: string; phone: string; address: string; insurance: string; lastVisit: string } | null>(null);
     const [isNewPatient, setIsNewPatient] = useState(false);
     const [searching, setSearching] = useState(false);
     const [newPatient, setNewPatient] = useState({ name: "", phone: "", gender: "male", age: "", address: "", insurance: "" });
@@ -56,21 +36,19 @@ export default function ReceptionPage() {
     const [reason, setReason] = useState("");
     const [submitting, setSubmitting] = useState(false);
     const [done, setDone] = useState(false);
-    const [departments, setDepartments] = useState<DeptItem[]>(MOCK_DEPARTMENTS);
+    const [departments, setDepartments] = useState<DeptItem[]>([]);
 
     useEffect(() => {
         getDepartments()
             .then(res => {
                 const items: any[] = (res as any)?.data?.data ?? (res as any)?.data ?? res ?? [];
-                if (Array.isArray(items) && items.length > 0) {
-                    setDepartments(items.map((d: any) => ({
-                        id: d.id ?? d._id ?? String(d.departmentId ?? ""),
-                        name: d.name ?? d.departmentName ?? "",
-                        doctors: d.doctors?.map((doc: any) => doc.fullName ?? doc.name ?? doc) ?? [],
-                    })));
-                }
+                setDepartments(items.map((d: any) => ({
+                    id: d.id ?? d._id ?? String(d.departmentId ?? ""),
+                    name: d.name ?? d.departmentName ?? "",
+                    doctors: d.doctors?.map((doc: any) => doc.fullName ?? doc.name ?? doc) ?? [],
+                })));
             })
-            .catch(() => {/* keep mock */});
+            .catch(() => setDepartments([]));
     }, []);
 
     const dept = departments.find(d => d.id === selectedDept);
@@ -119,14 +97,8 @@ export default function ReceptionPage() {
                 setIsNewPatient(true);
             }
         } catch {
-            // Fallback to mock search behavior
-            if (searchQuery.includes("123") || searchQuery.includes("0912")) {
-                setFoundPatient(MOCK_FOUND_PATIENT);
-                setIsNewPatient(false);
-            } else {
-                setFoundPatient(null);
-                setIsNewPatient(true);
-            }
+            setFoundPatient(null);
+            setIsNewPatient(true);
         } finally {
             setSearching(false);
         }
@@ -356,8 +328,14 @@ export default function ReceptionPage() {
                                 </div>
                                 <div>
                                     <p className="text-sm font-medium text-[#687582] mb-2">Khung giờ hôm nay</p>
+                                    {apiSlots.length === 0 && (
+                                        <p className="text-xs text-amber-600 mb-2 flex items-center gap-1">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>info</span>
+                                            Chưa có khung giờ — vui lòng chọn bác sĩ hoặc liên hệ phòng khám
+                                        </p>
+                                    )}
                                     <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                                        {(apiSlots.length > 0 ? apiSlots : TIME_SLOTS).map(slot => (
+                                        {apiSlots.map(slot => (
                                             <button key={slot.time} onClick={() => slot.available && setSelectedSlot(slot.time)} disabled={!slot.available}
                                                 className={`py-2.5 rounded-xl text-sm font-medium transition-all ${selectedSlot === slot.time ? "bg-[#3C81C6] text-white shadow-md" : slot.available ? "bg-gray-50 dark:bg-gray-800 text-[#121417] dark:text-white hover:bg-gray-100" : "bg-gray-100 dark:bg-gray-800/50 text-gray-300 dark:text-gray-600 cursor-not-allowed line-through"}`}>
                                                 {slot.time}
