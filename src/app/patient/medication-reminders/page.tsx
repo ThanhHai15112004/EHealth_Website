@@ -389,7 +389,7 @@ export default function MedicationRemindersPage() {
                     <p className="text-sm text-[#687582] mt-1">Theo dõi và quản lý việc dùng thuốc hàng ngày</p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button onClick={syncFromPrescriptions} disabled={isSyncing}
+                    <button onClick={() => syncFromPrescriptions()} disabled={isSyncing}
                         className="flex items-center gap-1.5 px-4 py-2.5 bg-white dark:bg-[#1e242b] border border-gray-200 dark:border-gray-700 text-[#121417] dark:text-white rounded-xl text-sm font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-[#2d353e] transition-all disabled:opacity-50">
                         <span className={`material-symbols-outlined text-[#3C81C6] ${isSyncing ? "animate-spin" : ""}`} style={{ fontSize: "18px" }}>sync</span>
                         {isSyncing ? "Đang đồng bộ..." : "Đồng bộ đơn thuốc"}
