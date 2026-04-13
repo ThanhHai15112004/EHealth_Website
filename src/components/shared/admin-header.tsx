@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { ROUTES, ADMIN_MENU_ITEMS } from "@/constants/routes";
-import { NotificationDropdown } from "./notification-dropdown";
+import { NotificationBell } from "./NotificationBell";
 import { SettingsDropdown } from "./settings-dropdown";
 import AIStatusBadge from '@/components/ai-copilot/AIStatusBadge';
 import AISearchBar from '@/components/ai-copilot/AISearchBar';
@@ -57,7 +57,7 @@ export function AdminHeader() {
                 <AISearchBar />
                 <AIGamificationBadge />
                 <AIStatusBadge />
-                <NotificationDropdown />
+                <NotificationBell />
                 <SettingsDropdown />
             </div>
         </header>

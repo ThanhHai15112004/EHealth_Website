@@ -174,9 +174,49 @@ export const confirmAppointment = async (id: string): Promise<Appointment> => {
 // ============================================
 export const cancelAppointment = async (id: string, reason?: string): Promise<void> => {
     try {
-        await axiosClient.post(APPOINTMENT_ENDPOINTS.CANCEL(id), { reason });
+        await axiosClient.delete(APPOINTMENT_ENDPOINTS.CANCEL(id), {
+            data: { cancellation_reason: reason || 'Bệnh nhân huỷ lịch' },
+        });
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Hủy lịch hẹn thất bại');
+    }
+};
+
+// ============================================
+// Tạo mã QR check-in cho lịch hẹn
+// ============================================
+export const generateAppointmentQr = async (id: string): Promise<{ qr_token: string; expires_at: string }> => {
+    try {
+        const response = await axiosClient.post(APPOINTMENT_ENDPOINTS.GENERATE_QR(id));
+        return response.data?.data ?? response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Tạo mã QR thất bại');
+    }
+};
+
+// ============================================
+// Lấy lịch hẹn của tôi (BE tự resolve patientId từ JWT)
+// ============================================
+export const getMyAppointments = async (
+    params?: { status?: string; patient_id?: string; fromDate?: string; toDate?: string; page?: number; limit?: number }
+): Promise<{ success: boolean; data: Appointment[]; pagination?: any }> => {
+    try {
+        const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.MY_APPOINTMENTS, { params });
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy lịch hẹn của tôi thất bại');
+    }
+};
+
+// ============================================
+// Đánh giá lịch khám
+// ============================================
+export const submitAppointmentReview = async (id: string, rating: number, feedback: string): Promise<Appointment> => {
+    try {
+        const response = await axiosClient.post(`/api/appointments/${id}/review`, { rating, feedback });
+        return response.data?.data ?? response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Gửi đánh giá thất bại');
     }
 };
 

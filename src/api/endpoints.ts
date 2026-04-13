@@ -204,6 +204,8 @@ export const SPECIALTY_ENDPOINTS = {
     DETAIL: (id: string) => `/api/specialties/${id}`,            // GET: chi tiết
     UPDATE: (id: string) => `/api/specialties/${id}`,            // PUT: cập nhật
     DELETE: (id: string) => `/api/specialties/${id}`,            // DELETE: xóa mềm
+    BY_FACILITY: (facilityId: string) => `/api/specialties/facility/${facilityId}`,
+    SPECIALTY_SERVICES: (id: string) => `/api/specialties/${id}/services`,
 };
 
 // ============================================
@@ -353,6 +355,7 @@ export const DOCTOR_ENDPOINTS = {
     DELETE: (id: string) => `/api/doctors/${id}`,
     BY_DEPARTMENT: (departmentId: string) => `/api/doctors/department/${departmentId}`,
     SCHEDULE: (doctorId: string) => `/api/doctors/${doctorId}/schedule`,
+    SERVICES: (doctorId: string) => `/api/doctors/${doctorId}/services`,
 };
 
 export const PATIENT_ENDPOINTS = {
@@ -379,8 +382,10 @@ export const APPOINTMENT_ENDPOINTS = {
     DETAIL: (id: string) => `/api/appointments/${id}`,
     CREATE: '/api/appointments',
     UPDATE: (id: string) => `/api/appointments/${id}`,
-    CANCEL: (id: string) => `/api/appointments/${id}/cancel`,
-    CONFIRM: (id: string) => `/api/appointments/${id}/confirm`,
+    CANCEL: (id: string) => `/api/appointments/${id}`,
+    CONFIRM: (id: string) => `/api/appointment-confirmations/${id}/confirm`,
+    GENERATE_QR: (id: string) => `/api/appointment-status/generate-qr/${id}`,
+    MY_APPOINTMENTS: '/api/appointments/me',
     BY_DOCTOR: (doctorId: string) => `/api/appointments/doctor/${doctorId}`,
     BY_PATIENT: (patientId: string) => `/api/appointments/patient/${patientId}`,
 };

@@ -6,7 +6,6 @@ import Link from "next/link";
 import { ROLE_LABELS, ROLE_COLORS, type Role } from "@/constants/roles";
 import { USER_STATUS } from "@/constants/status";
 import type { User } from "@/types";
-import * as userService from "@/services/userService";
 
 const TABS = [
     { key: "overview", label: "Tổng quan", icon: "person" },
@@ -23,88 +22,24 @@ export default function UserDetailPage() {
 
     const [user, setUser] = useState<User | null>(null);
     const [activeTab, setActiveTab] = useState("overview");
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
-    const [actionLoading, setActionLoading] = useState<string | null>(null);
 
     useEffect(() => {
-        if (!userId) return;
-        setIsLoading(true);
-        setError(null);
-        userService.getUserById(userId)
-            .then((data: any) => {
-                const d = data?.data ?? data;
-                if (d) {
-                    setUser({
-                        id: d.users_id ?? d.id ?? userId,
-                        fullName: d.profile?.full_name ?? d.full_name ?? d.fullName ?? d.email ?? "",
-                        email: d.email ?? "",
-                        phone: d.phone ?? d.phone_number ?? "",
-                        role: Array.isArray(d.roles) && d.roles.length > 0 ? d.roles[0].toLowerCase() : (d.role ?? "staff"),
-                        status: (d.status ?? "ACTIVE") as User["status"],
-                        avatar: d.profile?.avatar_url ?? d.avatar ?? "",
-                        createdAt: d.created_at ?? d.createdAt ?? "",
-                        gender: d.gender,
-                        dob: d.dob ?? d.date_of_birth,
-                        address: d.address,
-                        phoneNumber: d.phone ?? d.phone_number,
-                    } as unknown as User);
-                } else {
-                    setError("Không tìm thấy người dùng");
-                }
-            })
-            .catch((err: any) => {
-                setError(err?.message || "Lấy thông tin người dùng thất bại");
-            })
-            .finally(() => setIsLoading(false));
+        let cancelled = false;
+        import("@/services/userService").then(({ getUserById }) => {
+            getUserById(userId).then((res: any) => {
+                if (cancelled) return;
+                const data = res?.data?.data ?? res?.data ?? res;
+                setUser(data || null);
+            }).catch(() => { if (!cancelled) setUser(null); });
+        });
+        return () => { cancelled = true; };
     }, [userId]);
 
-    const handleLockToggle = async () => {
-        if (!user) return;
-        const isLocked = user.status === USER_STATUS.LOCKED;
-        setActionLoading(isLocked ? "unlock" : "lock");
-        try {
-            if (isLocked) {
-                await userService.unlockUser(user.id);
-            } else {
-                await userService.lockUser(user.id);
-            }
-            setUser((prev) => prev ? { ...prev, status: isLocked ? USER_STATUS.ACTIVE as User["status"] : USER_STATUS.LOCKED as User["status"] } : prev);
-        } catch (err: any) {
-            alert(err?.message || "Thao tác thất bại. Vui lòng thử lại.");
-        } finally {
-            setActionLoading(null);
-        }
-    };
-
-    const handleResetPassword = async () => {
-        if (!user) return;
-        if (!confirm("Reset mật khẩu về EHealth@123 cho người dùng này?")) return;
-        setActionLoading("reset");
-        try {
-            await userService.adminResetPassword(user.id);
-            alert("Đã reset mật khẩu thành công. Mật khẩu mới: EHealth@123");
-        } catch (err: any) {
-            alert(err?.message || "Reset mật khẩu thất bại.");
-        } finally {
-            setActionLoading(null);
-        }
-    };
-
-    if (isLoading) {
-        return (
-            <div className="flex flex-col items-center justify-center py-20">
-                <div className="w-10 h-10 border-4 border-[#3C81C6] border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-[#687582]">Đang tải thông tin người dùng...</p>
-            </div>
-        );
-    }
-
-    if (error || !user) {
+    if (!user) {
         return (
             <div className="flex flex-col items-center justify-center py-20">
                 <span className="material-symbols-outlined text-5xl text-gray-300 mb-4">person_off</span>
-                <p className="text-lg text-gray-500 mb-2">{error || "Không tìm thấy người dùng"}</p>
+                <p className="text-lg text-gray-500 mb-4">Không tìm thấy người dùng</p>
                 <button
                     onClick={() => router.back()}
                     className="px-5 py-2.5 bg-[#3C81C6] text-white rounded-xl text-sm font-bold hover:bg-[#2a6da8] transition-colors"
@@ -129,23 +64,7 @@ export default function UserDetailPage() {
                     <span className="material-symbols-outlined text-[16px]">chevron_right</span>
                     <span className="text-[#121417] dark:text-white font-medium">{user.fullName}</span>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                        onClick={handleResetPassword}
-                        disabled={actionLoading === "reset"}
-                        className="flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-sm font-bold transition-all shadow-md shadow-amber-200 dark:shadow-none disabled:opacity-50"
-                    >
-                        {actionLoading === "reset" ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span className="material-symbols-outlined text-[18px]">lock_reset</span>}
-                        Reset mật khẩu
-                    </button>
-                    <button
-                        onClick={handleLockToggle}
-                        disabled={actionLoading === "lock" || actionLoading === "unlock"}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all disabled:opacity-50 ${user.status === USER_STATUS.LOCKED ? "bg-green-500 hover:bg-green-600 text-white shadow-md shadow-green-200 dark:shadow-none" : "bg-red-500 hover:bg-red-600 text-white shadow-md shadow-red-200 dark:shadow-none"}`}
-                    >
-                        {(actionLoading === "lock" || actionLoading === "unlock") ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <span className="material-symbols-outlined text-[18px]">{user.status === USER_STATUS.LOCKED ? "lock_open" : "lock"}</span>}
-                        {user.status === USER_STATUS.LOCKED ? "Mở khóa" : "Khóa tài khoản"}
-                    </button>
+                <div className="flex items-center gap-2">
                     <button
                         onClick={() => router.push(`/admin/users/${userId}/edit`)}
                         className="flex items-center gap-2 px-4 py-2 bg-[#3C81C6] text-white rounded-xl text-sm font-bold hover:bg-[#2a6da8] transition-all shadow-md shadow-blue-200 dark:shadow-none"
@@ -224,20 +143,13 @@ export default function UserDetailPage() {
             {activeTab === "professional" && <ProfessionalTab />}
             {activeTab === "schedule" && <ScheduleTab />}
             {activeTab === "education" && <EducationTab />}
-            {activeTab === "activity" && <ActivityTab />}
+            {activeTab === "activity" && <ActivityTab userId={userId} />}
         </>
     );
 }
 
 /* ─── Tab: Tổng quan ─── */
 function OverviewTab({ user, roleColor, isActive }: { user: User; roleColor: { bg: string; text: string; dot: string }; isActive: boolean }) {
-    const u = user as any;
-    const genderLabel = u.gender === "MALE" ? "Nam" : u.gender === "FEMALE" ? "Nữ" : (u.gender || "—");
-    const dobFormatted = u.dob ? new Date(u.dob).toLocaleDateString("vi-VN") : (u.date_of_birth ? new Date(u.date_of_birth).toLocaleDateString("vi-VN") : "—");
-    const phoneDisplay = u.phoneNumber ?? u.phone ?? u.phone_number ?? "—";
-    const createdAtFormatted = user.createdAt ? new Date(user.createdAt).toLocaleDateString("vi-VN") : "—";
-    const lastAccessFormatted = (user as any).lastAccess ? new Date((user as any).lastAccess).toLocaleDateString("vi-VN") : "—";
-
     return (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="bg-white dark:bg-[#1e242b] border border-[#dde0e4] dark:border-[#2d353e] rounded-xl shadow-sm p-6">
@@ -246,13 +158,12 @@ function OverviewTab({ user, roleColor, isActive }: { user: User; roleColor: { b
                     Thông tin cá nhân
                 </h2>
                 <div className="space-y-4">
-                    <InfoRow label="Họ và tên" value={user.fullName || "—"} icon="person" />
-                    <InfoRow label="Email" value={user.email || "—"} icon="email" />
-                    <InfoRow label="Vai trò" value={ROLE_LABELS[user.role as Role] || user.role || "—"} icon="shield_person" />
-                    <InfoRow label="Số điện thoại" value={phoneDisplay} icon="phone" />
-                    <InfoRow label="Giới tính" value={genderLabel} icon="wc" />
-                    <InfoRow label="Ngày sinh" value={dobFormatted} icon="cake" />
-                    {u.address && <InfoRow label="Địa chỉ" value={u.address} icon="location_on" />}
+                    <InfoRow label="Họ và tên" value={user.fullName} icon="person" />
+                    <InfoRow label="Email" value={user.email} icon="email" />
+                    <InfoRow label="Vai trò" value={ROLE_LABELS[user.role as Role] || user.role} icon="shield_person" />
+                    <InfoRow label="Số điện thoại" value="0901 234 567" icon="phone" />
+                    <InfoRow label="Giới tính" value="Nam" icon="wc" />
+                    <InfoRow label="Ngày sinh" value="15/06/1990" icon="cake" />
                 </div>
             </div>
 
@@ -262,12 +173,12 @@ function OverviewTab({ user, roleColor, isActive }: { user: User; roleColor: { b
                     Thông tin tài khoản
                 </h2>
                 <div className="space-y-4">
-                    <InfoRow label="Mã người dùng" value={user.id || "—"} icon="fingerprint" />
-                    <InfoRow label="Ngày tạo tài khoản" value={createdAtFormatted} icon="event" />
-                    <InfoRow label="Truy cập cuối" value={lastAccessFormatted} icon="schedule" />
-                    <InfoRow label="Trạng thái" value={isActive ? "Đang hoạt động" : (user.status === "LOCKED" ? "Đã khóa" : user.status || "—")} icon="toggle_on" />
-                    {u.department && <InfoRow label="Khoa / Phòng ban" value={u.department} icon="domain" />}
-                    {u.facility && <InfoRow label="Chi nhánh" value={u.facility} icon="location_city" />}
+                    <InfoRow label="Mã nhân viên" value={`NV${user.id.padStart(5, "0")}`} icon="fingerprint" />
+                    <InfoRow label="Ngày tạo tài khoản" value={user.createdAt} icon="event" />
+                    <InfoRow label="Truy cập cuối" value={user.lastAccess || "—"} icon="schedule" />
+                    <InfoRow label="Trạng thái" value={isActive ? "Đang hoạt động" : "Đã khóa"} icon="toggle_on" />
+                    <InfoRow label="Khoa / Phòng ban" value="Khoa Nội Tổng Quát" icon="domain" />
+                    <InfoRow label="Chi nhánh" value="E-Health Quận 1" icon="location_city" />
                 </div>
             </div>
         </div>
@@ -515,37 +426,150 @@ function EducationTab() {
 }
 
 /* ─── Tab: Hoạt động ─── */
-function ActivityTab() {
-    const activities = [
-        { action: "Đăng nhập hệ thống", time: "Hôm nay, 08:30", icon: "login", color: "bg-blue-50 dark:bg-blue-900/20 text-blue-600" },
-        { action: "Cập nhật hồ sơ bệnh nhân #BN12345", time: "Hôm qua, 15:20", icon: "edit_note", color: "bg-green-50 dark:bg-green-900/20 text-green-600" },
-        { action: "Tạo lịch hẹn khám mới", time: "Hôm qua, 10:15", icon: "calendar_add_on", color: "bg-purple-50 dark:bg-purple-900/20 text-purple-600" },
-        { action: "Xuất báo cáo tháng 02/2026", time: "01/03/2026, 09:00", icon: "download", color: "bg-orange-50 dark:bg-orange-900/20 text-orange-600" },
-        { action: "Đổi mật khẩu tài khoản", time: "25/02/2026, 14:30", icon: "lock_reset", color: "bg-red-50 dark:bg-red-900/20 text-red-600" },
-        { action: "Cập nhật thông tin cá nhân", time: "20/02/2026, 11:00", icon: "person", color: "bg-teal-50 dark:bg-teal-900/20 text-teal-600" },
-        { action: "Kê đơn thuốc cho bệnh nhân #BN12300", time: "18/02/2026, 16:45", icon: "medication", color: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600" },
-        { action: "Hoàn thành ca trực chiều", time: "18/02/2026, 18:00", icon: "check_circle", color: "bg-green-50 dark:bg-green-900/20 text-green-600" },
-    ];
+function ActivityTab({ userId }: { userId: string }) {
+    const [activities, setActivities] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchAuditLogs = async () => {
+            try {
+                const axiosClient = (await import('@/api/axiosClient')).default;
+                const { AUDIT_LOG_ENDPOINTS } = await import('@/api/endpoints');
+                
+                const res = await axiosClient.get(AUDIT_LOG_ENDPOINTS.LIST, { 
+                    params: { user_id: userId, limit: 20, sort_by: 'created_at', sort_dir: 'DESC' } 
+                });
+                
+                const logs = res.data?.data || res.data || [];
+                setActivities(logs);
+            } catch (err) {
+                console.error("Failed to fetch audit logs:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (userId) {
+            fetchAuditLogs();
+        } else {
+            setLoading(false);
+        }
+    }, [userId]);
+
+    const getActivityDetails = (log: any) => {
+        const { module_name, action_type, action_desc } = log;
+        let action = action_desc || "Thao tác trên hệ thống";
+        let icon = "history";
+        let color = "bg-gray-100 dark:bg-gray-800 text-gray-600";
+
+        // Map icons & colors based on ACTION_TYPE
+        if (action_type === "LOGIN") {
+            action = "Đăng nhập hệ thống";
+            icon = "login";
+            color = "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
+        } else if (action_type === "CREATE") {
+            icon = "add_circle";
+            color = "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400";
+            if (module_name === "APPOINTMENTS") action = "Tạo lịch hẹn mới";
+        } else if (action_type === "UPDATE") {
+            icon = "edit_note";
+            color = "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400";
+            if (module_name === "APPOINTMENTS") action = "Cập nhật thông tin lịch hẹn";
+        } else if (action_type === "DELETE") {
+            icon = "delete";
+            color = "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+        } else if (action_type === "CANCEL") {
+            icon = "cancel";
+            color = "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+            if (module_name === "APPOINTMENTS") action = "Huỷ lịch hẹn khám";
+        } else if (action_type === "COMPLETE") {
+            icon = "check_circle";
+            color = "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400";
+            if (module_name === "APPOINTMENTS") action = "Hoàn tất khám bệnh";
+        }
+
+        // Specific overrides context
+        if (module_name === "APPOINTMENTS" && icon === "history") icon = "calendar_month";
+        if (module_name === "PATIENTS") icon = "personal_injury";
+        if (module_name === "PRESCRIPTIONS") icon = "medication";
+
+        return { action, icon, color };
+    };
+
+    const formatDate = (dateStr: string) => {
+        if (!dateStr) return "Không rõ thời gian";
+        const date = new Date(dateStr);
+        return date.toLocaleString('vi-VN', {
+            hour: '2-digit', minute: '2-digit',
+            day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+    };
 
     return (
-        <div className="bg-white dark:bg-[#1e242b] border border-[#dde0e4] dark:border-[#2d353e] rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-bold text-[#121417] dark:text-white mb-4 flex items-center gap-2">
+        <div className="bg-white dark:bg-[#1e242b] border border-[#dde0e4] dark:border-[#2d353e] rounded-xl shadow-sm p-6 line-clamp-none">
+            <h2 className="text-lg font-bold text-[#121417] dark:text-white mb-6 flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#3C81C6]">history</span>
-                Hoạt động gần đây
+                Lịch sử hoạt động
             </h2>
-            <div className="space-y-2">
-                {activities.map((activity, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${activity.color}`}>
-                            <span className="material-symbols-outlined text-[18px]">{activity.icon}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-[#121417] dark:text-white">{activity.action}</p>
-                            <p className="text-xs text-[#687582] dark:text-gray-400">{activity.time}</p>
-                        </div>
+            
+            {loading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                    <div className="w-8 h-8 border-4 border-[#3C81C6] border-t-transparent rounded-full animate-spin"></div>
+                    <span className="mt-4 text-sm text-gray-500 font-medium">Đang tải dữ liệu hoạt động...</span>
+                </div>
+            ) : activities.length > 0 ? (
+                <div className="relative pl-6 border-l-2 border-gray-100 dark:border-gray-800 space-y-6">
+                    {activities.map((log: any, i: number) => {
+                        const { action, icon, color } = getActivityDetails(log);
+                        return (
+                            <div key={log.id || i} className="relative">
+                                {/* Dot indicator */}
+                                <div className={`absolute -left-[35px] top-1 w-4 h-4 rounded-full border-2 border-white dark:border-[#1e242b] bg-[#3C81C6]`} />
+                                
+                                <div className="bg-gray-50/50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-700/50 rounded-xl p-4 hover:shadow-md transition-shadow">
+                                    <div className="flex items-start gap-4">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
+                                            <span className="material-symbols-outlined text-[24px]">{icon}</span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between gap-4 mb-1">
+                                                <p className="text-base font-bold text-[#121417] dark:text-white">
+                                                    {action}
+                                                </p>
+                                                <span className="text-xs font-medium text-gray-500 whitespace-nowrap bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
+                                                    <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                                    {formatDate(log.created_at || log.action_time)}
+                                                </span>
+                                            </div>
+                                            
+                                            {log.action_desc && log.action_desc !== action && (
+                                                <p className="text-sm text-[#687582] dark:text-gray-400 bg-white dark:bg-gray-800/50 px-3 py-2 rounded-lg border border-gray-100 dark:border-gray-700/50 mt-2">
+                                                    {log.action_desc}
+                                                </p>
+                                            )}
+
+                                            {log.ip_address && (
+                                                <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
+                                                    <span className="material-symbols-outlined text-[14px]">cell_wifi</span>
+                                                    IP: {log.ip_address}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            ) : (
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-gray-50/50 dark:bg-gray-800/30 rounded-xl border border-gray-100 dark:border-gray-700/50">
+                    <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4 shadow-sm">
+                        <span className="material-symbols-outlined text-3xl text-gray-400">history_toggle_off</span>
                     </div>
-                ))}
-            </div>
+                    <h3 className="text-base font-bold text-[#121417] dark:text-white mb-2">Chưa có hoạt động</h3>
+                    <p className="text-sm text-gray-500 max-w-sm">Người dùng này chưa có hoạt động nào được ghi nhận trên hệ thống.</p>
+                </div>
+            )}
         </div>
     );
 }

@@ -161,7 +161,7 @@ function BookingPageInner() {
     };
     const loadDoctors = async () => {
         try {
-            const res = await doctorService.getList({ limit: 20, departmentId: selectedSpecialty });
+            const res = await doctorService.getList({ limit: 20, specialty_id: selectedSpecialty || undefined });
             setDoctors(res.data ?? []);
         } catch {
             setDoctors([]);
@@ -348,7 +348,7 @@ function BookingPageInner() {
                                         <div>
                                             <label className="text-sm font-semibold text-gray-700 mb-2 block">Bác sĩ đã chọn</label>
                                             <DoctorCard id={selectedDoctorObj.id} fullName={selectedDoctorObj.fullName} department={selectedDoctorObj.departmentName}
-                                                rating={selectedDoctorObj.rating} avatar={selectedDoctorObj.avatar} compact />
+                                                rating={selectedDoctorObj.rating} avatar={selectedDoctorObj.avatar ?? undefined} compact />
                                             <button onClick={() => { setSelectedDoctor(""); setSelectedDoctorObj(null); }}
                                                 className="mt-2 text-xs text-gray-500 hover:text-red-500 transition-colors flex items-center gap-1">
                                                 <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>close</span> Đổi bác sĩ

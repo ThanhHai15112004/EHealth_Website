@@ -277,7 +277,7 @@ function DoctorsPageInner() {
                                             specialization={doc.specialization}
                                             experience={doc.experience}
                                             rating={doc.rating}
-                                            avatar={doc.avatar}
+                                            avatar={doc.avatar ?? undefined}
                                             available={doc.status === "active"}
                                             fee={doc.qualification}
                                         />

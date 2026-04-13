@@ -3,7 +3,7 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { ROUTES, DOCTOR_MENU_ITEMS } from "@/constants/routes";
-import { NotificationDropdown } from "./notification-dropdown";
+import { NotificationBell } from "./NotificationBell";
 import { SettingsDropdown } from "./settings-dropdown";
 import AIStatusBadge from '@/components/ai-copilot/AIStatusBadge';
 import AISearchBar from '@/components/ai-copilot/AISearchBar';
@@ -77,7 +77,7 @@ export function DoctorHeader() {
                 <div className="flex items-center gap-1">
                     <AIGamificationBadge />
                     <AIStatusBadge />
-                    <NotificationDropdown />
+                    <NotificationBell />
                     <SettingsDropdown />
                 </div>
             </div>
