@@ -14,11 +14,14 @@ export const prescriptionService = {
     getByEncounter: (encounterId: string) =>
         axiosClient.get(PRESCRIPTION_ENDPOINTS.BY_ENCOUNTER(encounterId)).then(r => r.data?.data ?? r.data),
 
-    getByPatient: (patientId: string) =>
-        axiosClient.get(PATIENT_ENDPOINTS.PRESCRIPTIONS(patientId)).then(r => r.data),
+    getByPatient: (patientId: string, params?: Record<string, any>) =>
+        axiosClient.get(PRESCRIPTION_ENDPOINTS.BY_PATIENT(patientId), { params }).then(r => r.data),
 
     getDetail: (id: string) =>
         axiosClient.get(PRESCRIPTION_ENDPOINTS.DETAIL(id)).then(r => r.data?.data ?? r.data),
+
+    getDetails: (id: string) =>
+        axiosClient.get(PRESCRIPTION_ENDPOINTS.DETAILS(id)).then(r => r.data?.data ?? r.data),
 
     create: (data: Record<string, any>) =>
         axiosClient.post(PRESCRIPTION_ENDPOINTS.CREATE, data).then(r => r.data?.data ?? r.data),

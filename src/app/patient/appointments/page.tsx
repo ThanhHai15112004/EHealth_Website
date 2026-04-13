@@ -29,7 +29,9 @@ export default function AppointmentsPage() {
                 const res = await getPatientsByAccountId(user.id);
                 if (res.success && res.data && res.data.length > 0) {
                     setProfiles(res.data);
-                    setSelectedProfileId(res.data[0].id);
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = res.data.some(p => p.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : res.data[0].id);
                 } else {
                     setLoading(false);
                 }
@@ -47,9 +49,9 @@ export default function AppointmentsPage() {
 
     const loadAppointments = async () => {
         const statusMap: Record<string, string> = {
-            upcoming: "pending,confirmed",
-            completed: "completed",
-            cancelled: "cancelled",
+            upcoming: "PENDING,CONFIRMED",
+            completed: "COMPLETED",
+            cancelled: "CANCELLED",
         };
         try {
             setLoading(true);
@@ -91,7 +93,10 @@ export default function AppointmentsPage() {
                     {profiles.map(p => (
                         <div
                             key={p.id}
-                            onClick={() => setSelectedProfileId(p.id)}
+                            onClick={() => {
+                                setSelectedProfileId(p.id);
+                                sessionStorage.setItem("patientPortal_selectedProfileId", p.id);
+                            }}
                             className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
                         >
                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
@@ -175,8 +180,8 @@ export default function AppointmentsPage() {
                 </div>
             ) : (
                 <div className="space-y-4">
-                    {appointments.map(apt => (
-                        <div key={apt.id} className="bg-white rounded-2xl border border-gray-100 hover:border-[#3C81C6]/20 hover:shadow-md transition-all p-5 group">
+                    {appointments.map((apt, index) => (
+                        <div key={(apt as any).appointments_id || apt.id || index} className="bg-white rounded-2xl border border-gray-100 hover:border-[#3C81C6]/20 hover:shadow-md transition-all p-5 group">
                             <div className="flex flex-col sm:flex-row sm:items-start gap-4">
                                 {/* Date badge */}
                                 <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10 flex flex-col items-center justify-center flex-shrink-0">
@@ -188,35 +193,52 @@ export default function AppointmentsPage() {
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <h3 className="font-semibold text-gray-900 group-hover:text-[#3C81C6] transition-colors">{(apt as any).doctor_name || apt.doctorName || "Bác sĩ"}</h3>
-                                            <p className="text-sm text-gray-500 mt-0.5">{(apt as any).department_name || apt.departmentName || "Chuyên khoa"}</p>
+                                            <h3 className="font-semibold text-gray-900 group-hover:text-[#3C81C6] transition-colors flex items-center gap-2">
+                                                {(apt as any).doctor_name || apt.doctorName || "Chưa xếp bác sĩ"}
+                                                {apt.status === "completed" && <span className="material-symbols-outlined text-green-500 text-xs" title="Đã hoàn thành khám">verified</span>}
+                                            </h3>
+                                            <p className="text-sm font-medium text-[#3C81C6] mt-0.5">{(apt as any).service_name || (apt as any).department_name || apt.departmentName || "Khám bệnh"}</p>
                                         </div>
-                                        <AppointmentStatusBadge status={apt.status} />
+                                        <div className="flex flex-col items-end gap-1">
+                                            <AppointmentStatusBadge status={apt.status} />
+                                            {((apt as any).appointment_code) && (
+                                                <span className="text-[10px] text-gray-400 font-mono">{(apt as any).appointment_code}</span>
+                                            )}
+                                        </div>
                                     </div>
 
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5 text-xs text-gray-400">
-                                        <span className="inline-flex items-center gap-1">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>schedule</span>
-                                            {apt.time || "--:--"}
+                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5 text-xs text-gray-500">
+                                        <span className="inline-flex items-center gap-1 font-medium text-gray-700">
+                                            <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "14px" }}>schedule</span>
+                                            {((apt as any).slot_start_time)?.substring(0, 5) || apt.time || "--:--"}
+                                            {((apt as any).slot_end_time) ? ` - ${((apt as any).slot_end_time).substring(0, 5)}` : ""}
                                         </span>
                                         <span className="inline-flex items-center gap-1">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>location_on</span>
-                                            EHealth Hospital
+                                            <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "14px" }}>location_on</span>
+                                            <span className="truncate max-w-[200px]" title={(apt as any).branch_name || "EHealth Hospital"}>
+                                                {(apt as any).branch_name || "EHealth Hospital"}
+                                            </span>
                                         </span>
+                                        {((apt as any).room_name) && (
+                                            <span className="inline-flex items-center gap-1 text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                                                <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>meeting_room</span>
+                                                {(apt as any).room_name}
+                                            </span>
+                                        )}
                                     </div>
 
-                                    {apt.notes && (
-                                        <p className="text-xs text-gray-400 mt-2 line-clamp-1">
-                                            <span className="material-symbols-outlined align-middle mr-1" style={{ fontSize: "12px" }}>notes</span>
-                                            {apt.notes}
-                                        </p>
+                                    {((apt as any).reason_for_visit || apt.reason || apt.notes) && (
+                                        <div className="text-xs text-gray-500 mt-2 bg-gray-50 rounded-lg p-2.5 line-clamp-2">
+                                            <span className="font-medium text-gray-700 mr-1">Lý do khám:</span>
+                                            {(apt as any).reason_for_visit || apt.reason || apt.notes}
+                                        </div>
                                     )}
                                 </div>
                             </div>
 
                             {/* Actions */}
                             <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-50">
-                                <Link href={`/patient/appointments/${apt.id}`}
+                                <Link href={`/patient/appointments/${(apt as any).appointments_id || apt.id}`}
                                     className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
                                     Xem chi tiết
                                 </Link>

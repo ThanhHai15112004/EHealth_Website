@@ -137,7 +137,7 @@ export default function UserDetailPage() {
             {activeTab === "professional" && <ProfessionalTab />}
             {activeTab === "schedule" && <ScheduleTab />}
             {activeTab === "education" && <EducationTab />}
-            {activeTab === "activity" && <ActivityTab />}
+            {activeTab === "activity" && <ActivityTab userId={userId} />}
         </>
     );
 }
@@ -420,37 +420,150 @@ function EducationTab() {
 }
 
 /* ─── Tab: Hoạt động ─── */
-function ActivityTab() {
-    const activities = [
-        { action: "Đăng nhập hệ thống", time: "Hôm nay, 08:30", icon: "login", color: "bg-blue-50 dark:bg-blue-900/20 text-blue-600" },
-        { action: "Cập nhật hồ sơ bệnh nhân #BN12345", time: "Hôm qua, 15:20", icon: "edit_note", color: "bg-green-50 dark:bg-green-900/20 text-green-600" },
-        { action: "Tạo lịch hẹn khám mới", time: "Hôm qua, 10:15", icon: "calendar_add_on", color: "bg-purple-50 dark:bg-purple-900/20 text-purple-600" },
-        { action: "Xuất báo cáo tháng 02/2026", time: "01/03/2026, 09:00", icon: "download", color: "bg-orange-50 dark:bg-orange-900/20 text-orange-600" },
-        { action: "Đổi mật khẩu tài khoản", time: "25/02/2026, 14:30", icon: "lock_reset", color: "bg-red-50 dark:bg-red-900/20 text-red-600" },
-        { action: "Cập nhật thông tin cá nhân", time: "20/02/2026, 11:00", icon: "person", color: "bg-teal-50 dark:bg-teal-900/20 text-teal-600" },
-        { action: "Kê đơn thuốc cho bệnh nhân #BN12300", time: "18/02/2026, 16:45", icon: "medication", color: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600" },
-        { action: "Hoàn thành ca trực chiều", time: "18/02/2026, 18:00", icon: "check_circle", color: "bg-green-50 dark:bg-green-900/20 text-green-600" },
-    ];
+function ActivityTab({ userId }: { userId: string }) {
+    const [activities, setActivities] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const fetchAuditLogs = async () => {
+            try {
+                const { axiosClient } = await import('@/api/axiosClient');
+                const { AUDIT_LOG_ENDPOINTS } = await import('@/api/endpoints');
+                
+                const res = await axiosClient.get(AUDIT_LOG_ENDPOINTS.LIST, { 
+                    params: { user_id: userId, limit: 20, sort_by: 'created_at', sort_dir: 'DESC' } 
+                });
+                
+                const logs = res.data?.data || res.data || [];
+                setActivities(logs);
+            } catch (err) {
+                console.error("Failed to fetch audit logs:", err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (userId) {
+            fetchAuditLogs();
+        } else {
+            setLoading(false);
+        }
+    }, [userId]);
+
+    const getActivityDetails = (log: any) => {
+        const { module_name, action_type, action_desc } = log;
+        let action = action_desc || "Thao tác trên hệ thống";
+        let icon = "history";
+        let color = "bg-gray-100 dark:bg-gray-800 text-gray-600";
+
+        // Map icons & colors based on ACTION_TYPE
+        if (action_type === "LOGIN") {
+            action = "Đăng nhập hệ thống";
+            icon = "login";
+            color = "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400";
+        } else if (action_type === "CREATE") {
+            icon = "add_circle";
+            color = "bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400";
+            if (module_name === "APPOINTMENTS") action = "Tạo lịch hẹn mới";
+        } else if (action_type === "UPDATE") {
+            icon = "edit_note";
+            color = "bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400";
+            if (module_name === "APPOINTMENTS") action = "Cập nhật thông tin lịch hẹn";
+        } else if (action_type === "DELETE") {
+            icon = "delete";
+            color = "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+        } else if (action_type === "CANCEL") {
+            icon = "cancel";
+            color = "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400";
+            if (module_name === "APPOINTMENTS") action = "Huỷ lịch hẹn khám";
+        } else if (action_type === "COMPLETE") {
+            icon = "check_circle";
+            color = "bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400";
+            if (module_name === "APPOINTMENTS") action = "Hoàn tất khám bệnh";
+        }
+
+        // Specific overrides context
+        if (module_name === "APPOINTMENTS" && icon === "history") icon = "calendar_month";
+        if (module_name === "PATIENTS") icon = "personal_injury";
+        if (module_name === "PRESCRIPTIONS") icon = "medication";
+
+        return { action, icon, color };
+    };
+
+    const formatDate = (dateStr: string) => {
+        if (!dateStr) return "Không rõ thời gian";
+        const date = new Date(dateStr);
+        return date.toLocaleString('vi-VN', {
+            hour: '2-digit', minute: '2-digit',
+            day: '2-digit', month: '2-digit', year: 'numeric'
+        });
+    };
 
     return (
-        <div className="bg-white dark:bg-[#1e242b] border border-[#dde0e4] dark:border-[#2d353e] rounded-xl shadow-sm p-6">
-            <h2 className="text-lg font-bold text-[#121417] dark:text-white mb-4 flex items-center gap-2">
+        <div className="bg-white dark:bg-[#1e242b] border border-[#dde0e4] dark:border-[#2d353e] rounded-xl shadow-sm p-6 line-clamp-none">
+            <h2 className="text-lg font-bold text-[#121417] dark:text-white mb-6 flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#3C81C6]">history</span>
-                Hoạt động gần đây
+                Lịch sử hoạt động
             </h2>
-            <div className="space-y-2">
-                {activities.map((activity, i) => (
-                    <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${activity.color}`}>
-                            <span className="material-symbols-outlined text-[18px]">{activity.icon}</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-[#121417] dark:text-white">{activity.action}</p>
-                            <p className="text-xs text-[#687582] dark:text-gray-400">{activity.time}</p>
-                        </div>
+            
+            {loading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                    <div className="w-8 h-8 border-4 border-[#3C81C6] border-t-transparent rounded-full animate-spin"></div>
+                    <span className="mt-4 text-sm text-gray-500 font-medium">Đang tải dữ liệu hoạt động...</span>
+                </div>
+            ) : activities.length > 0 ? (
+                <div className="relative pl-6 border-l-2 border-gray-100 dark:border-gray-800 space-y-6">
+                    {activities.map((log: any, i: number) => {
+                        const { action, icon, color } = getActivityDetails(log);
+                        return (
+                            <div key={log.id || i} className="relative">
+                                {/* Dot indicator */}
+                                <div className={`absolute -left-[35px] top-1 w-4 h-4 rounded-full border-2 border-white dark:border-[#1e242b] bg-[#3C81C6]`} />
+                                
+                                <div className="bg-gray-50/50 dark:bg-gray-800/30 border border-gray-100 dark:border-gray-700/50 rounded-xl p-4 hover:shadow-md transition-shadow">
+                                    <div className="flex items-start gap-4">
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
+                                            <span className="material-symbols-outlined text-[24px]">{icon}</span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between gap-4 mb-1">
+                                                <p className="text-base font-bold text-[#121417] dark:text-white">
+                                                    {action}
+                                                </p>
+                                                <span className="text-xs font-medium text-gray-500 whitespace-nowrap bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 px-2.5 py-1 rounded-md flex items-center gap-1.5 shadow-sm">
+                                                    <span className="material-symbols-outlined text-[14px]">schedule</span>
+                                                    {formatDate(log.created_at || log.action_time)}
+                                                </span>
+                                            </div>
+                                            
+                                            {log.action_desc && log.action_desc !== action && (
+                                                <p className="text-sm text-[#687582] dark:text-gray-400 bg-white dark:bg-gray-800/50 px-3 py-2 rounded-lg border border-gray-100 dark:border-gray-700/50 mt-2">
+                                                    {log.action_desc}
+                                                </p>
+                                            )}
+
+                                            {log.ip_address && (
+                                                <div className="mt-3 flex items-center gap-2 text-xs text-gray-400">
+                                                    <span className="material-symbols-outlined text-[14px]">cell_wifi</span>
+                                                    IP: {log.ip_address}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            ) : (
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center bg-gray-50/50 dark:bg-gray-800/30 rounded-xl border border-gray-100 dark:border-gray-700/50">
+                    <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-4 shadow-sm">
+                        <span className="material-symbols-outlined text-3xl text-gray-400">history_toggle_off</span>
                     </div>
-                ))}
-            </div>
+                    <h3 className="text-base font-bold text-[#121417] dark:text-white mb-2">Chưa có hoạt động</h3>
+                    <p className="text-sm text-gray-500 max-w-sm">Người dùng này chưa có hoạt động nào được ghi nhận trên hệ thống.</p>
+                </div>
+            )}
         </div>
     );
 }

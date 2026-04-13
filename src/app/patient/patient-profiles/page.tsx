@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { RELATIONSHIP_OPTIONS, type PatientProfile } from "@/data/patient-profiles-mock";
 import { validateName, validatePhone, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
 import { getPatientsByAccountId, createPatient, updatePatient, linkAccount, updatePatientStatus, Patient } from "@/services/patientService";
-import PatientDetail from "./PatientDetail";
 
 // Helper functions for storing relationship in localStorage explicitly 
 // because backend Patient model does not persist relationship.
@@ -28,7 +28,7 @@ const saveLocalRelation = (patientId: string, relationship: string, label: strin
 };
 
 // Helper function to map backend Patient -> frontend PatientProfile
-const mapToProfile = (p: Patient, userParam?: any): PatientProfile => {
+export const mapToProfile = (p: Patient, userParam?: any): PatientProfile => {
     let isSelf = false;
     let relationshipLabel = "Khác";
     let relationshipVal: PatientProfile["relationship"] = "other";
@@ -89,16 +89,17 @@ const mapToProfile = (p: Patient, userParam?: any): PatientProfile => {
 export default function PatientProfilesPage() {
     const { user } = useAuth();
     const { showToast } = useToast();
+    const router = useRouter();
+    const searchParams = useSearchParams();
 
     // Load từ localStorage, fallback sang mock data
     const [profiles, setProfiles] = useState<PatientProfile[]>([]);
     const [loaded, setLoaded] = useState(false);
-    const [view, setView] = useState<"list" | "detail" | "form">("list");
+    const [view, setView] = useState<"list" | "form">("list");
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formData, setFormData] = useState<Partial<PatientProfile>>({});
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const [detailProfile, setDetailProfile] = useState<PatientProfile | null>(null);
 
     // Fetch Data from API
     const loadData = useCallback(async () => {
@@ -127,6 +128,20 @@ export default function PatientProfilesPage() {
     useEffect(() => {
         loadData();
     }, [loadData]);
+
+    // Handle auto-edit from URL params (e.g. from detail page)
+    useEffect(() => {
+        if (loaded && profiles.length > 0) {
+            const action = searchParams?.get('action');
+            const targetId = searchParams?.get('id');
+            if (action === 'edit' && targetId) {
+                const targetProfile = profiles.find(p => p.id === targetId);
+                if (targetProfile) {
+                    openEdit(targetProfile);
+                }
+            }
+        }
+    }, [loaded, searchParams, profiles]);
 
     const openCreate = () => {
         setFormData({ relationship: "other", relationshipLabel: "Khác", gender: "male", isActive: true, isPrimary: false });
@@ -368,11 +383,11 @@ export default function PatientProfilesPage() {
 
                         {/* Quick actions */}
                         <div className="mt-4 pt-3 border-t border-gray-100 dark:border-[#2d353e] flex items-center gap-2">
-                            <button onClick={() => { setDetailProfile(profile); setView("detail"); }}
+                            <Link href={`/patient/patient-profiles/${profile.id}`}
                                 className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#3C81C6]/10 text-[#3C81C6] text-xs font-bold rounded-lg hover:bg-[#3C81C6]/20 transition-all">
                                 <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>visibility</span>
                                 Xem chi tiết
-                            </button>
+                            </Link>
                             <Link href={`/booking?profileId=${profile.id}`}
                                 className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white text-xs font-bold rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.97]">
                                 <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>calendar_month</span>
@@ -424,24 +439,19 @@ export default function PatientProfilesPage() {
 
             </>)}
 
-            {/* ===== Chi tiết hồ sơ bệnh nhân (Component) ===== */}
-            {view === "detail" && detailProfile && (
-                <div className="mt-4">
-                    <PatientDetail 
-                        profile={detailProfile} 
-                        onBack={() => { setDetailProfile(null); setView("list"); }} 
-                        onEdit={() => openEdit(detailProfile)} 
-                    />
-                </div>
-            )}
-
             {/* ===== Form tạo/chỉnh sửa (Inline) ===== */}
             {view === "form" && (
                 <div className="bg-white dark:bg-[#0d1117] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e]">
                     <div className="max-w-lg mx-auto py-6 px-4">
                         <div className="pb-4 mb-4 border-b border-gray-100 dark:border-[#2d353e] flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <button onClick={() => setView("list")} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                                <button onClick={() => {
+                                    setView("list");
+                                    // if there was an action parameter, remove it by routing to base
+                                    if (searchParams?.get('action')) {
+                                        router.replace('/patient/patient-profiles');
+                                    }
+                                }} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                                     <span className="material-symbols-outlined text-gray-500" style={{ fontSize: "20px" }}>arrow_back</span>
                                 </button>
                                 <h2 className="text-lg font-bold text-[#121417] dark:text-white">
@@ -490,24 +500,6 @@ export default function PatientProfilesPage() {
                                 <ModalField label="Số BHYT" value={formData.insuranceNumber || ""} onChange={v => { setFormData(p => ({ ...p, insuranceNumber: v })); setErrors(e => ({ ...e, insuranceNumber: "" })); }} error={errors.insuranceNumber} placeholder="15 ký tự" />
                             </div>
                             <ModalField label="Địa chỉ" value={formData.address || ""} onChange={v => setFormData(p => ({ ...p, address: v }))} />
-
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Dị ứng</label>
-                                <input
-                                    type="text"
-                                    value={(formData.allergies || []).join(", ")}
-                                    onChange={e => setFormData(p => ({ ...p, allergies: e.target.value.split(",").map(s => s.trim()).filter(Boolean) }))}
-                                    placeholder="VD: Penicillin, Aspirin (cách nhau bằng dấu phẩy)"
-                                    className="w-full px-4 py-3 border border-gray-200 dark:border-[#2d353e] rounded-xl text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-[#13191f] focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 placeholder-gray-400"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Tiền sử bệnh</label>
-                                <textarea value={formData.medicalHistory || ""} onChange={e => setFormData(p => ({ ...p, medicalHistory: e.target.value }))}
-                                    placeholder="Ghi chú tiền sử bệnh lý..."
-                                    className="w-full px-4 py-3 border border-gray-200 dark:border-[#2d353e] rounded-xl text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-[#13191f] focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 min-h-[80px] resize-none" />
-                            </div>
                         </div>
                         <div className="pt-4 mt-4 border-t border-gray-100 dark:border-[#2d353e] flex items-center justify-end gap-3">
                             <button onClick={() => setView("list")}

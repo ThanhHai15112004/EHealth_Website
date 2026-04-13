@@ -36,7 +36,9 @@ export default function HealthRecordsPage() {
                 const res = await getPatientsByAccountId(user.id);
                 if (res.success && res.data && res.data.length > 0) {
                     setProfiles(res.data);
-                    setSelectedProfileId(res.data[0].id);
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = res.data.some(p => p.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : res.data[0].id);
                 }
             } catch (error) {
                 console.error("Failed to load profiles", error);
@@ -67,14 +69,59 @@ export default function HealthRecordsPage() {
                 ]);
                 
                 // Set data or fallback immediately ensuring UI state does not break
+                const encountersData = encountersRes.data?.data || encountersRes.data || [];
                 const timelineData = timelineRes.data?.data || timelineRes.data || [];
                 const historyData = historyRes.data?.data || historyRes.data || [];
+                const allergiesData = allergiesRes.data?.data || allergiesRes.data || [];
                 const vitalsData = vitalsRes.data?.data || vitalsRes.data || [];
                 const latestVitalCall = await ehrService.getLatestVitals(selectedProfileId).catch(() => ({ data: { data: null } }));
 
+                const formattedEncounters = Array.isArray(encountersData) ? encountersData.map((enc: any) => {
+                    const dateObj = new Date(enc.start_time || enc.created_at || new Date());
+                    return {
+                        id: enc.encounters_id || enc.id || enc.appointment_id,
+                        timestamp: dateObj.getTime(),
+                        date: dateObj.toLocaleDateString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }),
+                        type: "encounter",
+                        title: enc.encounter_type === 'FIRST_VISIT' ? 'Khám lần đầu' : enc.encounter_type === 'FOLLOW_UP' ? 'Tái khám' : 'Phiên khám',
+                        description: enc.conclusion || enc.notes || (enc.status === "COMPLETED" ? "Khám hoàn tất" : "Đang xử lý"),
+                        doctorName: enc.doctor_name || "Bác sĩ",
+                        icon: enc.encounter_type === 'FIRST_VISIT' ? "stethoscope" : "monitor_heart",
+                        color: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
+                    };
+                }) : [];
+
+                const processedTimeline = Array.isArray(timelineData) ? timelineData.map((item: any) => ({
+                    ...item,
+                    timestamp: new Date(item.date || new Date()).getTime()
+                })) : [];
+                
+                const combinedTimeline = [...processedTimeline, ...formattedEncounters].sort((a, b) => b.timestamp - a.timestamp);
+
+                const formattedHistory = [
+                    ...(Array.isArray(historyData) ? historyData.map((h: any) => ({
+                        ...h,
+                        id: h.patient_medical_histories_id || h.id,
+                        type: h.history_type === 'PERSONAL' ? 'chronic' : h.history_type === 'FAMILY' ? 'family' : h.type || 'other',
+                        name: h.condition_name || h.name,
+                        status: (h.status || '').toLowerCase(),
+                        details: h.notes || h.details,
+                        diagnosedDate: h.diagnosis_date ? new Date(h.diagnosis_date).toLocaleDateString('vi-VN') : h.diagnosedDate
+                    })) : []),
+                    ...(Array.isArray(allergiesData) ? allergiesData.map((a: any) => ({
+                        ...a,
+                        id: a.patient_allergies_id || a.allergy_id || a.id,
+                        type: 'allergy',
+                        name: a.allergen_name || a.name || a.allergen,
+                        status: (a.status || 'ACTIVE').toLowerCase(),
+                        details: a.reaction || a.notes || a.details,
+                        diagnosedDate: a.identified_date || a.created_at ? new Date(a.identified_date || a.created_at).toLocaleDateString('vi-VN') : a.diagnosedDate
+                    })) : [])
+                ];
+
                 setLatestVital(latestVitalCall.data?.data || latestVitalCall.data || vitalsData[0] || null);
-                setTimeline(Array.isArray(timelineData) ? timelineData : []);
-                setHistory(Array.isArray(historyData) ? historyData : []);
+                setTimeline(combinedTimeline);
+                setHistory(formattedHistory);
                 setVitals(Array.isArray(vitalsData) ? vitalsData : []);
                 
                 // Meds and Labs are normally inside timeline.
@@ -110,7 +157,10 @@ export default function HealthRecordsPage() {
                     {profiles.map(p => (
                         <div
                             key={p.id}
-                            onClick={() => setSelectedProfileId(p.id)}
+                            onClick={() => {
+                                setSelectedProfileId(p.id)
+                                sessionStorage.setItem("patientPortal_selectedProfileId", p.id);
+                            }}
                             className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
                         >
                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
@@ -186,12 +236,12 @@ function OverviewTab({ vital, history, medications, timeline }: { vital: any; hi
         );
     }
     const healthCards = [
-        { label: "Huyết áp", value: `${vital?.bloodPressureSystolic || "--"}/${vital?.bloodPressureDiastolic || "--"}`, unit: "mmHg", icon: "bloodtype", color: "from-red-500 to-rose-600", ok: (vital?.bloodPressureSystolic || 0) <= 130 },
-        { label: "Nhịp tim", value: `${vital?.heartRate || "--"}`, unit: "bpm", icon: "cardiology", color: "from-pink-500 to-red-500", ok: true },
-        { label: "BMI", value: vital?.bmi?.toFixed(1) || "--", unit: "", icon: "monitor_weight", color: "from-blue-500 to-indigo-600", ok: vital?.bmi >= 18.5 && vital?.bmi <= 25 },
-        { label: "SpO2", value: `${vital?.spo2 || "--"}`, unit: "%", icon: "pulmonology", color: "from-cyan-500 to-teal-600", ok: true },
-        { label: "Đường huyết", value: `${vital?.bloodSugar || "--"}`, unit: "mg/dL", icon: "water_drop", color: "from-amber-500 to-orange-500", ok: true },
-        { label: "Nhiệt độ", value: vital?.temperature?.toFixed(1) || "--", unit: "°C", icon: "thermostat", color: "from-green-500 to-emerald-600", ok: true },
+        { label: "Huyết áp", value: `${vital?.bloodPressureSystolic != null ? vital.bloodPressureSystolic : "--"}/${vital?.bloodPressureDiastolic != null ? vital.bloodPressureDiastolic : "--"}`, unit: "mmHg", icon: "bloodtype", color: "from-red-500 to-rose-600", hasData: vital?.bloodPressureSystolic != null, ok: vital?.bloodPressureSystolic != null ? vital.bloodPressureSystolic <= 130 : null },
+        { label: "Nhịp tim", value: vital?.heartRate != null ? `${vital.heartRate}` : "--", unit: "bpm", icon: "cardiology", color: "from-pink-500 to-red-500", hasData: vital?.heartRate != null, ok: vital?.heartRate != null ? (vital.heartRate >= 60 && vital.heartRate <= 100) : null },
+        { label: "BMI", value: vital?.bmi != null ? Number(vital.bmi).toFixed(1) : "--", unit: "", icon: "monitor_weight", color: "from-blue-500 to-indigo-600", hasData: vital?.bmi != null, ok: vital?.bmi != null ? (vital.bmi >= 18.5 && vital.bmi <= 25) : null },
+        { label: "SpO2", value: vital?.spo2 != null ? `${vital.spo2}` : "--", unit: "%", icon: "pulmonology", color: "from-cyan-500 to-teal-600", hasData: vital?.spo2 != null, ok: vital?.spo2 != null ? vital.spo2 >= 95 : null },
+        { label: "Đường huyết", value: vital?.bloodSugar != null ? `${vital.bloodSugar}` : "--", unit: "mg/dL", icon: "water_drop", color: "from-amber-500 to-orange-500", hasData: vital?.bloodSugar != null, ok: vital?.bloodSugar != null ? vital.bloodSugar <= 100 : null },
+        { label: "Nhiệt độ", value: vital?.temperature != null ? Number(vital.temperature).toFixed(1) : "--", unit: "°C", icon: "thermostat", color: "from-green-500 to-emerald-600", hasData: vital?.temperature != null, ok: vital?.temperature != null ? (vital.temperature >= 36.1 && vital.temperature <= 37.2) : null },
     ];
 
     return (
@@ -209,10 +259,17 @@ function OverviewTab({ vital, history, medications, timeline }: { vital: any; hi
                             <span className="text-2xl font-bold text-[#121417] dark:text-white">{c.value}</span>
                             {c.unit && <span className="text-sm text-[#687582] mb-0.5">{c.unit}</span>}
                         </div>
+                        {c.hasData ? (
                         <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${c.ok ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400"}`}>
                             <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>{c.ok ? "check_circle" : "warning"}</span>
                             {c.ok ? "Bình thường" : "Cao nhẹ"}
                         </div>
+                        ) : (
+                        <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 dark:bg-gray-500/10 text-gray-500 dark:text-gray-400">
+                            <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>remove_circle_outline</span>
+                            Chưa có dữ liệu
+                        </div>
+                        )}
                     </div>
                 ))}
             </div>
@@ -332,8 +389,8 @@ function MedicalHistoryTab({ items }: { items: any[] }) {
                             <span className="ml-auto text-xs bg-[#f6f7f8] dark:bg-[#13191f] text-[#687582] px-2 py-0.5 rounded-full">{group.length}</span>
                         </h3>
                         <div className="space-y-3">
-                            {group.map((item: any) => (
-                                <div key={item.id} className="flex items-start gap-3 p-3 rounded-xl bg-[#f6f7f8] dark:bg-[#13191f]">
+                            {group.map((item: any, idx: number) => (
+                                <div key={item.id || idx} className="flex items-start gap-3 p-3 rounded-xl bg-[#f6f7f8] dark:bg-[#13191f]">
                                     <div className="flex-1">
                                         <div className="flex items-center gap-2">
                                             <p className="text-sm font-semibold text-[#121417] dark:text-white">{item.name}</p>
@@ -473,8 +530,8 @@ function VitalsTab({ vitals }: { vitals: any[] }) {
                     <span className="material-symbols-outlined text-red-500" style={{ fontSize: "20px" }}>bloodtype</span>Biểu đồ huyết áp
                 </h3>
                 <div className="flex items-end gap-3 h-40">
-                    {vitals.slice().reverse().map(v => (
-                        <div key={v.id} className="flex-1 flex flex-col items-center gap-1 group">
+                    {vitals.slice().reverse().map((v, index) => (
+                        <div key={v.id || `vital-${index}`} className="flex-1 flex flex-col items-center gap-1 group">
                             <div className="flex gap-1 items-end w-full justify-center" style={{ height: "120px" }}>
                                 <div className="w-3 bg-gradient-to-t from-red-500 to-rose-400 rounded-t-md" style={{ height: `${((v.bloodPressureSystolic || 120) / 160) * 100}%` }} />
                                 <div className="w-3 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-md" style={{ height: `${((v.bloodPressureDiastolic || 80) / 160) * 100}%` }} />
@@ -498,14 +555,14 @@ function VitalsTab({ vitals }: { vitals: any[] }) {
                         <thead><tr className="text-xs font-semibold text-[#687582] uppercase border-b border-[#e5e7eb] dark:border-[#2d353e]">
                             <th className="text-left py-3">Ngày</th><th className="text-center py-3">HA</th><th className="text-center py-3">Nhịp tim</th><th className="text-center py-3">SpO2</th><th className="text-center py-3">Cân nặng</th><th className="text-center py-3">BMI</th>
                         </tr></thead>
-                        <tbody>{vitals.map(v => (
-                            <tr key={v.id} className="border-b border-[#e5e7eb]/50 dark:border-[#2d353e]/50 hover:bg-[#f6f7f8] dark:hover:bg-[#13191f]">
+                        <tbody>{vitals.map((v, index) => (
+                            <tr key={v.id || `vital-list-${index}`} className="border-b border-[#e5e7eb]/50 dark:border-[#2d353e]/50 hover:bg-[#f6f7f8] dark:hover:bg-[#13191f]">
                                 <td className="py-3 font-medium text-[#121417] dark:text-white">{v.date}</td>
                                 <td className={`py-3 text-center ${(v.bloodPressureSystolic || 0) > 130 ? "text-red-600 font-bold" : "text-[#121417] dark:text-white"}`}>{v.bloodPressureSystolic || "--"}/{v.bloodPressureDiastolic || "--"}</td>
                                 <td className="py-3 text-center text-[#121417] dark:text-white">{v.heartRate || "--"}</td>
                                 <td className="py-3 text-center text-[#121417] dark:text-white">{v.spo2 ? `${v.spo2}%` : "--"}</td>
                                 <td className="py-3 text-center text-[#121417] dark:text-white">{v.weight ? `${v.weight}kg` : "--"}</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.bmi ? v.bmi.toFixed(1) : "--"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.bmi ? Number(v.bmi).toFixed(1) : "--"}</td>
                             </tr>
                         ))}</tbody>
                     </table>

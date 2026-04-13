@@ -6,6 +6,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { loadFromStorage, saveToStorage, STORAGE_KEYS } from "@/utils/localStorage";
 import { validateRequired, validateDateRange } from "@/utils/validation";
 import { getPatientsByAccountId } from "@/services/patientService";
+import { prescriptionService } from "@/services/prescriptionService";
 
 // Type definitions (previously from mock data)
 interface MedicationReminder {
@@ -73,6 +74,78 @@ export default function MedicationRemindersPage() {
         startDate: "", endDate: "",
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const syncFromPrescriptions = async (autoSync: boolean = false) => {
+        if (!selectedProfileId) {
+            if (!autoSync) showToast("Vui lòng chọn hồ sơ bệnh nhân", "error");
+            return;
+        }
+        setIsSyncing(true);
+        try {
+            const res = await prescriptionService.getByPatient(selectedProfileId, { limit: 5 });
+            
+            // Handle both pagination format ({data: {data: []}}) and simple array format
+            let prescriptionsList = [];
+            if (res?.data?.data && Array.isArray(res.data.data)) {
+                prescriptionsList = res.data.data;
+            } else if (res?.data && Array.isArray(res.data)) {
+                prescriptionsList = res.data;
+            } else if (Array.isArray(res)) {
+                prescriptionsList = res;
+            }
+            
+            const validPrescriptions = prescriptionsList.filter((p: any) => p.status === 'PRESCRIBED' || p.status === 'DISPENSED');
+            
+            if (validPrescriptions.length === 0) {
+                if (!autoSync) showToast("Không tìm thấy đơn thuốc nào gần đây", "info");
+                setIsSyncing(false);
+                return;
+            }
+
+            // Get current local reminders instead of relying on state closure which might be stale
+            const storedReminders = loadFromStorage<MedicationReminder[]>(STORAGE_KEYS.MEDICATION_REMINDERS, []);
+            let newRems = [...storedReminders];
+            let addedCount = 0;
+
+            for (const p of validPrescriptions) {
+                const details = await prescriptionService.getDetails(p.prescriptions_id);
+                for (const d of details) {
+                    const exists = newRems.some(r => r.prescriptionId === p.prescriptions_id && r.medicationName === d.brand_name);
+                    if (!exists) {
+                        newRems.push({
+                            id: `rem-sync-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            profileId: selectedProfileId,
+                            medicationName: d.brand_name,
+                            dosage: d.dosage,
+                            frequency: d.frequency || 1,
+                            timesOfDay: d.frequency === 2 ? ["08:00", "20:00"] : ["08:00"],
+                            instructions: d.usage_instruction || "Uống theo chỉ dẫn",
+                            startDate: new Date(p.prescribed_at || Date.now()).toISOString().split('T')[0],
+                            endDate: new Date(new Date(p.prescribed_at || Date.now()).getTime() + (d.duration_days || 7) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                            prescriptionId: p.prescriptions_id,
+                            isActive: true,
+                            color: COLORS[newRems.length % COLORS.length],
+                            createdAt: new Date().toISOString()
+                        });
+                        addedCount++;
+                    }
+                }
+            }
+
+            if (addedCount > 0) {
+                persistReminders(newRems);
+                showToast(`Đã đồng bộ ${addedCount} thuốc từ đơn thuốc!`, "success");
+            } else {
+                if (!autoSync) showToast("Các thuốc trong đơn đã được thêm từ trước", "info");
+            }
+        } catch (error) {
+            console.error("Sync error:", error);
+            if (!autoSync) showToast("Lỗi khi đồng bộ đơn thuốc", "error");
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     // Fetches profiles from DB
     useEffect(() => {
@@ -82,7 +155,9 @@ export default function MedicationRemindersPage() {
                 const res = await getPatientsByAccountId(userId);
                 if (res.success && res.data && res.data.length > 0) {
                     setProfiles(res.data);
-                    setSelectedProfileId(res.data[0].id);
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = res.data.some(p => p.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : res.data[0].id);
                 }
             } catch (error) {
                 console.error("Failed to load profiles", error);
@@ -99,6 +174,11 @@ export default function MedicationRemindersPage() {
         setReminders(selectedProfileId ? storedReminders.filter(r => r.profileId === selectedProfileId) : storedReminders);
         setLogs(storedLogs);
         setLoaded(true);
+
+        if (selectedProfileId) {
+            syncFromPrescriptions(true);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedProfileId]);
 
     // Persist helpers
@@ -309,6 +389,11 @@ export default function MedicationRemindersPage() {
                     <p className="text-sm text-[#687582] mt-1">Theo dõi và quản lý việc dùng thuốc hàng ngày</p>
                 </div>
                 <div className="flex items-center gap-3">
+                    <button onClick={syncFromPrescriptions} disabled={isSyncing}
+                        className="flex items-center gap-1.5 px-4 py-2.5 bg-white dark:bg-[#1e242b] border border-gray-200 dark:border-gray-700 text-[#121417] dark:text-white rounded-xl text-sm font-bold shadow-sm hover:bg-gray-50 dark:hover:bg-[#2d353e] transition-all disabled:opacity-50">
+                        <span className={`material-symbols-outlined text-[#3C81C6] ${isSyncing ? "animate-spin" : ""}`} style={{ fontSize: "18px" }}>sync</span>
+                        {isSyncing ? "Đang đồng bộ..." : "Đồng bộ đơn thuốc"}
+                    </button>
                     <button onClick={openCreate}
                         className="flex items-center gap-1.5 px-4 py-2.5 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all active:scale-[0.97]">
                         <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
@@ -323,7 +408,10 @@ export default function MedicationRemindersPage() {
                     {profiles.map(p => (
                         <div
                             key={p.id}
-                            onClick={() => setSelectedProfileId(p.id)}
+                            onClick={() => {
+                                setSelectedProfileId(p.id)
+                                sessionStorage.setItem("patientPortal_selectedProfileId", p.id);
+                            }}
                             className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
                         >
                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">

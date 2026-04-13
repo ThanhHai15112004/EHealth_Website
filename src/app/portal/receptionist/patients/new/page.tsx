@@ -62,13 +62,10 @@ export default function NewPatientPage() {
                 full_name: fd.name,
                 date_of_birth: fd.dob || '1900-01-01',
                 gender: fd.gender === "Nam" ? "MALE" : "FEMALE",
-                identity_type: fd.cccd ? "CCCD" : undefined,
-                identity_number: fd.cccd || undefined,
-                contact: {
-                    phone_number: fd.phone,
-                    email: fd.email || undefined,
-                    street_address: fd.address || undefined,
-                },
+                id_card_number: fd.cccd || undefined,
+                phone_number: fd.phone,
+                email: fd.email || undefined,
+                address: fd.address || undefined,
             });
             router.push("/portal/receptionist/patients");
         } catch {

@@ -34,7 +34,11 @@ axiosClient.interceptors.request.use(
         const token = typeof window !== 'undefined' ? localStorage.getItem(AUTH_CONFIG.ACCESS_TOKEN_KEY) : null;
 
         if (token && config.headers) {
-            config.headers.Authorization = `Bearer ${token}`;
+            if (typeof (config.headers as any).set === 'function') {
+                (config.headers as any).set('Authorization', `Bearer ${token}`);
+            } else {
+                config.headers.Authorization = `Bearer ${token}`;
+            }
         }
 
         return config;
@@ -78,7 +82,11 @@ axiosClient.interceptors.response.use(
                     failedQueue.push({
                         resolve: (newToken: string) => {
                             if (originalRequest.headers) {
-                                originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                                if (typeof (originalRequest.headers as any).set === 'function') {
+                                    (originalRequest.headers as any).set('Authorization', `Bearer ${newToken}`);
+                                } else {
+                                    originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                                }
                             }
                             resolve(axiosClient(originalRequest));
                         },

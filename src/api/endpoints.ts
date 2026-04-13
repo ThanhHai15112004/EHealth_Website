@@ -373,12 +373,13 @@ export const PATIENT_ENDPOINTS = {
     ADD_CONTACT: (patientId: string) => `/api/patients/${patientId}/contacts`,
     EDIT_CONTACT: (patientId: string, contactId: string) => `/api/patients/${patientId}/contacts/${contactId}`,
     DELETE_CONTACT: (patientId: string, contactId: string) => `/api/patients/${patientId}/contacts/${contactId}`,
-    ADD_RELATION: (patientId: string) => `/api/patients/${patientId}/relations`,
-    EDIT_RELATION: (patientId: string, relationId: string) => `/api/patients/${patientId}/relations/${relationId}`,
-    DELETE_RELATION: (patientId: string, relationId: string) => `/api/patients/${patientId}/relations/${relationId}`,
-    GET_ALL_RELATIONS: (patientId: string) => `/api/patients/${patientId}/relations`,
+    ADD_RELATION: (_patientId?: string) => `/api/patient-relations`,
+    EDIT_RELATION: (_patientId: string, relationId: string) => `/api/patient-relations/${relationId}`,
+    DELETE_RELATION: (_patientId: string, relationId: string) => `/api/patient-relations/${relationId}`,
+    GET_ALL_RELATIONS: (patientId: string) => `/api/patient-relations?patient_id=${patientId}`,
     GET_EMERGENCY_CONTACTS: (patientId: string) => `/api/patients/${patientId}/emergency-contacts`,
     GET_NORMAL_RELATIVES: (patientId: string) => `/api/patients/${patientId}/relatives`,
+    AUDIT_LOGS: (patientId: string) => `/api/patients/${patientId}/audit-logs`,
     MEDICAL_RECORDS: (patientId: string) => `/api/patients/${patientId}/medical-records`,
     PRESCRIPTIONS: (patientId: string) => `/api/patients/${patientId}/prescriptions`,
 };
@@ -388,11 +389,12 @@ export const APPOINTMENT_ENDPOINTS = {
     DETAIL: (id: string) => `/api/appointments/${id}`,
     CREATE: '/api/appointments',
     UPDATE: (id: string) => `/api/appointments/${id}`,
-    CANCEL: (id: string) => `/api/appointments/${id}/cancel`,
+    CANCEL: (id: string) => `/api/appointments/${id}`,
     CONFIRM: (id: string) => `/api/appointment-confirmations/${id}/confirm`,
     GENERATE_QR: (id: string) => `/api/appointment-status/generate-qr/${id}`,
     BY_DOCTOR: (doctorId: string) => `/api/appointments/doctor/${doctorId}`,
     BY_PATIENT: (patientId: string) => `/api/appointments/patient/${patientId}`,
+    MY_APPOINTMENTS: '/api/appointments/my-appointments',
 };
 
 export const DEPARTMENT_ENDPOINTS = {
@@ -468,11 +470,15 @@ export const EMR_ENDPOINTS = {
 };
 
 export const DOCUMENT_ENDPOINTS = {
-    LIST: (patientId: string) => `/api/patients/${patientId}/documents`,
-    UPLOAD: (patientId: string) => `/api/patients/${patientId}/documents`,
-    DETAIL: (patientId: string, docId: string) => `/api/patients/${patientId}/documents/${docId}`,
-    DELETE: (patientId: string, docId: string) => `/api/patients/${patientId}/documents/${docId}`,
-    VERSIONS: (patientId: string, docId: string) => `/api/patients/${patientId}/documents/${docId}/versions`,
+    LIST: (patientId: string) => `/api/patient-documents?patient_id=${patientId}`,
+    UPLOAD: () => `/api/patient-documents`,
+    DETAIL: (docId: string) => `/api/patient-documents/${docId}`,
+    DELETE: (docId: string) => `/api/patient-documents/${docId}`,
+    VERSIONS: (docId: string) => `/api/patient-documents/${docId}/versions`,
+};
+
+export const DOCUMENT_TYPE_ENDPOINTS = {
+    LIST: '/api/document-types',
 };
 
 // ✅ Corrected: PAY sử dụng /api/billing/payments, không phải /api/billing/invoices/{id}/pay
@@ -489,6 +495,8 @@ export const BILLING_ENDPOINTS = {
     // Payments ✅ FIX
     PAY: '/api/billing/offline/pay',
     PAY_ONLINE: '/api/billing/payments',
+    PAY_QR: '/api/billing/payments/qr-generate',
+    PAY_ORDER_STATUS: (orderId: string) => `/api/billing/payments/orders/${orderId}/status`,
     PAYMENTS: '/api/billing/payments',
     PAYMENT_DETAIL: (id: string) => `/api/billing/payments/${id}`,
     REFUND: (id: string) => `/api/billing/payments/${id}/refund`,
@@ -511,6 +519,7 @@ export const AI_ENDPOINTS = {
 export const TELEMEDICINE_ENDPOINTS = {
     // Booking
     LIST: '/api/teleconsultation/booking/my-bookings',
+    LIST_ALL: '/api/teleconsultation/booking',
     BOOK: '/api/teleconsultation/booking',
     DETAIL: (id: string) => `/api/teleconsultation/booking/${id}`,
     CANCEL: (id: string) => `/api/teleconsultation/booking/${id}/cancel`,
@@ -540,14 +549,19 @@ export const EHR_ENDPOINTS = {
     VITAL_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/vitals`,
     VITALS_LATEST: (patientId: string) => `/api/ehr/patients/${patientId}/vitals/latest`,
     VITALS_TRENDS: (patientId: string) => `/api/ehr/patients/${patientId}/vitals/trends`,
+    ADD_HEALTH_METRIC: (patientId: string) => `/api/ehr/patients/${patientId}/health-metrics`, // POST
     TREATMENT_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/treatment-records`,
     TIMELINE: (patientId: string) => `/api/ehr/patients/${patientId}/timeline`,
     MEDICAL_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/medical-histories`,
+    ADD_MEDICAL_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/medical-histories`, // POST
     ALLERGIES: (patientId: string) => `/api/ehr/patients/${patientId}/allergies`,
+    ADD_ALLERGY: (patientId: string) => `/api/ehr/patients/${patientId}/allergies`, // POST
     CURRENT_MEDICATIONS: (patientId: string) => `/api/ehr/patients/${patientId}/current-medications`,
     DIAGNOSIS_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/diagnosis-history`,
     PROFILE: (patientId: string) => `/api/ehr/patients/${patientId}/profile`,
     RISK_FACTORS: (patientId: string) => `/api/ehr/patients/${patientId}/risk-factors`,
+    ADD_RISK_FACTOR: (patientId: string) => `/api/ehr/patients/${patientId}/risk-factors`, // POST
+    SPECIAL_CONDITIONS: (patientId: string) => `/api/ehr/patients/${patientId}/special-conditions`, // GET/POST
     NOTES: (patientId: string) => `/api/ehr/patients/${patientId}/notes`,
 };
 
@@ -792,3 +806,9 @@ export const SIGN_OFF_ENDPOINTS = {
     AUDIT_LOG: (encounterId: string) => `/api/sign-off/${encounterId}/audit-log`,
 };
 
+// ============================================
+// EHR Additions
+// ============================================
+export const TIMELINE_ENDPOINTS = {
+    BY_PATIENT: (patientId: string) => `/api/ehr/patients/${patientId}/timeline`,
+};

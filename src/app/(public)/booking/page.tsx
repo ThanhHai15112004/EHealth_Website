@@ -16,6 +16,7 @@ import { MOCK_SPECIALTIES, filterMockDoctors, getMockDoctorById } from "@/data/p
 import { MOCK_MEDICAL_SERVICES, getServicesBySpecialtyId, getSpecialtyIdsByServiceId, SERVICE_CATEGORIES, type MedicalServiceItem } from "@/data/medical-services-mock";
 import { MOCK_PATIENT_PROFILES, getProfilesByUserId, type PatientProfile } from "@/data/patient-profiles-mock";
 import { getPatientsByAccountId } from "@/services/patientService";
+import { telemedicineService } from "@/services/telemedicineService";
 import { validateName, validatePhone, validateAppointmentDate } from "@/utils/validation";
 
 const STEPS = [
@@ -263,8 +264,7 @@ function BookingPageInner() {
             if (fetchSvc.department_id) {
                 const matched = specialties.filter(s => (s as any).department_id === fetchSvc.department_id);
                 if (matched.length > 0) return matched;
-                // Fallback: match by id
-                return specialties.filter(s => s.id === fetchSvc.department_id);
+                // department_id ≠ specialty_id, không nên fallback
             }
         }
         const specIds = getSpecialtyIdsByServiceId(selectedService);
@@ -408,7 +408,7 @@ function BookingPageInner() {
                         return;
                     }
                     
-                    const res = await getAvailableSlots({ date: selectedDate, doctor_id: selectedDoctor, branch_id: selectedBranch || facilityId });
+                    const res = await getAvailableSlots({ date: selectedDate, doctor_id: selectedDoctorObj?.doctorId || selectedDoctor, branch_id: selectedBranch || facilityId });
                     if (res && res.length === 1 && res[0]._facilityClosedFlag === true) {
                         if (isMounted) setFacilityClosedMessage("Cơ sở đóng cửa vào ngày này. Vui lòng chọn ngày khác.");
                         data = [];
@@ -420,7 +420,22 @@ function BookingPageInner() {
                 } else if (['specialty', 'service'].includes(bookingType) && selectedFacility && selectedSpecialty) {
                     // Fix #2: Resolve department_id from specialties data (loaded via API with department_id)
                     const matchedSpecialty = specialties.find(s => s.id === selectedSpecialty);
-                    const resolvedDepartmentId = (matchedSpecialty as any)?.department_id || selectedSpecialty;
+                    let resolvedDepartmentId = (matchedSpecialty as any)?.department_id;
+                    
+                    // Fallback: nếu specialties chưa có department_id, gọi trực tiếp API để resolve
+                    if (!resolvedDepartmentId) {
+                        try {
+                            const deptMapping = await getSpecialtiesByFacility(selectedFacility);
+                            const match = deptMapping?.find((dm: any) => dm.specialty_id === selectedSpecialty);
+                            resolvedDepartmentId = match?.department_id;
+                        } catch { /* ignore */ }
+                    }
+                    
+                    if (!resolvedDepartmentId) {
+                        console.warn('[fetchSlots] Không tìm được department_id cho specialty:', selectedSpecialty);
+                        if (isMounted) { setAvailableSlots([]); setIsFetchingSlots(false); }
+                        return;
+                    }
                     const res = await getAvailableSlotsByDepartment({ 
                         department_id: resolvedDepartmentId, 
                         facility_id: selectedFacility, branch_id: selectedBranch,
@@ -457,7 +472,8 @@ function BookingPageInner() {
         };
         fetchSlots();
         return () => { isMounted = false; };
-    }, [selectedDate, selectedDoctor, selectedDoctorObj, bookingType, selectedFacility, selectedSpecialty, selectedBranch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedDate, selectedDoctor, selectedDoctorObj, bookingType, selectedFacility, selectedSpecialty, selectedBranch, specialties]);
 
     const loadSpecialties = async () => {
         try {
@@ -524,7 +540,7 @@ function BookingPageInner() {
     };
 
     // When service is selected, auto-select specialty if only one match
-    const handleServiceSelect = (svcId: string) => {
+    const handleServiceSelect = async (svcId: string) => {
         if (selectedService === svcId) {
             setSelectedService("");
             setSelectedSpecialty("");
@@ -545,14 +561,31 @@ function BookingPageInner() {
                     setSelectedSpecialty(matchedSpec.id);
                     return;
                 }
-                // Fallback: dùng department_id trực tiếp (nếu không tìm được specialty match)
-                setSelectedSpecialty(fetchSvc.department_id);
-                return;
+                // KHÔNG fallback department_id làm specialty (DEPT_SAN ≠ SPC_SAN)
             }
         }
+        // 3. Reverse lookup: tìm specialties gán cho service này qua API hoặc mock
         const specIds = getSpecialtyIdsByServiceId(svcId);
         if (specIds.length === 1) {
             setSelectedSpecialty(specIds[0]);
+        } else if (specIds.length === 0) {
+            // Thử gọi API reverse lookup
+            try {
+                const { default: axiosClient } = await import('@/api/axiosClient');
+                const res = await axiosClient.get(`/api/specialty-services/by-service/${svcId}`);
+                const specList = res.data?.data || [];
+                if (specList.length === 1) {
+                    setSelectedSpecialty(specList[0].specialty_id);
+                } else if (specList.length > 1) {
+                    // Nếu service thuộc nhiều chuyên khoa, ưu tiên chuyên khoa đã enrich trong specialties state
+                    const matchInState = specList.find((sp: any) => specialties.some(s => s.id === sp.specialty_id));
+                    setSelectedSpecialty(matchInState?.specialty_id || specList[0].specialty_id);
+                } else {
+                    setSelectedSpecialty("");
+                }
+            } catch {
+                setSelectedSpecialty("");
+            }
         } else {
             setSelectedSpecialty("");
         }
@@ -598,37 +631,54 @@ function BookingPageInner() {
                 // Should not happen since we guard in UI, but just in case
                 return;
             }
-            const appointment = await createAppointment({
-                patientId,
-                doctorId: selectedDoctor || undefined,
-                facilityId: selectedFacility || undefined,
-                branchId: selectedBranch || undefined,
-                specialtyId: selectedSpecialty || undefined,
-                serviceId: selectedService || undefined,
-                slot_id: selectedSlotId || undefined,
-                date: selectedDate,
-                time: selectedTime,
-                type: "first_visit",
-                reason: form.symptoms,
-            });
             
-            // Tự động xác nhận & tạo QR nếu có thể
-            try {
-                const appId = appointment.id || (appointment as any).appointments_id;
-                if (appId) {
-                    await confirmAppointment(appId);
-                    const qrRes = await generateAppointmentQr(appId);
-                    setQrToken(qrRes.qr_token);
+            let appointment: any;
+            if (consultType === "online") {
+                const sessionRes = await telemedicineService.create({
+                    patient_id: patientId,
+                    specialty_id: selectedSpecialty || undefined,
+                    facility_id: selectedFacility || undefined,
+                    type_id: "TCT_VIDEO", // Mặc định tư vấn qua video
+                    doctor_id: selectedDoctorObj?.doctorId || undefined,
+                    slot_id: selectedSlotId || undefined,
+                    booking_date: selectedDate,
+                    booking_start_time: selectedTime,
+                    reason_for_visit: form.symptoms,
+                } as any);
+                appointment = sessionRes;
+            } else {
+                appointment = await createAppointment({
+                    patientId,
+                    doctorId: selectedDoctorObj?.doctorId || undefined,
+                    facilityId: selectedFacility || undefined,
+                    branchId: selectedBranch || undefined,
+                    specialtyId: selectedSpecialty || undefined,
+                    serviceId: selectedService || undefined,
+                    slot_id: selectedSlotId || undefined,
+                    date: selectedDate,
+                    time: selectedTime,
+                    type: "first_visit",
+                    reason: form.symptoms,
+                });
+                
+                // Tự động xác nhận & tạo QR nếu có thể (cho in-person)
+                try {
+                    const appId = appointment.id || appointment.appointments_id;
+                    if (appId) {
+                        await confirmAppointment(appId);
+                        const qrRes = await generateAppointmentQr(appId);
+                        setQrToken(qrRes.qr_token);
+                    }
+                } catch (err) {
+                    console.error("Lỗi khi tạo QR:", err);
                 }
-            } catch (err) {
-                console.error("Lỗi khi tạo QR:", err);
             }
 
-            setBookingCode(appointment.id || (appointment as any).appointments_id || `EH-${Date.now().toString(36).toUpperCase()}`);
+            setBookingCode(appointment.id || appointment.session_id || appointment.session_code || appointment.appointments_id || `EH-${Date.now().toString(36).toUpperCase()}`);
             setStep(5);
-        } catch {
-            setBookingCode(`EH-${Date.now().toString(36).toUpperCase()}`);
-            setStep(5);
+        } catch (err: any) {
+            console.error("Lỗi khi đặt lịch:", err);
+            alert(err?.response?.data?.message || err?.message || "Đã xảy ra lỗi khi đặt lịch. Vui lòng thử lại sau!");
         } finally {
             setSubmitting(false);
         }
@@ -1273,7 +1323,7 @@ function BookingPageInner() {
                             )}
 
                             <div className="flex items-center justify-center gap-3 flex-wrap">
-                                <Link href="/patient/appointments"
+                                <Link href={consultType === 'online' ? "/patient/telemedicine" : "/patient/appointments"}
                                     className="px-5 py-3 bg-[#3C81C6] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.97]">
                                     Xem lịch hẹn của tôi
                                 </Link>

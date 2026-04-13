@@ -29,6 +29,8 @@ export interface Appointment {
     status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
     reason?: string;
     notes?: string;
+    rating?: number;
+    feedback?: string;
     createdAt: string;
     updatedAt: string;
 }
@@ -111,9 +113,9 @@ export const createAppointment = async (data: CreateAppointmentData): Promise<Ap
             appointment_date: data.date,
             slot_id: data.slot_id,
             booking_channel: "WEB",
-            time: data.time,
-            type: data.type,
             reason_for_visit: data.reason,
+            facility_service_id: data.serviceId,
+            specialty_id: data.specialtyId,
         });
         return response.data.data;
     } catch (error: any) {
@@ -172,7 +174,9 @@ export const generateAppointmentQr = async (id: string): Promise<{ qr_token: str
 // ============================================
 export const cancelAppointment = async (id: string, reason?: string): Promise<void> => {
     try {
-        await axiosClient.post(APPOINTMENT_ENDPOINTS.CANCEL(id), { reason });
+        await axiosClient.delete(APPOINTMENT_ENDPOINTS.CANCEL(id), { 
+            data: { cancellation_reason: reason || 'Bệnh nhân huỷ lịch' } 
+        });
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Hủy lịch hẹn thất bại');
     }
@@ -207,6 +211,35 @@ export const getAppointmentsByPatient = async (
         throw new Error(error.response?.data?.message || 'Lấy lịch hẹn theo bệnh nhân thất bại');
     }
 };
+
+// ============================================
+// Lấy lịch hẹn của tôi (theo token đăng nhập)
+// BE tự xác định patient_id từ JWT Access Token
+// ============================================
+export interface MyAppointmentsResponse {
+    success: boolean;
+    message: string;
+    patient_id: string;
+    patient_ids: string[];
+    data: Appointment[];
+    pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+    };
+}
+
+export const getMyAppointments = async (
+    params?: { status?: string; patient_id?: string; fromDate?: string; toDate?: string; page?: number; limit?: number }
+): Promise<MyAppointmentsResponse> => {
+    try {
+        const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.MY_APPOINTMENTS, { params });
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy lịch hẹn của tôi thất bại');
+    }
+};
 // ============================================
 // L?y danh s�ch slot kh�m (cho b�c si ho?c service)
 // ============================================
@@ -228,5 +261,17 @@ export const getAvailableSlotsByDepartment = async (params: { department_id: str
         return response.data.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'L?y danh s�ch slot theo khoa th?t b?i');
+    }
+};
+
+// ============================================
+// Đánh giá lịch khám
+// ============================================
+export const submitAppointmentReview = async (id: string, rating: number, feedback: string): Promise<Appointment> => {
+    try {
+        const response = await axiosClient.post(`/api/appointments/${id}/review`, { rating, feedback });
+        return response.data.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Gửi đánh giá thất bại');
     }
 };

@@ -127,7 +127,8 @@ export default function ReceptionPage() {
                     full_name: newPatient.name,
                     date_of_birth: newPatient.age ? `${new Date().getFullYear() - parseInt(newPatient.age)}-01-01` : '1900-01-01',
                     gender: newPatient.gender === "male" ? "MALE" : "FEMALE",
-                    contact: { phone_number: newPatient.phone, street_address: newPatient.address },
+                    phone_number: newPatient.phone,
+                    address: newPatient.address || undefined,
                 });
                 patientId = (created as any)?.data?.id ?? (created as any)?.data?.patient_id ?? null;
             }

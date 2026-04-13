@@ -334,7 +334,7 @@ export const addRelation = async (patientId: string, data: {
     has_legal_rights?: boolean;
 }): Promise<{ success: boolean; message?: string }> => {
     try {
-        const response = await axiosClient.post(PATIENT_ENDPOINTS.ADD_RELATION(patientId), data);
+        const response = await axiosClient.post(PATIENT_ENDPOINTS.ADD_RELATION(patientId), { ...data, patient_id: patientId });
         return response.data;
     } catch (error: any) {
         return { success: false, message: error.response?.data?.message || 'Thêm người thân thất bại' };

@@ -29,7 +29,9 @@ export default function MedicalRecordsPage() {
                 const res = await getPatientsByAccountId(user.id);
                 if (res.success && res.data && res.data.length > 0) {
                     setProfiles(res.data);
-                    setSelectedProfileId(res.data[0].id);
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = res.data.some(p => p.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : res.data[0].id);
                 } else {
                     setLoading(false);
                 }
@@ -51,7 +53,25 @@ export default function MedicalRecordsPage() {
             setLoading(true);
             const res = await medicalRecordService.getByPatient(selectedProfileId);
             const raw = res.data?.data?.data || res.data?.data || res.data || [];
-            setRecords(Array.isArray(raw) ? raw : []);
+            
+            const mappedRecords = (Array.isArray(raw) ? raw : []).map((r: any) => {
+                let dateStr = r.date || "";
+                if (r.start_time) {
+                    const d = new Date(r.start_time);
+                    dateStr = d.toLocaleDateString("vi-VN") + " " + d.toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit' });
+                }
+                
+                return {
+                    id: r.encounters_id || r.id,
+                    date: dateStr,
+                    doctorName: r.doctor_name || r.doctorName || "Chưa phân công",
+                    department: r.specialty_name || r.encounter_type || r.department || "Khám bệnh",
+                    diagnosis: r.primary_diagnosis || r.diagnosis || "Chưa có chẩn đoán",
+                    status: r.status || "Chờ khám",
+                };
+            });
+            
+            setRecords(mappedRecords);
         } catch (err: any) {
             // 404 = bệnh nhân chưa có hồ sơ khám — là trạng thái bình thường, không log lỗi
             if (err?.response?.status !== 404) {
@@ -76,7 +96,10 @@ export default function MedicalRecordsPage() {
                     {profiles.map(p => (
                         <div
                             key={p.id}
-                            onClick={() => setSelectedProfileId(p.id)}
+                            onClick={() => {
+                                setSelectedProfileId(p.id);
+                                sessionStorage.setItem("patientPortal_selectedProfileId", p.id);
+                            }}
                             className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
                         >
                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
@@ -140,9 +163,9 @@ export default function MedicalRecordsPage() {
                                         )}
                                     </div>
                                 </div>
-                                <button className="px-3 py-1.5 text-xs font-medium text-[#3C81C6] border border-[#3C81C6]/20 rounded-lg hover:bg-[#3C81C6]/[0.06] transition-colors">
+                                <Link href={`/patient/medical-records/${record.id}`} className="px-3 py-1.5 text-xs font-medium text-[#3C81C6] border border-[#3C81C6]/20 rounded-lg hover:bg-[#3C81C6]/[0.06] transition-colors">
                                     Xem chi tiết
-                                </button>
+                                </Link>
                             </div>
                         </div>
                     ))}

@@ -33,6 +33,77 @@ export default function BillingPage() {
     const [servicePrices, setServicePrices] = useState<MedicalService[]>([]);
     const [loading, setLoading] = useState(false);
 
+    const [paymentQR, setPaymentQR] = useState<{ qr_code_url: string, payment_orders_id: string, amount: string, order_code: string, remaining_seconds?: number } | null>(null);
+    const [selectedMethod, setSelectedMethod] = useState<'VietQR' | 'VNPay' | 'MoMo'>('VietQR');
+    const [checkingStatus, setCheckingStatus] = useState(false);
+    const [timeLeft, setTimeLeft] = useState<number>(0);
+    const [qrError, setQrError] = useState("");
+
+    const handleGenerateQR = async (invoice: Invoice, method: 'VietQR' | 'VNPay' | 'MoMo') => {
+        setCheckingStatus(true);
+        setSelectedMethod(method);
+        setQrError("");
+        try {
+            const res = await billingService.generateQR({
+                invoice_id: invoice.id,
+                description: `HDBN ${invoice.code}`
+            });
+            if (res.data?.success && res.data.data) {
+                setPaymentQR(res.data.data);
+                setTimeLeft(res.data.data.remaining_seconds || 0);
+            } else {
+                setQrError(res.data?.message || "Không thể tạo mã QR lúc này.");
+            }
+        } catch (error: any) {
+            console.error("Lỗi tạo QR:", error);
+            setQrError(error.response?.data?.message || "Đã có lỗi xảy ra khi tạo mã QR.");
+        } finally {
+            setCheckingStatus(false);
+        }
+    };
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        if (paymentQR?.payment_orders_id) {
+            interval = setInterval(async () => {
+                try {
+                    const res = await billingService.getOrderStatus(paymentQR.payment_orders_id);
+                    if (res.data?.data?.status === 'PAID') {
+                        clearInterval(interval);
+                        alert("Thanh toán hóa đơn thành công!");
+                        setShowPayModal(false);
+                        setPaymentQR(null);
+                        if (selectedInvoice) {
+                            setInvoices(prev => prev.map(inv => inv.id === selectedInvoice.id ? { ...inv, status: 'paid' } : inv));
+                        }
+                        if (res.data?.data?.remaining_seconds !== undefined) {
+                            // Only update if difference is noticeable to avoid UI jitter
+                            setTimeLeft(prev => Math.abs(prev - res.data.data.remaining_seconds) > 5 ? res.data.data.remaining_seconds : prev);
+                        }
+                    } else if (res.data?.data?.status === 'CANCELLED' || res.data?.data?.status === 'EXPIRED') {
+                        clearInterval(interval);
+                        alert("Lệnh thanh toán đã bị hủy hoặc hết hạn.");
+                        setPaymentQR(null);
+                    }
+                } catch (error) {
+                    // Ignore transient errors
+                }
+            }, 3000);
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [paymentQR, selectedInvoice]);
+
+    // Local 1-second countdown timer
+    useEffect(() => {
+        if (!paymentQR || timeLeft <= 0) return;
+        const timerId = setInterval(() => {
+            setTimeLeft(prev => prev > 0 ? prev - 1 : 0);
+        }, 1000);
+        return () => clearInterval(timerId);
+    }, [paymentQR, timeLeft]);
+
     useEffect(() => {
         if (!user?.id) return;
         const loadProfiles = async () => {
@@ -40,7 +111,9 @@ export default function BillingPage() {
                 const res = await getPatientsByAccountId(user.id);
                 if (res.success && res.data && res.data.length > 0) {
                     setProfiles(res.data);
-                    setSelectedProfileId(res.data[0].id);
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = res.data.some(p => p.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : res.data[0].id);
                 } else {
                     setLoading(false);
                 }
@@ -162,7 +235,10 @@ export default function BillingPage() {
                     {profiles.map(p => (
                         <div
                             key={p.id}
-                            onClick={() => setSelectedProfileId(p.id)}
+                            onClick={() => {
+                                setSelectedProfileId(p.id)
+                                sessionStorage.setItem("patientPortal_selectedProfileId", p.id);
+                            }}
                             className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
                         >
                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
@@ -365,24 +441,176 @@ export default function BillingPage() {
 
             {/* Pay Modal */}
             {showPayModal && selectedInvoice && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { setShowPayModal(false); setSelectedInvoice(null); }}>
-                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-                        <div className="p-6 border-b border-[#e5e7eb] dark:border-[#2d353e]">
-                            <h3 className="text-lg font-bold text-[#121417] dark:text-white">Thanh toán online</h3>
-                            <p className="text-sm text-[#687582] mt-1">{selectedInvoice.code} — {formatVND(selectedInvoice.total)}</p>
-                        </div>
-                        <div className="p-6 space-y-3">
-                            {["VNPay", "MoMo", "ZaloPay", "Thẻ ngân hàng"].map(m => (
-                                <button key={m} className="w-full flex items-center gap-3 p-4 border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl hover:border-[#3C81C6] hover:bg-[#3C81C6]/[0.04] transition-all text-left">
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10 flex items-center justify-center"><span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>account_balance</span></div>
-                                    <div><p className="text-sm font-semibold text-[#121417] dark:text-white">{m}</p><p className="text-xs text-[#687582]">Thanh toán qua {m}</p></div>
-                                    <span className="material-symbols-outlined text-[#687582] ml-auto" style={{ fontSize: "18px" }}>chevron_right</span>
-                                </button>
-                            ))}
-                        </div>
-                        <div className="p-6 border-t border-[#e5e7eb] dark:border-[#2d353e]">
-                            <button onClick={() => { setShowPayModal(false); setSelectedInvoice(null); }} className="w-full py-2.5 text-sm font-medium text-[#687582] border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl hover:bg-gray-50 dark:hover:bg-[#252d36]">Đóng</button>
-                        </div>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => { setShowPayModal(false); setSelectedInvoice(null); setPaymentQR(null); setQrError(""); }}>
+                    <div className={`bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full ${paymentQR ? 'max-w-4xl' : 'max-w-md'} overflow-hidden transition-all duration-300 relative`} onClick={e => e.stopPropagation()}>
+                        {paymentQR ? (
+                            <div className="flex flex-col md:flex-row">
+                                {/* LEFT COLUMN */}
+                                <div className="w-full md:w-[45%] p-6 md:p-8 bg-gray-50 dark:bg-[#13191f] flex flex-col items-center justify-center border-r border-[#e5e7eb] dark:border-[#2d353e]">
+                                    <div className="w-full space-y-4">
+                                        <p className="font-semibold text-[#121417] dark:text-white">Bước 1: Mở ứng dụng ngân hàng hoặc Ví điện tử</p>
+                                        <p className="font-semibold text-[#121417] dark:text-white flex items-center gap-1">Bước 2: Chọn <span className="material-symbols-outlined text-lg">qr_code_scanner</span> quét mã</p>
+                                    </div>
+                                    
+                                    <div className="mt-8 bg-white p-4 rounded-xl shadow-[0_4px_20px_rgb(0,0,0,0.1)] border border-gray-100 flex flex-col items-center">
+                                        <div className="text-xs text-center text-gray-500 font-medium mb-2 border-b w-full pb-2">
+                                            Mã đơn: {paymentQR.order_code}
+                                        </div>
+                                        <img src={paymentQR.qr_code_url} alt={`${selectedMethod} QR`} className={`w-[250px] md:w-[280px] object-contain ${timeLeft === 0 ? "opacity-20 grayscale" : ""}`} />
+                                        <div className="mt-2 w-full border-t border-gray-100 pt-3 flex justify-evenly px-2 opacity-80 items-center">
+                                            {selectedMethod === 'VietQR' && (
+                                                <>
+                                                    <span className="font-extrabold text-blue-800 text-xl tracking-tighter">napas</span>
+                                                    <span className="font-extrabold text-green-600 text-lg italic">VietQR</span>
+                                                </>
+                                            )}
+                                            {selectedMethod === 'VNPay' && (
+                                                <span className="font-extrabold text-[#005baa] text-xl tracking-tighter">VNPAY<span className="text-[#ed1c24]">QR</span></span>
+                                            )}
+                                            {selectedMethod === 'MoMo' && (
+                                                <span className="font-extrabold text-[#a50064] text-xl tracking-tighter">MoMo</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    
+                                    <a href={paymentQR.qr_code_url} download="QRCode.png" target="_blank" className="mt-8 flex items-center gap-2 px-6 py-2.5 bg-white dark:bg-[#1e242b] border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl text-sm font-medium hover:bg-gray-100 dark:hover:bg-[#252d36] transition-colors shadow-sm">
+                                        <span className="material-symbols-outlined text-gray-600 dark:text-gray-300" style={{ fontSize: "18px" }}>download</span>
+                                        Tải xuống Qrcode
+                                    </a>
+                                    
+                                    {timeLeft === 0 && (
+                                        <div className="absolute inset-0 m-auto w-[250px] h-[250px] flex items-center justify-center bg-white/80 dark:bg-black/80 rounded-xl z-10 top-0 mt-32">
+                                            <div className="text-center p-4">
+                                                <span className="material-symbols-outlined text-red-500 text-4xl mb-2">error</span>
+                                                <p className="font-bold text-red-600 dark:text-red-400">Mã QR đã hết hạn</p>
+                                                <p className="text-xs text-gray-500 mt-1">Vui lòng đóng và tạo lại</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* RIGHT COLUMN */}
+                                <div className="w-full md:w-[55%] p-6 md:p-8 relative">
+                                    {/* Close button inside Right Column */}
+                                    <button onClick={() => { setShowPayModal(false); setSelectedInvoice(null); setPaymentQR(null); }} className="absolute top-4 right-4 p-2 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                                        <span className="material-symbols-outlined">close</span>
+                                    </button>
+
+                                    <div className="text-center mt-2 mb-8">
+                                        <p className="text-[13px] text-gray-600 dark:text-gray-400 leading-relaxed">
+                                            Hỗ trợ Ví điện tử MoMo/ZaloPay<br/>
+                                            Hoặc ứng dụng ngân hàng để chuyển khoản nhanh 24/7
+                                        </p>
+                                    </div>
+                                    
+                                    <h4 className="text-[#e2394d] font-bold text-[17px] mb-6 uppercase tracking-wide">Thông tin chuyển khoản</h4>
+                                    
+                                    <div className="space-y-4 text-[15px] dark:text-gray-200">
+                                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center">
+                                            <span className="w-32 text-gray-500 dark:text-gray-400">Số tiền:</span> 
+                                            <span className="text-[#e2394d] font-bold text-xl">{formatVND(Number(paymentQR.amount))}</span>
+                                        </div>
+                                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center">
+                                            <span className="w-32 text-gray-500 dark:text-gray-400">Nội dung:</span>
+                                            <span className="font-bold text-[#e2394d] border border-[#e2394d] rounded-md px-3 py-1 bg-red-50 dark:bg-red-950/20 font-mono tracking-wider w-max sm:ml-0 m-0">
+                                                {paymentQR.order_code}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-8 bg-[#f5f5f5] dark:bg-[#1a2027] p-4 rounded-xl text-[13px] text-gray-700 dark:text-gray-400 leading-relaxed">
+                                        <span className="font-bold text-gray-800 dark:text-gray-200 uppercase">Chú ý: </span> Chuyển khoản nội dung quét QR tự động sinh để hệ thống xử lý tự động ghi nhận ngay lập tức! (Không cố gắng sửa đổi nội dung hay số tiền).
+                                    </div>
+
+                                    <div className="mt-8 flex flex-col items-center justify-center gap-2 text-[#3C81C6] pb-4">
+                                        {timeLeft > 0 ? (
+                                            <>
+                                                <div className="flex items-center gap-3">
+                                                    <span className="material-symbols-outlined animate-spin" style={{ fontSize: '28px' }}>progress_activity</span>
+                                                    <p className="font-medium">Đang chờ xác nhận giao dịch...</p>
+                                                </div>
+                                                <p className="text-sm text-gray-500 dark:text-gray-400 font-medium">Mã hết hạn sau: <span className="font-mono font-bold text-[#e2394d] ml-1">{Math.floor(timeLeft / 60).toString().padStart(2, '0')}:{(timeLeft % 60).toString().padStart(2, '0')}</span></p>
+                                            </>
+                                        ) : (
+                                            <div className="flex flex-col items-center gap-1 text-red-500">
+                                                <span className="material-symbols-outlined" style={{ fontSize: '28px' }}>timer_off</span>
+                                                <p className="font-bold">Đã hết thời gian thanh toán</p>
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    {/* Invoice items summary */}
+                                    <div className="mt-4 border-t border-[#e5e7eb] dark:border-[#2d353e] pt-6 pb-2">
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h4 className="text-[#121417] dark:text-white font-bold text-[15px] uppercase tracking-wide">Chi tiết hóa đơn</h4>
+                                            <span className="text-[13px] font-mono font-medium text-gray-500 bg-gray-100 dark:bg-gray-800 px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700">{selectedInvoice.code}</span>
+                                        </div>
+                                        <div className="space-y-3 text-[14px]">
+                                            <div className="max-h-[140px] overflow-y-auto pr-2 space-y-3 custom-scrollbar">
+                                                {selectedInvoice.items.map((item, idx) => (
+                                                    <div key={idx} className="flex justify-between items-start gap-4">
+                                                        <span className="text-gray-600 dark:text-gray-400 flex-1 leading-snug">{item.name}</span>
+                                                        <div className="text-right whitespace-nowrap">
+                                                            <span className="text-xs text-gray-400 mr-2">x{item.quantity}</span>
+                                                            <span className="font-semibold text-gray-800 dark:text-gray-200">{formatVND(item.total)}</span>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            
+                                            <div className="pt-3 mt-3 border-t border-dashed border-gray-200 dark:border-gray-700 space-y-2">
+                                                <div className="flex justify-between text-gray-600 dark:text-gray-400 text-[13px]">
+                                                    <span>Tạm tính:</span>
+                                                    <span className="font-semibold text-gray-800 dark:text-gray-200">{formatVND(selectedInvoice.subtotal)}</span>
+                                                </div>
+                                                {selectedInvoice.insuranceCovered > 0 && (
+                                                    <div className="flex justify-between text-blue-600 text-[13px]">
+                                                        <span>BHYT chi trả:</span>
+                                                        <span>-{formatVND(selectedInvoice.insuranceCovered)}</span>
+                                                    </div>
+                                                )}
+                                                {selectedInvoice.discount > 0 && (
+                                                    <div className="flex justify-between text-green-600 text-[13px]">
+                                                        <span>Giảm giá:</span>
+                                                        <span>-{formatVND(selectedInvoice.discount)}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                <div className="p-6 border-b border-[#e5e7eb] dark:border-[#2d353e]">
+                                    <h3 className="text-lg font-bold text-[#121417] dark:text-white">Thanh toán online</h3>
+                                    <p className="text-sm text-[#687582] mt-1">{selectedInvoice.code} — {formatVND(selectedInvoice.total)}</p>
+                                </div>
+                                <div className="p-6 space-y-3">
+                                    {qrError && (
+                                        <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm mb-2">{qrError}</div>
+                                    )}
+                                    <button disabled={checkingStatus} onClick={() => handleGenerateQR(selectedInvoice, 'VietQR')} className="w-full flex items-center gap-3 p-4 border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl hover:border-[#3C81C6] hover:bg-[#3C81C6]/[0.04] transition-all text-left">
+                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#10B981]/10 to-[#34D399]/10 flex items-center justify-center"><span className="material-symbols-outlined text-[#10B981]" style={{ fontSize: "20px" }}>qr_code_scanner</span></div>
+                                        <div><p className="text-sm font-semibold text-[#121417] dark:text-white">Chuyển khoản (VietQR)</p><p className="text-xs text-[#687582]">Quét mã QR mọi ngân hàng</p></div>
+                                        <span className="material-symbols-outlined text-[#687582] ml-auto" style={{ fontSize: "18px" }}>chevron_right</span>
+                                    </button>
+                                    <button disabled={checkingStatus} onClick={() => handleGenerateQR(selectedInvoice, 'VNPay')} className="w-full flex items-center gap-3 p-4 border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl hover:border-[#005baa] hover:bg-[#005baa]/[0.04] transition-all text-left">
+                                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#005baa]/10 to-[#005baa]/20 flex items-center justify-center"><span className="font-bold text-[#005baa] text-[10px]">VN<span className="text-[#ed1c24]">PAY</span></span></div>
+                                        <div><p className="text-sm font-semibold text-[#121417] dark:text-white">VNPay</p><p className="text-xs text-[#687582]">Thanh toán qua ví VNPay</p></div>
+                                        <span className="material-symbols-outlined text-[#687582] ml-auto" style={{ fontSize: "18px" }}>chevron_right</span>
+                                    </button>
+                                    <button disabled={checkingStatus} onClick={() => handleGenerateQR(selectedInvoice, 'MoMo')} className="w-full flex items-center gap-3 p-4 border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl hover:border-[#a50064] hover:bg-[#a50064]/[0.04] transition-all text-left">
+                                        <div className="w-10 h-10 rounded-xl bg-[#a50064]/10 flex items-center justify-center"><span className="font-bold text-[#a50064] text-[11px]">MoMo</span></div>
+                                        <div><p className="text-sm font-semibold text-[#121417] dark:text-white">MoMo</p><p className="text-xs text-[#687582]">Thanh toán qua ví MoMo</p></div>
+                                        <span className="material-symbols-outlined text-[#687582] ml-auto" style={{ fontSize: "18px" }}>chevron_right</span>
+                                    </button>
+                                </div>
+                                <div className="p-6 border-t border-[#e5e7eb] dark:border-[#2d353e]">
+                                    <button onClick={() => { setShowPayModal(false); setSelectedInvoice(null); setPaymentQR(null); }} className="w-full py-2.5 text-sm font-medium text-[#687582] border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl hover:bg-gray-50 dark:hover:bg-[#252d36]">Đóng</button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

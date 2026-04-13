@@ -4,10 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { getPatientsByAccountId } from "@/services/patientService";
-import {
-    MOCK_TELE_SESSIONS, MOCK_TELE_CHAT,
-    type TeleMockSession, type TeleChatMessage,
-} from "@/data/patient-portal-mock";
+import { telemedicineService, type TelemedicineSession } from "@/services/telemedicineService";
 
 const TABS = [
     { id: "upcoming", label: "Sắp tới", icon: "event_upcoming" },
@@ -21,10 +18,13 @@ export default function TelemedicinePage() {
     const [selectedProfileId, setSelectedProfileId] = useState("");
     
     const [activeTab, setActiveTab] = useState("upcoming");
-    const [selectedSession, setSelectedSession] = useState<TeleMockSession | null>(null);
+    const [selectedSession, setSelectedSession] = useState<TelemedicineSession | null>(null);
     const [showChat, setShowChat] = useState(false);
-    const [showRating, setShowRating] = useState(false);
     const [chatInput, setChatInput] = useState("");
+    const [chatMessages, setChatMessages] = useState<any[]>([]);
+
+    const [sessions, setSessions] = useState<TelemedicineSession[]>([]);
+    const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!user?.id) return;
@@ -33,7 +33,9 @@ export default function TelemedicinePage() {
                 const res = await getPatientsByAccountId(user.id);
                 if (res.success && res.data && res.data.length > 0) {
                     setProfiles(res.data);
-                    setSelectedProfileId(res.data[0].id);
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = res.data.some((p: any) => p.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : res.data[0].id);
                 }
             } catch (error) {
                 console.error("Failed to load profiles", error);
@@ -42,7 +44,42 @@ export default function TelemedicinePage() {
         loadProfiles();
     }, [user?.id]);
 
-    const filtered = MOCK_TELE_SESSIONS.filter(s => {
+    // Fetch telemedicine sessions from real API
+    useEffect(() => {
+        if (!selectedProfileId) return;
+        const fetchSessions = async () => {
+            setLoading(true);
+            try {
+                // pass patientId to getList if API supports it, here we assume we do.
+                const res = await telemedicineService.getList({ patientId: selectedProfileId } as any);
+                const rawData = Array.isArray(res?.data) ? res.data : ((res as any)?.data?.data || []);
+                const mappedData = rawData.map((s: any) => ({
+                    id: s.session_id || s.id,
+                    patient: s.patient_name || s.patient_id || selectedProfileId,
+                    patientId: s.patient_id || selectedProfileId,
+                    doctor: s.doctor_name || "Bác sĩ",
+                    doctorId: s.doctor_id,
+                    date: s.booking_date ? new Date(s.booking_date).toLocaleDateString("vi-VN") : "N/A",
+                    time: s.booking_start_time ? s.booking_start_time.substring(0, 5) : s.time || "N/A",
+                    status: (s.status === 'CONFIRMED' || s.status === 'PENDING_PAYMENT' || s.status === 'DRAFT') ? "scheduled" 
+                          : (s.status === 'CANCELLED' || s.status === 'EXPIRED') ? "cancelled" 
+                          : "completed",
+                    department: s.specialty_name || s.department || "Khám từ xa",
+                    reason: s.reason_for_visit || s.reason || "",
+                    roomUrl: `/patient/telemedicine/room/${s.session_id || s.id}`
+                }));
+                setSessions(mappedData);
+            } catch (error) {
+                console.error("Failed to load telemedicine sessions", error);
+                setSessions([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchSessions();
+    }, [selectedProfileId]);
+
+    const filtered = sessions.filter(s => {
         if (activeTab === "upcoming") return s.status === "scheduled" || s.status === "in_progress";
         if (activeTab === "completed") return s.status === "completed";
         return s.status === "cancelled";
@@ -66,7 +103,10 @@ export default function TelemedicinePage() {
                     {profiles.map(p => (
                         <div
                             key={p.id}
-                            onClick={() => setSelectedProfileId(p.id)}
+                            onClick={() => {
+                                setSelectedProfileId(p.id)
+                                sessionStorage.setItem("patientPortal_selectedProfileId", p.id);
+                            }}
                             className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
                         >
                             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
@@ -107,8 +147,12 @@ export default function TelemedicinePage() {
                 ))}
             </div>
 
-            {/* Sessions */}
-            {filtered.length === 0 ? (
+            {/* Loading */}
+            {loading ? (
+                <div className="flex justify-center items-center py-20">
+                    <span className="material-symbols-outlined animate-spin text-[#3C81C6]" style={{ fontSize: "40px" }}>progress_activity</span>
+                </div>
+            ) : filtered.length === 0 ? (
                 <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
                     <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-3" style={{ fontSize: "56px" }}>videocam_off</span>
                     <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Không có lịch khám online</h3>
@@ -132,8 +176,8 @@ export default function TelemedicinePage() {
                                 <div className="flex-1 min-w-0">
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
-                                            <h4 className="text-sm font-bold text-[#121417] dark:text-white">{session.doctorName}</h4>
-                                            <p className="text-xs text-[#687582] mt-0.5">{session.department}</p>
+                                            <h4 className="text-sm font-bold text-[#121417] dark:text-white">{session.doctor || "Bác sĩ"}</h4>
+                                            <p className="text-xs text-[#687582] mt-0.5">{session.department || ""}</p>
                                         </div>
                                         <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full uppercase
                                             ${session.status === "scheduled" ? "bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400" : session.status === "completed" ? "bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-400" : "bg-gray-100 dark:bg-gray-700 text-gray-500"}`}>
@@ -143,20 +187,9 @@ export default function TelemedicinePage() {
                                     <div className="flex items-center gap-4 mt-2 text-xs text-[#687582]">
                                         <span className="flex items-center gap-1"><span className="material-symbols-outlined" style={{ fontSize: "14px" }}>event</span>{session.date}</span>
                                         <span className="flex items-center gap-1"><span className="material-symbols-outlined" style={{ fontSize: "14px" }}>schedule</span>{session.time}</span>
-                                        <span className="flex items-center gap-1"><span className="material-symbols-outlined" style={{ fontSize: "14px" }}>timer</span>{session.duration} phút</span>
                                     </div>
-                                    <p className="text-xs text-[#687582] mt-1.5">💬 {session.reason}</p>
-                                    {session.diagnosis && (
-                                        <div className="mt-2 p-2 bg-green-50 dark:bg-green-500/10 rounded-lg">
-                                            <p className="text-xs text-green-700 dark:text-green-400 font-medium">📋 Chẩn đoán: {session.diagnosis}</p>
-                                        </div>
-                                    )}
-                                    {session.rating && (
-                                        <div className="flex items-center gap-1 mt-2">
-                                            {Array.from({ length: 5 }).map((_, i) => (
-                                                <span key={i} className={`material-symbols-outlined ${i < session.rating! ? "text-amber-400 fill-1" : "text-gray-200"}`} style={{ fontSize: "16px" }}>star</span>
-                                            ))}
-                                        </div>
+                                    {session.reason && (
+                                        <p className="text-xs text-[#687582] mt-1.5">💬 {session.reason}</p>
                                     )}
                                 </div>
                             </div>
@@ -165,31 +198,20 @@ export default function TelemedicinePage() {
                             <div className="flex items-center gap-2 mt-4 pt-3 border-t border-[#e5e7eb]/50 dark:border-[#2d353e]/50">
                                 {session.status === "scheduled" && (
                                     <>
-                                        <button className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#3C81C6] to-[#2563eb] rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-1.5">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>videocam</span>Vào phòng khám
-                                        </button>
-                                        <button onClick={() => { setSelectedSession(session); setShowChat(true); }} className="px-3 py-2 text-xs font-medium text-[#3C81C6] bg-[#3C81C6]/[0.06] rounded-lg hover:bg-[#3C81C6]/[0.12] flex items-center gap-1">
+                                        {session.roomUrl && (
+                                            <Link href={session.roomUrl || `/patient/telemedicine/room/${session.id}`} className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-[#3C81C6] to-[#2563eb] rounded-lg shadow-md hover:shadow-lg transition-all flex items-center gap-1.5">
+                                                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>videocam</span>Vào phòng khám
+                                            </Link>
+                                        )}
+                                        <button onClick={() => { setSelectedSession(session); setShowChat(true); setChatMessages([]); }} className="px-3 py-2 text-xs font-medium text-[#3C81C6] bg-[#3C81C6]/[0.06] rounded-lg hover:bg-[#3C81C6]/[0.12] flex items-center gap-1">
                                             <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>chat</span>Nhắn tin
                                         </button>
-                                        <button className="px-3 py-2 text-xs font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100">Hủy lịch</button>
                                     </>
                                 )}
                                 {session.status === "completed" && (
-                                    <>
-                                        <button onClick={() => { setSelectedSession(session); setShowChat(true); }} className="px-3 py-2 text-xs font-medium text-[#687582] border border-[#e5e7eb] dark:border-[#2d353e] rounded-lg hover:bg-gray-50 dark:hover:bg-[#252d36] flex items-center gap-1">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>chat</span>Xem tin nhắn
-                                        </button>
-                                        {session.prescription && (
-                                            <button className="px-3 py-2 text-xs font-medium text-green-700 bg-green-50 rounded-lg hover:bg-green-100 flex items-center gap-1">
-                                                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>medication</span>Xem đơn thuốc
-                                            </button>
-                                        )}
-                                        {!session.rating && (
-                                            <button onClick={() => { setSelectedSession(session); setShowRating(true); }} className="px-3 py-2 text-xs font-medium text-amber-700 bg-amber-50 rounded-lg hover:bg-amber-100 flex items-center gap-1">
-                                                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>star</span>Đánh giá
-                                            </button>
-                                        )}
-                                    </>
+                                    <button onClick={() => { setSelectedSession(session); setShowChat(true); setChatMessages([]); }} className="px-3 py-2 text-xs font-medium text-[#687582] border border-[#e5e7eb] dark:border-[#2d353e] rounded-lg hover:bg-gray-50 dark:hover:bg-[#252d36] flex items-center gap-1">
+                                        <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>chat</span>Xem tin nhắn
+                                    </button>
                                 )}
                             </div>
                         </div>
@@ -203,55 +225,43 @@ export default function TelemedicinePage() {
                     <div className="bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full max-w-md flex flex-col" style={{ height: "70vh" }} onClick={e => e.stopPropagation()}>
                         <div className="p-4 border-b border-[#e5e7eb] dark:border-[#2d353e] flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-xs font-bold">{selectedSession.doctorName.charAt(0)}</div>
-                                <div><p className="text-sm font-bold text-[#121417] dark:text-white">{selectedSession.doctorName}</p><p className="text-xs text-[#687582]">{selectedSession.department}</p></div>
+                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-xs font-bold">{(selectedSession.doctor || "B").charAt(0)}</div>
+                                <div><p className="text-sm font-bold text-[#121417] dark:text-white">{selectedSession.doctor || "Bác sĩ"}</p><p className="text-xs text-[#687582]">{selectedSession.department || ""}</p></div>
                             </div>
                             <button onClick={() => setShowChat(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"><span className="material-symbols-outlined text-[#687582]">close</span></button>
                         </div>
                         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                            {MOCK_TELE_CHAT.filter(m => m.sessionId === selectedSession.id).map(msg => (
-                                <div key={msg.id} className={`flex ${msg.sender === "patient" ? "justify-end" : "justify-start"}`}>
+                            {chatMessages.length === 0 && (
+                                <div className="text-center py-8"><p className="text-sm text-[#687582]">Chưa có tin nhắn</p></div>
+                            )}
+                            {chatMessages.map((msg: any, idx: number) => (
+                                <div key={idx} className={`flex ${msg.sender === "patient" ? "justify-end" : "justify-start"}`}>
                                     <div className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm ${msg.sender === "patient" ? "bg-[#3C81C6] text-white rounded-br-md" : "bg-[#f6f7f8] dark:bg-[#13191f] text-[#121417] dark:text-white rounded-bl-md"}`}>
                                         <p>{msg.message}</p>
                                         <p className={`text-[10px] mt-1 ${msg.sender === "patient" ? "text-blue-200" : "text-[#687582]"}`}>{msg.timestamp}</p>
                                     </div>
                                 </div>
                             ))}
-                            {MOCK_TELE_CHAT.filter(m => m.sessionId === selectedSession.id).length === 0 && (
-                                <div className="text-center py-8"><p className="text-sm text-[#687582]">Chưa có tin nhắn</p></div>
-                            )}
                         </div>
                         <div className="p-4 border-t border-[#e5e7eb] dark:border-[#2d353e]">
                             <div className="flex gap-2">
                                 <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Nhập tin nhắn..."
                                     className="flex-1 px-4 py-2.5 border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl text-sm bg-[#f6f7f8] dark:bg-[#13191f] text-[#121417] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30" />
-                                <button className="px-4 py-2.5 bg-[#3C81C6] text-white rounded-xl hover:bg-[#2a6da8] transition-colors">
+                                <button
+                                    onClick={async () => {
+                                        if (!chatInput.trim() || !selectedSession) return;
+                                        try {
+                                            await telemedicineService.sendChat(selectedSession.id, chatInput.trim());
+                                            setChatMessages(prev => [...prev, { sender: "patient", message: chatInput.trim(), timestamp: new Date().toLocaleTimeString() }]);
+                                            setChatInput("");
+                                        } catch (e) {
+                                            console.error("Failed to send chat", e);
+                                        }
+                                    }}
+                                    className="px-4 py-2.5 bg-[#3C81C6] text-white rounded-xl hover:bg-[#2a6da8] transition-colors">
                                     <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>send</span>
                                 </button>
                             </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Rating Modal */}
-            {showRating && selectedSession && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowRating(false)}>
-                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
-                        <h3 className="text-lg font-bold text-[#121417] dark:text-white text-center mb-2">Đánh giá tư vấn</h3>
-                        <p className="text-sm text-[#687582] text-center mb-4">{selectedSession.doctorName}</p>
-                        <div className="flex justify-center gap-2 mb-4">
-                            {Array.from({ length: 5 }).map((_, i) => (
-                                <button key={i} className="text-gray-300 hover:text-amber-400 transition-colors">
-                                    <span className="material-symbols-outlined" style={{ fontSize: "32px" }}>star</span>
-                                </button>
-                            ))}
-                        </div>
-                        <textarea placeholder="Nhận xét (không bắt buộc)..."
-                            className="w-full px-4 py-3 border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl text-sm bg-[#f6f7f8] dark:bg-[#13191f] text-[#121417] dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 min-h-[80px] resize-none mb-4" />
-                        <div className="flex gap-3">
-                            <button onClick={() => setShowRating(false)} className="flex-1 py-2.5 text-sm font-medium text-[#687582] border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl hover:bg-gray-50 dark:hover:bg-[#252d36]">Bỏ qua</button>
-                            <button onClick={() => setShowRating(false)} className="flex-1 py-2.5 text-sm font-semibold text-white bg-[#3C81C6] rounded-xl hover:bg-[#2a6da8]">Gửi đánh giá</button>
                         </div>
                     </div>
                 </div>

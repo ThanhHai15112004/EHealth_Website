@@ -34,8 +34,10 @@ export interface TelemedicineListResponse {
 }
 
 export const telemedicineService = {
-    getList: (params?: { page?: number; limit?: number; doctorId?: string; status?: string; from?: string; to?: string }): Promise<TelemedicineListResponse> =>
-        axiosClient.get(TELEMEDICINE_ENDPOINTS.LIST, { params }).then(r => r.data),
+    getList: (params?: { page?: number; limit?: number; doctorId?: string; status?: string; from?: string; to?: string }): Promise<TelemedicineListResponse> => {
+        const endpoint = params?.doctorId ? TELEMEDICINE_ENDPOINTS.LIST_ALL : TELEMEDICINE_ENDPOINTS.LIST;
+        return axiosClient.get(endpoint, { params }).then(r => r.data);
+    },
 
     getById: (id: string): Promise<TelemedicineSession> =>
         axiosClient.get(TELEMEDICINE_ENDPOINTS.DETAIL(id)).then(r => r.data?.data ?? r.data),

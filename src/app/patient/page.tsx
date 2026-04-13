@@ -1,40 +1,18 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-  getAppointmentsByPatient,
+  getMyAppointments,
   type Appointment,
 } from "@/services/appointmentService";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
-import { filterMockAppointments } from "@/data/patient-mock";
-import {
-  MOCK_INVOICES,
-  MOCK_TELE_SESSIONS,
-  MOCK_VITAL_SIGNS,
-} from "@/data/patient-portal-mock";
-import {
-  MOCK_MEDICATION_REMINDERS,
-  MOCK_MEDICATION_LOGS,
-  getTodaySchedule,
-  getActiveReminders,
-  type MedicationReminder,
-  type MedicationLog,
-} from "@/data/medication-reminders-mock";
-import {
-  loadFromStorage,
-  STORAGE_KEYS,
-  saveToStorage,
-} from "@/utils/localStorage";
-import {
-  MOCK_PATIENT_PROFILES,
-  type PatientProfile,
-} from "@/data/patient-profiles-mock";
 import { billingService } from "@/services/billingService";
 import { ehrService, type VitalSign } from "@/services/ehrService";
 import { prescriptionService } from "@/services/prescriptionService";
 import { getPatientsByAccountId } from "@/services/patientService";
+import { telemedicineService, type TelemedicineSession } from "@/services/telemedicineService";
 
 export default function PatientDashboard() {
   const { user } = useAuth();
@@ -42,10 +20,8 @@ export default function PatientDashboard() {
   const [upcomingAppointments, setUpcomingAppointments] = useState<
     Appointment[]
   >([]);
-  const [reminders, setReminders] = useState<MedicationReminder[]>([]);
-  const [medLogs, setMedLogs] = useState<MedicationLog[]>([]);
   const [pendingInvoicesList, setPendingInvoicesList] = useState<any[]>([]);
-  const [teleSessionsList, setTeleSessionsList] = useState<any[]>([]);
+  const [teleSessionsList, setTeleSessionsList] = useState<TelemedicineSession[]>([]);
   const [latestVitalData, setLatestVitalData] = useState<any>(null);
 
   useEffect(() => {
@@ -63,24 +39,23 @@ export default function PatientDashboard() {
             const patientRes = await getPatientsByAccountId(user.id);
             if (patientRes.success && patientRes.data && patientRes.data.length > 0) {
                 // assume the first one is the active/primary one or just any for dashboard
-                const activePatients = patientRes.data.filter(p => p.status === 'ACTIVE' || p.status === undefined);
-                activeId = activePatients.length > 0 ? activePatients[0].id : patientRes.data[0].id;
+                const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                const exists = patientRes.data.some((p: any) => p.id === cachedId);
+
+                const activePatients = patientRes.data.filter((p: any) => p.status === 'ACTIVE' || p.status === undefined);
+                activeId = exists ? cachedId : (activePatients.length > 0 ? activePatients[0].id : patientRes.data[0].id);
             }
         } catch (e) {
             console.error("Failed to load patient profiles securely for dashboard", e);
         }
       }
 
-      // Appts
+      // Appts — dùng /my-appointments, BE tự tra patient_id từ token
       const aptReq = user?.id
-        ? getAppointmentsByPatient(user.id, { status: "pending,confirmed" })
-            .then((res) => ({ data: res }))
-            .catch(() => ({
-              data: filterMockAppointments("pending,confirmed"),
-            }))
-        : Promise.resolve({
-            data: filterMockAppointments("pending,confirmed"),
-          });
+        ? getMyAppointments({ status: "PENDING,CONFIRMED" })
+            .then((res) => ({ data: res.data || [] }))
+            .catch(() => ({ data: [] }))
+        : Promise.resolve({ data: [] });
 
       // Async independent reqs mapped when valid ID exists
       const invoiceReq = activeId
@@ -89,75 +64,44 @@ export default function PatientDashboard() {
       const vitalReq = activeId
         ? ehrService.getLatestVitals(activeId).catch(() => null)
         : Promise.resolve(null);
-      const medsReq = activeId
-        ? prescriptionService.getByPatient(activeId).catch(() => null)
-        : Promise.resolve(null);
+      const teleReq = telemedicineService.getList({ status: 'scheduled' }).catch(() => null);
 
-      const [aptRes, invRes, vitRes, medsRes] = await Promise.all([
+      const [aptRes, invRes, vitRes, teleRes] = await Promise.all([
         aptReq,
         invoiceReq,
         vitalReq,
-        medsReq,
+        teleReq,
       ]);
 
-      // Assign standard Appointments First
-      setUpcomingAppointments(
-        aptRes.data?.length
-          ? aptRes.data
-          : filterMockAppointments("pending,confirmed"),
-      );
+      // Assign standard Appointments
+      setUpcomingAppointments(aptRes.data || []);
 
-      // Assign Pending Invoices (fallback mock)
+      // Assign Pending Invoices (no mock fallback)
       const realInvoices = Array.isArray(invRes?.data?.data)
         ? invRes.data.data
         : Array.isArray(invRes?.data)
           ? invRes.data
           : [];
-      const finalInvoices =
-        realInvoices.length > 0 ? realInvoices : MOCK_INVOICES;
       setPendingInvoicesList(
-        finalInvoices.filter(
+        realInvoices.filter(
           (i: any) => i.status === "pending" || i.status === "overdue",
         ),
       );
 
-      // Assign Vitals
-      setLatestVitalData(vitRes?.data?.data || MOCK_VITAL_SIGNS[0]);
+      // Assign Vitals (null if no data)
+      setLatestVitalData(vitRes?.data?.data || null);
 
-      // Assign basic tele
+      // Assign Tele sessions from API
+      const teleSessions = Array.isArray(teleRes?.data) ? teleRes.data : [];
       setTeleSessionsList(
-        MOCK_TELE_SESSIONS.filter((s) => s.status === "scheduled"),
+        teleSessions.filter((s: TelemedicineSession) => s.status === "scheduled"),
       );
-
-      // Handle Meds via localStore with API update
-      const storedRem = loadFromStorage<MedicationReminder[]>(
-        STORAGE_KEYS.MEDICATION_REMINDERS,
-        MOCK_MEDICATION_REMINDERS,
-      );
-      const storedLogs = loadFromStorage<MedicationLog[]>(
-        STORAGE_KEYS.MEDICATION_LOGS,
-        MOCK_MEDICATION_LOGS,
-      );
-      if (medsRes?.data?.data?.length > 0) {
-        // Remapped endpoint meds here in future. Skipping complete overwrite for stability
-        setReminders(storedRem);
-        setMedLogs(storedLogs);
-      } else {
-        setReminders(storedRem);
-        setMedLogs(storedLogs);
-      }
     } catch (error) {
       console.error(error);
-      setUpcomingAppointments(filterMockAppointments("pending,confirmed"));
-      setPendingInvoicesList(
-        MOCK_INVOICES.filter(
-          (i) => i.status === "pending" || i.status === "overdue",
-        ),
-      );
-      setLatestVitalData(MOCK_VITAL_SIGNS[0]);
-      setTeleSessionsList(
-        MOCK_TELE_SESSIONS.filter((s) => s.status === "scheduled"),
-      );
+      setUpcomingAppointments([]);
+      setPendingInvoicesList([]);
+      setLatestVitalData(null);
+      setTeleSessionsList([]);
     } finally {
       setLoading(false);
     }
@@ -172,10 +116,7 @@ export default function PatientDashboard() {
 
   const pendingInvoices = pendingInvoicesList;
   const upcomingTele = teleSessionsList;
-  // Normalize latest vitally mapping slightly with fallback object structures
-  const latestVital = latestVitalData || MOCK_VITAL_SIGNS[0];
-  const todayMeds = getTodaySchedule("pp-001");
-  const activeMeds = getActiveReminders("pp-001");
+  const latestVital = latestVitalData;
 
   return (
     <div className="space-y-6">
@@ -215,7 +156,7 @@ export default function PatientDashboard() {
           {
             icon: "medication",
             label: "Nhắc thuốc",
-            desc: `${activeMeds.length} thuốc đang dùng`,
+            desc: "Quản lý thuốc",
             href: "/patient/medication-reminders",
             color: "from-violet-500 to-violet-600",
           },
@@ -251,35 +192,36 @@ export default function PatientDashboard() {
       </div>
 
       {/* Health Stats Quick View */}
+      {latestVital ? (
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {[
           {
             label: "Huyết áp",
-            value: `${latestVital.bloodPressureSystolic}/${latestVital.bloodPressureDiastolic}`,
+            value: latestVital.bloodPressureSystolic != null ? `${latestVital.bloodPressureSystolic}/${latestVital.bloodPressureDiastolic}` : "--",
             unit: "mmHg",
             icon: "bloodtype",
-            ok: latestVital.bloodPressureSystolic <= 130,
+            status: latestVital.bloodPressureSystolic != null ? (latestVital.bloodPressureSystolic <= 130 ? "ok" : "warn") : "none",
           },
           {
             label: "Nhịp tim",
-            value: `${latestVital.heartRate}`,
+            value: latestVital.heartRate != null ? `${latestVital.heartRate}` : "--",
             unit: "bpm",
             icon: "cardiology",
-            ok: true,
+            status: latestVital.heartRate != null ? "ok" : "none",
           },
           {
             label: "BMI",
-            value: latestVital.bmi.toFixed(1),
+            value: latestVital.bmi != null && !isNaN(Number(latestVital.bmi)) ? Number(latestVital.bmi).toFixed(1) : "--",
             unit: "",
             icon: "monitor_weight",
-            ok: latestVital.bmi <= 25,
+            status: latestVital.bmi != null && !isNaN(Number(latestVital.bmi)) ? (Number(latestVital.bmi) <= 25 ? "ok" : "warn") : "none",
           },
           {
             label: "SpO2",
-            value: `${latestVital.spo2}`,
+            value: latestVital.spo2 != null ? `${latestVital.spo2}` : "--",
             unit: "%",
             icon: "pulmonology",
-            ok: true,
+            status: latestVital.spo2 != null ? "ok" : "none",
           },
         ].map((s) => (
           <div
@@ -287,7 +229,7 @@ export default function PatientDashboard() {
             className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#e5e7eb] dark:border-[#2d353e] p-3 flex items-center gap-3"
           >
             <div
-              className={`w-9 h-9 rounded-lg flex items-center justify-center ${s.ok ? "bg-green-50 dark:bg-green-500/10 text-green-600" : "bg-amber-50 dark:bg-amber-500/10 text-amber-600"}`}
+              className={`w-9 h-9 rounded-lg flex items-center justify-center ${s.status === "ok" ? "bg-green-50 dark:bg-green-500/10 text-green-600" : s.status === "warn" ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600" : "bg-gray-50 dark:bg-gray-500/10 text-gray-400"}`}
             >
               <span
                 className="material-symbols-outlined"
@@ -308,6 +250,11 @@ export default function PatientDashboard() {
           </div>
         ))}
       </div>
+      ) : (
+      <div className="bg-white dark:bg-[#1e242b] rounded-xl border border-[#e5e7eb] dark:border-[#2d353e] p-4 text-center">
+        <p className="text-sm text-[#687582]">Chưa có dữ liệu sinh hiệu</p>
+      </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Upcoming appointments */}
@@ -368,32 +315,37 @@ export default function PatientDashboard() {
               </div>
             ) : (
               <div className="space-y-3">
-                {upcomingAppointments.map((apt) => (
+                {upcomingAppointments.map((apt, index) => {
+                  const aptDateStr = (apt as any).appointment_date || apt.date || "";
+                  const parsedDate = aptDateStr ? aptDateStr.split("T")[0].split("-") : [];
+                  const day = parsedDate[2] || "--";
+                  const month = parsedDate[1] || "--";
+                  return (
                   <Link
-                    key={apt.id}
-                    href={`/patient/appointments/${apt.id}`}
+                    key={(apt as any).appointments_id || apt.id}
+                    href={`/patient/appointments/${(apt as any).appointments_id || apt.id}`}
                     className="flex items-center gap-4 p-3 rounded-xl hover:bg-[#f6f7f8] dark:hover:bg-[#13191f] transition-colors group"
                   >
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10 flex flex-col items-center justify-center flex-shrink-0">
                       <span className="text-base font-bold text-[#3C81C6] leading-none">
-                        {apt.date?.split("-")[2] || "--"}
+                        {day}
                       </span>
                       <span className="text-[9px] text-[#3C81C6]/70 font-medium">
-                        T{apt.date?.split("-")[1] || "--"}
+                        T{month}
                       </span>
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-semibold text-[#121417] dark:text-white group-hover:text-[#3C81C6] transition-colors truncate">
-                        {apt.doctorName || "Bác sĩ"}
+                        {(apt as any).doctor_name || apt.doctorName || "Bác sĩ"}
                       </h4>
                       <p className="text-xs text-[#687582] truncate">
-                        {apt.departmentName || "Chuyên khoa"} •{" "}
-                        {apt.time || "--:--"}
+                        {(apt as any).service_name || (apt as any).department_name || apt.departmentName || "Chuyên khoa"} •{" "}
+                        {((apt as any).slot_start_time)?.substring(0, 5) || apt.time || "--:--"}
                       </p>
                     </div>
                     <AppointmentStatusBadge status={apt.status} />
                   </Link>
-                ))}
+                )})}
               </div>
             )}
           </div>
@@ -477,10 +429,10 @@ export default function PatientDashboard() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-[#121417] dark:text-white truncate">
-                      {s.doctorName}
+                      {s.doctor || "Bác sĩ"}
                     </p>
                     <p className="text-xs text-[#687582]">
-                      {s.date} • {s.time} • {s.department}
+                      {s.date} • {s.time} • {s.department || ""}
                     </p>
                   </div>
                 </div>
@@ -498,7 +450,7 @@ export default function PatientDashboard() {
                 >
                   medication
                 </span>
-                Nhắc thuốc hôm nay
+                Nhắc thuốc
               </h3>
               <Link
                 href="/patient/medication-reminders"
@@ -507,76 +459,9 @@ export default function PatientDashboard() {
                 Xem tất cả →
               </Link>
             </div>
-            {todayMeds.length === 0 ? (
-              <p className="text-xs text-[#687582] text-center py-4">
-                Không có thuốc cần uống hôm nay
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {todayMeds.slice(0, 4).map((item, idx) => {
-                  const isTaken = item.log?.status === "taken";
-                  const isMissed = item.log?.status === "missed";
-                  return (
-                    <div
-                      key={idx}
-                      className={`flex items-center gap-3 p-2.5 rounded-xl transition-colors ${
-                        isTaken
-                          ? "bg-emerald-50/50 dark:bg-emerald-500/5"
-                          : isMissed
-                            ? "bg-red-50/50 dark:bg-red-500/5"
-                            : "bg-[#f6f7f8] dark:bg-[#13191f]"
-                      }`}
-                    >
-                      <span
-                        className={`text-xs font-bold w-12 text-center ${
-                          isTaken
-                            ? "text-emerald-600"
-                            : isMissed
-                              ? "text-red-500"
-                              : "text-[#121417] dark:text-white"
-                        }`}
-                      >
-                        {item.time}
-                      </span>
-                      <div
-                        className={`w-0.5 h-6 rounded-full bg-gradient-to-b ${item.reminder.color}`}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p
-                          className={`text-xs font-semibold truncate ${isTaken ? "text-emerald-700 dark:text-emerald-400 line-through" : "text-[#121417] dark:text-white"}`}
-                        >
-                          {item.reminder.medicationName}
-                        </p>
-                        <p className="text-[10px] text-[#687582]">
-                          {item.reminder.dosage}
-                        </p>
-                      </div>
-                      {isTaken && (
-                        <span
-                          className="material-symbols-outlined text-emerald-500"
-                          style={{ fontSize: "16px" }}
-                        >
-                          check_circle
-                        </span>
-                      )}
-                      {isMissed && (
-                        <span
-                          className="material-symbols-outlined text-red-400"
-                          style={{ fontSize: "16px" }}
-                        >
-                          error
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-                {todayMeds.length > 4 && (
-                  <p className="text-[10px] text-center text-[#687582]">
-                    +{todayMeds.length - 4} thuốc khác
-                  </p>
-                )}
-              </div>
-            )}
+            <p className="text-xs text-[#687582] text-center py-4">
+              Truy cập trang Nhắc thuốc để quản lý lịch uống thuốc
+            </p>
           </div>
 
           {/* Quick Links */}
