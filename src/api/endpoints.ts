@@ -358,6 +358,22 @@ export const DOCTOR_ENDPOINTS = {
     SERVICES: (doctorId: string) => `/api/doctors/${doctorId}/services`,
 };
 
+// ============================================
+// Patient Profile (Multi-Profile) — Module 1
+// ✅ Swagger: /api/patient/profiles/*
+// 1 account → nhiều patient profiles (gia đình)
+// ============================================
+export const PATIENT_PROFILE_ENDPOINTS = {
+    LIST: '/api/patient/profiles',
+    DEFAULT: '/api/patient/profiles/default',
+    DETAIL: (id: string) => `/api/patient/profiles/${id}`,
+    CREATE: '/api/patient/profiles',
+    UPDATE: (id: string) => `/api/patient/profiles/${id}`,
+    DELETE: (id: string) => `/api/patient/profiles/${id}`,
+    SET_DEFAULT: (id: string) => `/api/patient/profiles/${id}/set-default`,
+    UPDATE_RELATIONSHIP: (id: string) => `/api/patient/profiles/${id}/relationship`,
+};
+
 export const PATIENT_ENDPOINTS = {
     LIST: '/api/patients',
     DETAIL: (id: string) => `/api/patients/${id}`,

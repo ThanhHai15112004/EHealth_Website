@@ -5,21 +5,23 @@ import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { RELATIONSHIP_OPTIONS, type PatientProfile } from "@/types/patient-profile";
-import { loadFromStorage, saveToStorage, STORAGE_KEYS } from "@/utils/localStorage";
 import { validateName, validatePhone, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
+import { patientProfileService, mapBEToFEProfile, type PatientRelationship } from "@/services/patientProfileService";
 
 // ============================================
-// Tách STORAGE_KEY riêng cho profiles — KHÔNG phụ thuộc userId
-// Mỗi profile có userId bên trong, filter ở runtime
+// Module 1 — Multi-Patient Profiles
+// Backend API: /api/patient/profiles
+// Đã thay thế hoàn toàn localStorage
 // ============================================
 
 export default function PatientProfilesPage() {
     const { user } = useAuth();
     const { showToast } = useToast();
 
-    // Load từ localStorage, fallback sang mock data
     const [profiles, setProfiles] = useState<PatientProfile[]>([]);
     const [loaded, setLoaded] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formData, setFormData] = useState<Partial<PatientProfile>>({});
@@ -28,18 +30,38 @@ export default function PatientProfilesPage() {
     const [detailProfile, setDetailProfile] = useState<PatientProfile | null>(null);
     const [detailTab, setDetailTab] = useState("info");
 
-    // Load data on mount — từ localStorage
-    useEffect(() => {
-        const stored = loadFromStorage<PatientProfile[]>(STORAGE_KEYS.PATIENT_PROFILES, []);
-        setProfiles(stored);
-        setLoaded(true);
-    }, []);
+    // Load profiles từ API thực
+    const loadProfiles = useCallback(async () => {
+        setLoading(true);
+        try {
+            const list = await patientProfileService.getMyProfiles();
+            const mapped = list.map(p => mapBEToFEProfile(p, user?.id));
+            setProfiles(mapped);
+        } catch (err: any) {
+            showToast(err?.message || "Không tải được danh sách hồ sơ", "error");
+            setProfiles([]);
+        } finally {
+            setLoading(false);
+            setLoaded(true);
+        }
+    }, [user?.id, showToast]);
 
-    // Persist to localStorage whenever profiles change
-    const persistProfiles = useCallback((newProfiles: PatientProfile[]) => {
-        setProfiles(newProfiles);
-        saveToStorage(STORAGE_KEYS.PATIENT_PROFILES, newProfiles);
-    }, []);
+    useEffect(() => {
+        loadProfiles();
+    }, [loadProfiles]);
+
+    // Map relationship FE → BE enum
+    const mapRelationshipToBE = (rel?: string): PatientRelationship => {
+        const map: Record<string, PatientRelationship> = {
+            self: "SELF",
+            parent: "PARENT",
+            child: "CHILD",
+            spouse: "SPOUSE",
+            sibling: "SIBLING",
+            other: "OTHER",
+        };
+        return map[(rel || "other").toLowerCase()] || "OTHER";
+    };
 
     const openCreate = () => {
         setFormData({ relationship: "other", relationshipLabel: "Khác", gender: "male", isActive: true, isPrimary: false });
@@ -97,58 +119,73 @@ export default function PatientProfilesPage() {
     // ============================================
     // Save
     // ============================================
-    const handleSave = () => {
+    const buildBEPayload = () => {
+        const genderMap: Record<string, "MALE" | "FEMALE" | "OTHER"> = {
+            male: "MALE",
+            female: "FEMALE",
+            other: "OTHER",
+        };
+        return {
+            full_name: formData.fullName?.trim() || "",
+            date_of_birth: formData.dob || "",
+            gender: genderMap[(formData.gender as string) || "other"] || "OTHER",
+            phone_number: formData.phone?.replace(/[\s\-\.]/g, "") || undefined,
+            email: formData.email?.trim() || undefined,
+            id_card_number: formData.idNumber?.replace(/\s/g, "") || undefined,
+            address: formData.address?.trim() || undefined,
+            relationship: mapRelationshipToBE(formData.relationship as string),
+        };
+    };
+
+    const handleSave = async () => {
         if (!validateForm()) {
             showToast("Vui lòng kiểm tra lại thông tin", "error");
             return;
         }
-
-        if (editingId) {
-            const updated = profiles.map(p =>
-                p.id === editingId
-                    ? { ...p, ...formData, updatedAt: new Date().toISOString() } as PatientProfile
-                    : p
-            );
-            persistProfiles(updated);
-            showToast("Cập nhật hồ sơ thành công!", "success");
-        } else {
-            const newProfile: PatientProfile = {
-                id: `pp-${Date.now()}`,
-                userId: user?.id || "patient-001",
-                fullName: formData.fullName?.trim() || "",
-                dob: formData.dob || "",
-                gender: (formData.gender as PatientProfile["gender"]) || "male",
-                phone: formData.phone?.replace(/[\s\-\.]/g, "") || "",
-                idNumber: formData.idNumber?.replace(/\s/g, ""),
-                insuranceNumber: formData.insuranceNumber?.replace(/[\s\-]/g, ""),
-                address: formData.address?.trim(),
-                relationship: (formData.relationship as PatientProfile["relationship"]) || "other",
-                relationshipLabel: RELATIONSHIP_OPTIONS.find(r => r.value === formData.relationship)?.label || "Khác",
-                allergies: formData.allergies || [],
-                medicalHistory: formData.medicalHistory?.trim(),
-                isActive: true,
-                isPrimary: false,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-            };
-            persistProfiles([...profiles, newProfile]);
-            showToast("Tạo hồ sơ mới thành công!", "success");
+        setSaving(true);
+        try {
+            const payload = buildBEPayload();
+            if (editingId) {
+                await patientProfileService.update(editingId, payload);
+                showToast("Cập nhật hồ sơ thành công!", "success");
+            } else {
+                await patientProfileService.create(payload);
+                showToast("Tạo hồ sơ mới thành công!", "success");
+            }
+            await loadProfiles();
+            setShowForm(false);
+            setEditingId(null);
+        } catch (err: any) {
+            showToast(err?.message || "Lưu hồ sơ thất bại", "error");
+        } finally {
+            setSaving(false);
         }
-        setShowForm(false);
-        setEditingId(null);
     };
 
-    const handleDeactivate = (id: string) => {
-        const updated = profiles.map(p => p.id === id ? { ...p, isActive: false } : p);
-        persistProfiles(updated);
-        setDeleteConfirm(null);
-        showToast("Đã ngừng sử dụng hồ sơ", "info");
+    const handleDeactivate = async (id: string) => {
+        try {
+            await patientProfileService.delete(id);
+            await loadProfiles();
+            setDeleteConfirm(null);
+            showToast("Đã ngừng sử dụng hồ sơ", "info");
+        } catch (err: any) {
+            showToast(err?.message || "Xóa hồ sơ thất bại", "error");
+        }
     };
 
-    const handleReactivate = (id: string) => {
-        const updated = profiles.map(p => p.id === id ? { ...p, isActive: true } : p);
-        persistProfiles(updated);
-        showToast("Đã kích hoạt lại hồ sơ", "success");
+    const handleReactivate = async (_id: string) => {
+        // BE chưa hỗ trợ reactivate trực tiếp — bệnh nhân tạo hồ sơ mới
+        showToast("Tính năng kích hoạt lại sẽ sớm có. Bạn có thể tạo hồ sơ mới.", "info");
+    };
+
+    const handleSetDefault = async (id: string) => {
+        try {
+            await patientProfileService.setDefault(id);
+            await loadProfiles();
+            showToast("Đã đặt làm hồ sơ mặc định", "success");
+        } catch (err: any) {
+            showToast(err?.message || "Đặt mặc định thất bại", "error");
+        }
     };
 
     const activeProfiles = profiles.filter(p => p.isActive);
