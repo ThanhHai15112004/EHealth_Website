@@ -157,9 +157,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
                     ]);
 
                     if (rolesRes.status === 'fulfilled' && rolesRes.value?.data) {
-                        const serverRoles: string[] = (rolesRes.value.data || []).map((r: any) =>
-                            (typeof r === 'string' ? r : r.name || r.code || '').toLowerCase()
-                        ).filter(Boolean);
+                        // BE trả [{roles_id, code: "ADMIN", name: "Quản trị viên"}]
+                        // Ưu tiên `code` (machine-readable) trước `name` (display label)
+                        const serverRoles: string[] = (rolesRes.value.data || []).map((r: any) => {
+                            if (typeof r === 'string') return r;
+                            if (!r) return '';
+                            return r.code || r.role_code || r.name || r.role_name || r.role || '';
+                        }).filter(Boolean).map((s: string) => s.toLowerCase());
                         if (serverRoles.length > 0) {
                             const updatedUser = { ...userData, roles: serverRoles, role: serverRoles[0] };
                             setUser(updatedUser);

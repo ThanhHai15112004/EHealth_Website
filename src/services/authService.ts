@@ -85,6 +85,18 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
         if (response.data.success && response.data.data) {
             const { accessToken, refreshToken, user } = response.data.data;
 
+            // Robust parse roles[] (string[] hoặc object[])
+            const rolesRaw: string[] = (user.roles || [])
+                .map((r: any) => {
+                    if (typeof r === 'string') return r;
+                    if (r && typeof r === 'object') {
+                        return r.code || r.role_code || r.name || r.role_name || r.role || '';
+                    }
+                    return '';
+                })
+                .filter((s: string) => s)
+                .map((s: string) => s.toLowerCase());
+
             localStorage.setItem(AUTH_CONFIG.ACCESS_TOKEN_KEY, accessToken);
             localStorage.setItem(AUTH_CONFIG.REFRESH_TOKEN_KEY, refreshToken);
             localStorage.setItem(AUTH_CONFIG.USER_KEY, JSON.stringify({
@@ -92,7 +104,8 @@ export const login = async (credentials: LoginCredentials): Promise<AuthResponse
                 email: user.email || credentials.email,
                 fullName: user.name || credentials.email.split('@')[0],
                 avatar: user.avatar,
-                role: (user.roles?.[0] || 'patient').toLowerCase(),
+                role: rolesRaw[0] || 'patient',
+                roles: rolesRaw,
             }));
         }
 
