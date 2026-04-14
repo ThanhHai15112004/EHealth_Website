@@ -7,31 +7,7 @@ import { useToast } from "@/contexts/ToastContext";
 import { getPatientDetail } from "@/services/patientService";
 import PatientDetail from "../PatientDetail";
 import { type PatientProfile } from "@/types/patient-profile";
-
-// Map API response → PatientProfile shape
-function mapToProfile(data: any, user: any): PatientProfile {
-    return {
-        id: data.id ?? data.patient_id ?? "",
-        userId: user?.id ?? "",
-        fullName: data.full_name ?? data.fullName ?? user?.fullName ?? "",
-        dob: data.date_of_birth ?? data.dob ?? "",
-        gender: (data.gender === "MALE" ? "male" : data.gender === "FEMALE" ? "female" : "other") as "male" | "female" | "other",
-        phone: data.contact?.phone_number ?? data.phone ?? "",
-        idNumber: data.identity_number ?? data.idNumber ?? "",
-        insuranceNumber: data.insurance_number ?? data.insuranceNumber ?? "",
-        address: data.contact?.street_address ?? data.address ?? "",
-        relationship: "self",
-        relationshipLabel: "Bản thân",
-        email: data.contact?.email ?? data.email ?? "",
-        bloodType: data.blood_type ?? data.bloodType ?? "",
-        allergies: data.allergies ?? [],
-        medicalHistory: data.medical_history ?? data.medicalHistory ?? "",
-        isActive: true,
-        isPrimary: true,
-        createdAt: data.created_at ?? data.createdAt ?? "",
-        updatedAt: data.updated_at ?? data.updatedAt ?? "",
-    };
-}
+import { mapToProfile } from "@/utils/patientMapper";
 
 export default function PatientProfileDetailPage() {
     const { id } = useParams<{ id: string }>();

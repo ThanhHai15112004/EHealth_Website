@@ -36,6 +36,15 @@ export interface Patient {
     contact?: PatientContact;
     contacts?: PatientContact[];
     insurance?: PatientInsurance[];
+    // Flat/alias fields từ BE (optional — team PTH dùng format này)
+    id?: string;
+    phone_number?: string;
+    email?: string;
+    id_card_number?: string;
+    address?: string;
+    account_id?: string;
+    account_phone?: string;
+    account_email?: string;
 }
 
 export interface CreatePatientRequest {
