@@ -716,6 +716,7 @@ export const APPOINTMENT_CONFIRMATION_ENDPOINTS = {
     CONFIRM: (id: string) => `/api/appointment-confirmations/${id}/confirm`,
     CHECK_IN: (id: string) => `/api/appointment-confirmations/${id}/check-in`,
     SEND_REMINDER: (id: string) => `/api/appointment-confirmations/${id}/send-reminder`,
+    RESEND: (id: string) => `/api/appointment-confirmations/${id}/resend`,
     BATCH_CONFIRM: '/api/appointment-confirmations/batch-confirm',
     BATCH_REMINDER: '/api/appointment-confirmations/batch-send-reminder',
     REMINDER_SETTINGS: '/api/appointment-confirmations/reminder-settings',

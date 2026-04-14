@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
 import { useAuth } from "@/contexts/AuthContext";
-import { getAppointments, cancelAppointment, appointmentChangesService, type Appointment } from "@/services/appointmentService";
+import { getAppointments, cancelAppointment, appointmentChangesService, appointmentConfirmationService, type Appointment } from "@/services/appointmentService";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 import { AIAppointmentSuggester } from "@/components/portal/ai";
 
@@ -28,6 +28,19 @@ export default function AppointmentsPage() {
 
     // Reschedule modal
     const [rescheduleModal, setRescheduleModal] = useState<{ id: string; doctorName: string } | null>(null);
+    const [resendingId, setResendingId] = useState<string | null>(null);
+
+    const handleResendEmail = async (id: string) => {
+        setResendingId(id);
+        try {
+            await appointmentConfirmationService.resendNotification(id);
+            alert("Đã gửi lại email xác nhận. Vui lòng kiểm tra hộp thư.");
+        } catch (err: any) {
+            alert(err?.response?.data?.message || err?.message || "Gửi lại email thất bại");
+        } finally {
+            setResendingId(null);
+        }
+    };
     const [newDate, setNewDate] = useState("");
     const [newTime, setNewTime] = useState("");
     const [rescheduling, setRescheduling] = useState(false);
@@ -227,6 +240,15 @@ export default function AppointmentsPage() {
                                 </Link>
                                 {(apt.status === "pending" || apt.status === "confirmed") && (
                                     <>
+                                        <button
+                                            onClick={() => handleResendEmail(apt.id)}
+                                            disabled={resendingId === apt.id}
+                                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#3C81C6] bg-[#3C81C6]/[0.08] border border-[#3C81C6]/20 rounded-lg hover:bg-[#3C81C6]/[0.15] transition-colors disabled:opacity-50">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
+                                                {resendingId === apt.id ? "hourglass_empty" : "mail"}
+                                            </span>
+                                            {resendingId === apt.id ? "Đang gửi..." : "Gửi lại email"}
+                                        </button>
                                         <button
                                             onClick={() => { setRescheduleModal({ id: apt.id, doctorName: apt.doctorName }); setNewDate(""); setNewTime(""); }}
                                             className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">

@@ -344,6 +344,18 @@ export const appointmentConfirmationService = {
     sendReminder: (id: string) =>
         axiosClient.post(APPOINTMENT_CONFIRMATION_ENDPOINTS.SEND_REMINDER(id), {}).then(r => r?.data?.data ?? r?.data ?? r),
 
+    /**
+     * Gửi lại email/notification cho appointment
+     * Module 2 — Email Appointment Flow
+     * @param id appointment id
+     * @param templateCode optional, BE auto-detect theo status nếu không truyền
+     */
+    resendNotification: (id: string, templateCode?: string) =>
+        axiosClient.post(
+            APPOINTMENT_CONFIRMATION_ENDPOINTS.RESEND(id),
+            templateCode ? { template_code: templateCode } : {},
+        ).then(r => r?.data?.data ?? r?.data ?? r),
+
     batchConfirm: (ids: string[]) =>
         axiosClient.post(APPOINTMENT_CONFIRMATION_ENDPOINTS.BATCH_CONFIRM, { ids }).then(r => r?.data?.data ?? r?.data ?? r),
 
