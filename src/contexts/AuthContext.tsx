@@ -119,7 +119,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
             if (response.success && response.data) {
                 // Swagger: { accessToken, refreshToken, user: { userId, name, avatar, email, phone, roles[] } }
                 const { accessToken, refreshToken, user: apiUser } = response.data;
-                const rolesRaw: string[] = (apiUser.roles || []).map((r: string) => r.toLowerCase());
+                // Robust parse: roles có thể là string[] hoặc object[] ({name, code, role_name, ...})
+                const rolesRaw: string[] = (apiUser.roles || [])
+                    .map((r: any) => {
+                        if (typeof r === 'string') return r;
+                        if (r && typeof r === 'object') {
+                            return r.name || r.code || r.role_name || r.role || '';
+                        }
+                        return '';
+                    })
+                    .filter((s: string) => s)
+                    .map((s: string) => s.toLowerCase());
                 const primaryRole = rolesRaw[0] || 'patient';
 
                 const userData: User = {
