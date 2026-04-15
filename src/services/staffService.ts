@@ -50,29 +50,38 @@ export interface StaffListResponse {
 export function unwrapStaffList(res: any): StaffMember[] {
     const raw = res?.data?.data ?? res?.data?.items ?? res?.data ?? res?.items ?? res ?? [];
     if (!Array.isArray(raw)) return [];
-    return raw.map((d: any): StaffMember => ({
-        id: d.id ?? d.staff_id ?? '',
-        code: d.code ?? d.staff_code ?? d.employee_code ?? '',
-        fullName: d.fullName ?? d.full_name ?? d.name ?? '',
-        email: d.email ?? '',
-        phone: d.phone ?? d.phone_number ?? '',
-        role: d.role ?? 'DOCTOR',
-        roleName: d.roleName ?? d.role_name ?? '',
-        departmentId: d.departmentId ?? d.department_id ?? d.department?.id ?? '',
-        departmentName: d.departmentName ?? d.department_name ?? d.department?.name ?? '',
-        specialization: d.specialization ?? d.specialty ?? '',
-        qualification: d.qualification ?? d.degree ?? '',
-        gender: d.gender ?? '',
-        dateOfBirth: d.dateOfBirth ?? d.date_of_birth ?? '',
-        licenseNumber: d.licenseNumber ?? d.license_number ?? '',
-        bio: d.bio ?? d.description ?? '',
-        status: d.status ?? 'ACTIVE',
-        avatar: d.avatar ?? d.avatar_url ?? '',
-        rating: d.rating ?? 0,
-        experience: d.experience ?? d.years_of_experience ?? 0,
-        createdAt: d.createdAt ?? d.created_at ?? '',
-        updatedAt: d.updatedAt ?? d.updated_at ?? '',
-    }));
+    return raw.map((d: any): StaffMember => {
+        let avatarVal = d.avatar ?? d.avatar_url ?? '';
+        if (Array.isArray(avatarVal) && avatarVal.length > 0) {
+            avatarVal = avatarVal[0].url ?? '';
+        } else if (typeof avatarVal === 'object' && avatarVal !== null) {
+            avatarVal = avatarVal.url ?? '';
+        }
+
+        return {
+            id: d.id ?? d.staff_id ?? d.users_id ?? '',
+            code: d.code ?? d.staff_code ?? d.employee_code ?? '',
+            fullName: d.fullName ?? d.full_name ?? d.name ?? '',
+            email: d.email ?? '',
+            phone: d.phone ?? d.phone_number ?? '',
+            role: d.role ?? d.roles?.[0] ?? 'DOCTOR',
+            roleName: d.roleName ?? d.role_name ?? '',
+            departmentId: d.departmentId ?? d.department_id ?? d.department?.id ?? '',
+            departmentName: d.departmentName ?? d.department_name ?? d.department?.name ?? '',
+            specialization: d.specialization ?? d.specialty ?? '',
+            qualification: d.qualification ?? d.degree ?? '',
+            gender: d.gender ?? '',
+            dateOfBirth: d.dateOfBirth ?? d.date_of_birth ?? '',
+            licenseNumber: d.licenseNumber ?? d.license_number ?? '',
+            bio: d.bio ?? d.description ?? '',
+            status: d.status ?? 'ACTIVE',
+            avatar: typeof avatarVal === 'string' ? avatarVal : '',
+            rating: d.rating ?? 0,
+            experience: d.experience ?? d.years_of_experience ?? 0,
+            createdAt: d.createdAt ?? d.created_at ?? '',
+            updatedAt: d.updatedAt ?? d.updated_at ?? '',
+        };
+    });
 }
 
 export const staffService = {
