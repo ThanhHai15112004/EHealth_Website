@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { type PatientProfile } from "@/types/patient-profile";
+import { type PatientProfile } from "@/data/patient-profiles-mock";
 import axiosClient from "@/api/axiosClient";
-import { PATIENT_DOCUMENT_ENDPOINTS, DOCUMENT_TYPE_ENDPOINTS } from "@/api/endpoints";
+import { DOCUMENT_ENDPOINTS, DOCUMENT_TYPE_ENDPOINTS } from "@/api/endpoints";
 import Modal from "@/components/common/Modal";
 
 interface TabProps {
@@ -25,7 +25,7 @@ export default function DocumentsTab({ profile }: TabProps) {
             setLoading(true);
             const patientId = profile.id;
             if (!patientId) return;
-            const res = await axiosClient.get(PATIENT_DOCUMENT_ENDPOINTS.LIST, { params: { patientId: patientId.toString() } });
+            const res = await axiosClient.get(DOCUMENT_ENDPOINTS.LIST(patientId.toString()));
             const data = res.data?.data || res.data;
             setDocuments(Array.isArray(data) ? data : []);
         } catch (error) {
@@ -68,7 +68,7 @@ export default function DocumentsTab({ profile }: TabProps) {
     const handleDelete = async (docId: string) => {
         if (!window.confirm("Bạn có chắc chắn muốn xóa tài liệu này? Hành động này không thể hoàn tác.")) return;
         try {
-            await axiosClient.delete(PATIENT_DOCUMENT_ENDPOINTS.DELETE(docId));
+            await axiosClient.delete(DOCUMENT_ENDPOINTS.DELETE(docId));
             alert("Đã xóa tài liệu thành công.");
             fetchDocuments();
         } catch (error) {
@@ -113,7 +113,7 @@ export default function DocumentsTab({ profile }: TabProps) {
             formData.append("document_type_id", fileType);
             formData.append("patient_id", patientId.toString());
 
-            await axiosClient.post(PATIENT_DOCUMENT_ENDPOINTS.UPLOAD, formData, {
+            await axiosClient.post(DOCUMENT_ENDPOINTS.UPLOAD(), formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }
@@ -325,7 +325,7 @@ export default function DocumentsTab({ profile }: TabProps) {
                 isOpen={!!viewingDoc}
                 onClose={() => setViewingDoc(null)}
                 title={viewingDoc?.title || viewingDoc?.name || viewingDoc?.fileName || "Xem tài liệu"}
-                size="xl"
+                size="4xl"
             >
                 <div className="w-full h-[75vh] bg-[#f8f9fa] dark:bg-[#0b0e14] rounded-xl overflow-hidden mt-2 flex items-center justify-center p-2 border border-gray-200 dark:border-gray-800">
                     {viewingDoc && (viewingDoc.file_url?.match(/\.(jpeg|jpg|gif|png|webp)$/i) || viewingDoc.file_format?.includes('image')) ? (

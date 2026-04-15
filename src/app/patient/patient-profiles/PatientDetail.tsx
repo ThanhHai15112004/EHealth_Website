@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { type PatientProfile } from "@/types/patient-profile";
+import { type PatientProfile } from "@/data/patient-profiles-mock";
 
 // Giả lập import các Tab (sẽ được tách ra các file riêng sau)
 import OverviewTab from "./tabs/OverviewTab";

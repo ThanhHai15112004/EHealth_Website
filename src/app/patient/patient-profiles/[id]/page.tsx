@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import { getPatientDetail } from "@/services/patientService";
 import PatientDetail from "../PatientDetail";
-import { type PatientProfile } from "@/types/patient-profile";
+import { type PatientProfile } from "@/data/patient-profiles-mock";
 import { mapToProfile } from "@/utils/patientMapper";
 
 export default function PatientProfileDetailPage() {

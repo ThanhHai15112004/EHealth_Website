@@ -68,9 +68,9 @@ export function PatientSidebar() {
             {/* Navigation */}
             <nav className={`flex-1 ${collapsed ? "px-2" : "px-4"} flex flex-col gap-1 overflow-y-auto`}>
                 {PATIENT_MENU_ITEMS.map((item) => {
-                    const active = item.key === "appointments"
-                        ? pathname === item.href || pathname.startsWith(item.href + "/")
-                        : pathname.startsWith(item.href);
+                    const active = item.href === "/patient"
+                        ? pathname === item.href
+                        : pathname === item.href || pathname.startsWith(item.href + "/");
 
                     return (
                         <Link

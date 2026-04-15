@@ -1,16 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { ROUTES } from "@/constants/routes";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, getRedirectUrl } from "@/contexts/AuthContext";
 
 export default function LoginPage() {
-    const { login, isLoading } = useAuth();
+    const { login, isLoading, isAuthenticated, user } = useAuth();
+    const router = useRouter();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
     const [rememberMe, setRememberMe] = useState(false);
     const [error, setError] = useState("");
+
+    // Redirect nếu đã đăng nhập
+    useEffect(() => {
+        if (isAuthenticated && user) {
+            const redirectUrl = getRedirectUrl(user.role);
+            router.replace(redirectUrl);
+        }
+    }, [isAuthenticated, user, router]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -20,6 +30,21 @@ export default function LoginPage() {
             setError(result.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.");
         }
     };
+
+    // Nếu đang kiểm tra auth hoặc đã đăng nhập, hiện loading
+    if (isAuthenticated && user) {
+        return (
+            <div className="h-screen flex items-center justify-center bg-gradient-to-br from-[#0a1628] via-[#0f2744] to-[#1a3a5c]">
+                <div className="flex flex-col items-center gap-4">
+                    <svg className="animate-spin h-10 w-10 text-[#60a5fa]" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    <p className="text-[#94a3b8] text-sm">Đang chuyển hướng...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="h-screen flex relative overflow-hidden bg-gradient-to-br from-[#0a1628] via-[#0f2744] to-[#1a3a5c]">
