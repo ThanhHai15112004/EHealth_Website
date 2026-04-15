@@ -204,8 +204,8 @@ export const SPECIALTY_ENDPOINTS = {
     DETAIL: (id: string) => `/api/specialties/${id}`,            // GET: chi tiết
     UPDATE: (id: string) => `/api/specialties/${id}`,            // PUT: cập nhật
     DELETE: (id: string) => `/api/specialties/${id}`,            // DELETE: xóa mềm
-    BY_FACILITY: (facilityId: string) => `/api/specialties/facility/${facilityId}`,
-    SPECIALTY_SERVICES: (id: string) => `/api/specialties/${id}/services`,
+    BY_FACILITY: (facilityId: string) => `/api/specialties/by-facility/${facilityId}`,
+    SPECIALTY_SERVICES: (id: string) => `/api/specialty-services/${id}/services`,
 };
 
 // ============================================
@@ -355,7 +355,7 @@ export const DOCTOR_ENDPOINTS = {
     DELETE: (id: string) => `/api/doctors/${id}`,
     BY_DEPARTMENT: (departmentId: string) => `/api/doctors/department/${departmentId}`,
     SCHEDULE: (doctorId: string) => `/api/doctors/${doctorId}/schedule`,
-    SERVICES: (doctorId: string) => `/api/doctors/${doctorId}/services`,
+    SERVICES: (doctorId: string) => `/api/doctor-services/${doctorId}/services`,
 };
 
 // ============================================

@@ -92,11 +92,11 @@ export default function PatientDashboard() {
             if (vitalRes.status === "fulfilled" && vitalRes.value) {
                 const v = vitalRes.value;
                 setLatestVital({
-                    bloodPressureSystolic: v.bloodPressureSystolic ?? v.systolic ?? v.bp_systolic ?? 0,
-                    bloodPressureDiastolic: v.bloodPressureDiastolic ?? v.diastolic ?? v.bp_diastolic ?? 0,
-                    heartRate: v.heartRate ?? v.heart_rate ?? v.pulse ?? 0,
-                    bmi: v.bmi ?? 0,
-                    spo2: v.spo2 ?? v.oxygenSaturation,
+                    bloodPressureSystolic: Number(v.bloodPressureSystolic ?? v.systolic ?? v.bp_systolic ?? 0),
+                    bloodPressureDiastolic: Number(v.bloodPressureDiastolic ?? v.diastolic ?? v.bp_diastolic ?? 0),
+                    heartRate: Number(v.heartRate ?? v.heart_rate ?? v.pulse ?? 0),
+                    bmi: Number(v.bmi ?? 0),
+                    spo2: v.spo2 != null ? Number(v.spo2) : v.oxygenSaturation != null ? Number(v.oxygenSaturation) : undefined,
                 });
             }
 
@@ -137,7 +137,7 @@ export default function PatientDashboard() {
     const vitalCards = [
         { label: "Huyết áp", value: latestVital ? `${latestVital.bloodPressureSystolic}/${latestVital.bloodPressureDiastolic}` : "—", unit: "mmHg", icon: "bloodtype", ok: !latestVital || latestVital.bloodPressureSystolic <= 130 },
         { label: "Nhịp tim", value: latestVital ? `${latestVital.heartRate}` : "—", unit: "bpm", icon: "cardiology", ok: true },
-        { label: "BMI", value: latestVital ? latestVital.bmi.toFixed(1) : "—", unit: "", icon: "monitor_weight", ok: !latestVital || latestVital.bmi <= 25 },
+        { label: "BMI", value: latestVital ? Number(latestVital.bmi).toFixed(1) : "—", unit: "", icon: "monitor_weight", ok: !latestVital || Number(latestVital.bmi) <= 25 },
         { label: "SpO2", value: latestVital ? `${latestVital.spo2 ?? "—"}` : "—", unit: "%", icon: "pulmonology", ok: true },
     ];
 

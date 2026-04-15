@@ -59,6 +59,9 @@ export default function AppointmentsPage() {
         setTimeout(() => setToast(null), 3000);
     };
 
+    // profilesLoaded: true khi đã thử load (dù thành công hay thất bại)
+    const [profilesLoaded, setProfilesLoaded] = useState(false);
+
     useEffect(() => {
         if (!user?.id) return;
         const loadProfiles = async () => {
@@ -69,20 +72,21 @@ export default function AppointmentsPage() {
                     const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
                     const exists = res.some(p => p.id === cachedId);
                     setSelectedProfileId(exists ? cachedId! : res[0].id);
-                } else {
-                    setLoading(false);
                 }
-            } catch (error) {
-                setLoading(false);
+            } catch {
+                // profiles failed — vẫn load appointments theo account
+            } finally {
+                setProfilesLoaded(true);
             }
         };
         loadProfiles();
     }, [user?.id]);
 
+    // Load appointments khi profiles đã được thử load (với hoặc không có selectedProfileId)
     useEffect(() => {
-        if (!selectedProfileId) return;
+        if (!user?.id || !profilesLoaded) return;
         loadAppointments();
-    }, [activeTab, selectedProfileId]);
+    }, [activeTab, profilesLoaded, selectedProfileId]);
 
     const loadAppointments = async () => {
         const statusMap: Record<string, string> = {
@@ -93,7 +97,8 @@ export default function AppointmentsPage() {
         try {
             setLoading(true);
             const res = await getMyAppointments({
-                patient_id: selectedProfileId,
+                // Nếu có profile được chọn thì filter theo profile đó, nếu không thì lấy tất cả của account
+                ...(selectedProfileId ? { patient_id: selectedProfileId } : {}),
                 status: statusMap[activeTab],
                 limit: 20,
             });

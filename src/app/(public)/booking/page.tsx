@@ -629,19 +629,24 @@ function BookingPageInner() {
     const handleSubmit = async () => {
         setSubmitting(true);
         try {
-            const patientId = selectedProfileId || user?.id;
+            // Phải có patient profile ID thật từ bảng patients, không dùng user account ID
+            const patientId = selectedProfileId;
             if (!patientId) {
-                // Should not happen since we guard in UI, but just in case
+                alert("Vui lòng chọn hồ sơ bệnh nhân trước khi đặt lịch.");
                 return;
             }
-            
+            if (!selectedSlotId && !selectedDate) {
+                alert("Vui lòng chọn ngày và giờ khám.");
+                return;
+            }
+
             let appointment: any;
             if (consultType === "online") {
                 const sessionRes = await telemedicineService.create({
                     patient_id: patientId,
                     specialty_id: selectedSpecialty || undefined,
                     facility_id: selectedFacility || undefined,
-                    type_id: "TCT_VIDEO", // Mặc định tư vấn qua video
+                    type_id: "TCT_VIDEO",
                     doctor_id: selectedDoctorObj?.doctorId || undefined,
                     slot_id: selectedSlotId || undefined,
                     booking_date: selectedDate,
@@ -657,16 +662,21 @@ function BookingPageInner() {
                     branchId: selectedBranch || undefined,
                     specialtyId: selectedSpecialty || undefined,
                     serviceId: selectedService || undefined,
-                    slot_id: selectedSlotId || undefined,
+                    slotId: selectedSlotId || undefined,   // camelCase — service reads data.slotId
                     date: selectedDate,
                     time: selectedTime,
                     type: "first_visit",
                     reason: form.symptoms,
                 });
-                
+
+                // Normalize id field từ response
+                const appId = appointment?.appointments_id || appointment?.id;
+                if (appId) {
+                    appointment = { ...appointment, id: appId };
+                }
+
                 // Tự động xác nhận & tạo QR nếu có thể (cho in-person)
                 try {
-                    const appId = appointment.id || appointment.appointments_id;
                     if (appId) {
                         await confirmAppointment(appId);
                         const qrRes = await generateAppointmentQr(appId);
@@ -677,11 +687,13 @@ function BookingPageInner() {
                 }
             }
 
-            setBookingCode(appointment.id || appointment.session_id || appointment.session_code || appointment.appointments_id || `EH-${Date.now().toString(36).toUpperCase()}`);
+            const bookingId = appointment?.id || appointment?.appointments_id || appointment?.session_id || appointment?.session_code || `EH-${Date.now().toString(36).toUpperCase()}`;
+            setBookingCode(bookingId);
             setStep(5);
         } catch (err: any) {
             console.error("Lỗi khi đặt lịch:", err);
-            alert(err?.response?.data?.message || err?.message || "Đã xảy ra lỗi khi đặt lịch. Vui lòng thử lại sau!");
+            const msg = err?.response?.data?.message || err?.message || "Đã xảy ra lỗi khi đặt lịch. Vui lòng thử lại sau!";
+            alert(msg);
         } finally {
             setSubmitting(false);
         }
@@ -924,12 +936,15 @@ function BookingPageInner() {
                                                 </div>
                                             ) : fetchedServices.length > 0 ? (
                                                 <div className="flex flex-wrap gap-2">
-                                                    {filteredServices.map(svc => (
-                                                        <button key={svc.service_id || svc.id || svc.services_id} onClick={() => setSelectedService((svc.service_id || svc.id || svc.services_id) === selectedService ? "" : (svc.service_id || svc.id || svc.services_id))}
-                                                            className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${selectedService === (svc.service_id || svc.id || svc.services_id) ? "border-[#3C81C6] bg-[#3C81C6] text-white shadow-sm" : "border-gray-200 bg-white text-gray-700 hover:border-[#3C81C6]/50"}`}>
+                                                    {filteredServices.map((svc, idx) => {
+                                                        const svcId = svc.service_id || svc.id || svc.services_id || `svc-${idx}`;
+                                                        return (
+                                                        <button key={svcId} onClick={() => setSelectedService(svcId === selectedService ? "" : svcId)}
+                                                            className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${selectedService === svcId ? "border-[#3C81C6] bg-[#3C81C6] text-white shadow-sm" : "border-gray-200 bg-white text-gray-700 hover:border-[#3C81C6]/50"}`}>
                                                             {svc.service_name || svc.name} — {Number(svc.price ?? svc.base_price ?? 0).toLocaleString("vi-VN")}đ
                                                         </button>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             ) : (
                                                 <p className="text-xs text-gray-500 py-1">Không có dịch vụ liên quan do cơ sở/bác sĩ này cung cấp.</p>
@@ -989,8 +1004,8 @@ function BookingPageInner() {
                                                     </div>
 
                                                     <div className="flex flex-wrap gap-2">
-                                                        {filteredServices.map(svc => {
-                                                            const svcId = svc.service_id || svc.id || svc.services_id;
+                                                        {filteredServices.map((svc, idx) => {
+                                                            const svcId = svc.service_id || svc.id || svc.services_id || `svc-${idx}`;
                                                             return (
                                                             <button key={svcId} onClick={() => setSelectedService(svcId === selectedService ? "" : svcId)}
                                                                 className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${selectedService === svcId ? "border-[#3C81C6] bg-[#3C81C6] text-white shadow-sm" : "border-gray-200 bg-white text-gray-700 hover:border-[#3C81C6]/50"}`}>
@@ -1041,8 +1056,8 @@ function BookingPageInner() {
                                         </div>
                                         {/* Service grid */}
                                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[350px] overflow-y-auto pr-2 custom-scrollbar">
-                                            {filteredServices.map(svc => {
-                                                const svcId = svc.service_id || svc.id || svc.services_id;
+                                            {filteredServices.map((svc, idx) => {
+                                                const svcId = svc.service_id || svc.id || svc.services_id || `svc-${idx}`;
                                                 return (
                                                 <button key={svcId} onClick={() => handleServiceSelect(svcId)}
                                                     className={`relative group flex flex-col items-center justify-center p-3 rounded-xl border transition-all text-center

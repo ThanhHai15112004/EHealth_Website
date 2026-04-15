@@ -113,12 +113,33 @@ export interface MyAppointmentsResponse {
     pagination?: any;
 }
 
+const normalizeAppointment = (a: any): Appointment => ({
+    ...a,
+    id: a.appointments_id || a.id,
+    patientId: a.patient_id || a.patientId,
+    patientName: a.patient_name || a.patientName,
+    doctorId: a.doctor_id || a.doctorId,
+    doctorName: a.doctor_name || a.doctorName,
+    departmentId: a.department_id || a.departmentId,
+    departmentName: a.department_name || a.departmentName || a.specialty_name,
+    date: a.appointment_date || a.date,
+    time: a.slot_start_time || a.time,
+    status: a.status,
+    reason: a.reason_for_visit || a.reason,
+    createdAt: a.created_at || a.createdAt,
+    updatedAt: a.updated_at || a.updatedAt,
+});
+
 export const getMyAppointments = async (
     params?: { status?: string; patient_id?: string; fromDate?: string; toDate?: string; page?: number; limit?: number }
 ): Promise<MyAppointmentsResponse> => {
     try {
         const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.MY_APPOINTMENTS, { params });
-        return response.data;
+        const raw = response.data;
+        return {
+            ...raw,
+            data: Array.isArray(raw?.data) ? raw.data.map(normalizeAppointment) : [],
+        };
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Lấy lịch hẹn của tôi thất bại');
     }
@@ -130,7 +151,7 @@ export const getMyAppointments = async (
 export const getAppointmentById = async (id: string): Promise<Appointment> => {
     try {
         const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.DETAIL(id));
-        return unwrapOne(response);
+        return normalizeAppointment(unwrapOne(response));
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Lấy thông tin lịch hẹn thất bại');
     }
@@ -144,9 +165,10 @@ export const getAppointmentById = async (id: string): Promise<Appointment> => {
 export const createAppointment = async (data: CreateAppointmentData): Promise<Appointment> => {
     try {
         // Resolve slot/branch nếu FE chỉ có doctorId + date + time
-        let slotId = data.slotId;
-        let branchId = data.branchId || (data as any).facilityId;
-        let shiftId = data.shiftId;
+        // Support cả camelCase (slotId) và snake_case (slot_id)
+        let slotId = data.slotId || (data as any).slot_id;
+        let branchId = data.branchId || (data as any).branch_id || (data as any).facilityId;
+        let shiftId = data.shiftId || (data as any).shift_id;
 
         if (!slotId && !shiftId && data.doctorId && data.date && data.time) {
             try {
@@ -217,7 +239,7 @@ export const updateAppointment = async (
 // ============================================
 export const confirmAppointment = async (id: string): Promise<Appointment> => {
     try {
-        const response = await axiosClient.post(APPOINTMENT_ENDPOINTS.CONFIRM(id), {});
+        const response = await axiosClient.patch(APPOINTMENT_ENDPOINTS.CONFIRM(id), {});
         return unwrapOne(response);
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Xác nhận lịch hẹn thất bại');
