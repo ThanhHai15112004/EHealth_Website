@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
-import { getAppointments, type Appointment } from "@/services/appointmentService";
+import { getMyAppointments, type Appointment } from "@/services/appointmentService";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
 import { loadFromStorage, STORAGE_KEYS } from "@/utils/localStorage";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
@@ -59,7 +59,7 @@ export default function PatientDashboard() {
     const loadData = async () => {
         try {
             setLoading(true);
-            const res = await getAppointments({ patientId: user?.id, status: "pending,confirmed", limit: 5 });
+            const res = await getMyAppointments({ status: "PENDING,CONFIRMED", limit: 5 });
             if (res.data && res.data.length > 0) setUpcomingAppointments(res.data);
             else setUpcomingAppointments([]);
         } catch {

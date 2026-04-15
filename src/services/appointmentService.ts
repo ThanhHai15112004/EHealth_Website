@@ -51,6 +51,9 @@ export interface CreateAppointmentData {
     slotId?: string;
     shiftId?: string;
     branchId?: string;
+    facilityId?: string;
+    specialtyId?: string;
+    slot_id?: string;
     bookingChannel?: 'WEB' | 'APP' | 'DIRECT_CLINIC' | 'HOTLINE';
 }
 
@@ -97,6 +100,27 @@ export const getAppointments = async (params?: {
         return { success: true, data: items, pagination: { page: 1, limit: items.length, total: items.length, totalPages: 1 } };
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Lấy danh sách lịch hẹn thất bại');
+    }
+};
+
+// ============================================
+// Lấy lịch hẹn của bệnh nhân đang đăng nhập
+// BE auto-resolve patient_id từ token
+// ============================================
+export interface MyAppointmentsResponse {
+    success?: boolean;
+    data: Appointment[];
+    pagination?: any;
+}
+
+export const getMyAppointments = async (
+    params?: { status?: string; patient_id?: string; fromDate?: string; toDate?: string; page?: number; limit?: number }
+): Promise<MyAppointmentsResponse> => {
+    try {
+        const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.MY_APPOINTMENTS, { params });
+        return response.data;
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy lịch hẹn của tôi thất bại');
     }
 };
 
@@ -226,20 +250,6 @@ export const generateAppointmentQr = async (id: string): Promise<{ qr_token: str
 };
 
 // ============================================
-// Lấy lịch hẹn của tôi (BE tự resolve patientId từ JWT)
-// ============================================
-export const getMyAppointments = async (
-    params?: { status?: string; patient_id?: string; fromDate?: string; toDate?: string; page?: number; limit?: number }
-): Promise<{ success: boolean; data: Appointment[]; pagination?: any }> => {
-    try {
-        const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.MY_APPOINTMENTS, { params });
-        return response.data;
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || 'Lấy lịch hẹn của tôi thất bại');
-    }
-};
-
-// ============================================
 // Đánh giá lịch khám
 // ============================================
 export const submitAppointmentReview = async (id: string, rating: number, feedback: string): Promise<Appointment> => {
@@ -278,6 +288,46 @@ export const getAppointmentsByPatient = async (
         return unwrapList(response);
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Lấy lịch hẹn theo bệnh nhân thất bại');
+    }
+};
+
+// ============================================
+// Lấy danh sách slot khám khả dụng
+// GET /api/appointments/available-slots
+// ============================================
+export const getAvailableSlots = async (params: {
+    date?: string;
+    doctor_id?: string;
+    service_id?: string;
+    branch_id?: string;
+    facility_id?: string;
+}): Promise<any[]> => {
+    try {
+        const response = await axiosClient.get('/api/appointments/available-slots', { params });
+        const d = response?.data?.data ?? response?.data ?? response;
+        return Array.isArray(d) ? d : [];
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy danh sách slot thất bại');
+    }
+};
+
+// ============================================
+// Lấy danh sách slot khám theo khoa/chuyên khoa
+// GET /api/appointments/available-slots-by-department
+// ============================================
+export const getAvailableSlotsByDepartment = async (params: {
+    department_id: string;
+    facility_id: string;
+    branch_id?: string;
+    start_date?: string;
+    days?: number;
+}): Promise<any[]> => {
+    try {
+        const response = await axiosClient.get('/api/appointments/available-slots-by-department', { params });
+        const d = response?.data?.data ?? response?.data ?? response;
+        return Array.isArray(d) ? d : [];
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy danh sách slot theo khoa thất bại');
     }
 };
 

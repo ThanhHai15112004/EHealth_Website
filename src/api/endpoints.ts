@@ -401,7 +401,9 @@ export const APPOINTMENT_ENDPOINTS = {
     CANCEL: (id: string) => `/api/appointments/${id}`,
     CONFIRM: (id: string) => `/api/appointment-confirmations/${id}/confirm`,
     GENERATE_QR: (id: string) => `/api/appointment-status/generate-qr/${id}`,
-    MY_APPOINTMENTS: '/api/appointments/me',
+    MY_APPOINTMENTS: '/api/appointments/my-appointments',
+    AVAILABLE_SLOTS: '/api/appointments/available-slots',
+    AVAILABLE_SLOTS_BY_DEPARTMENT: '/api/appointments/available-slots-by-department',
     BY_DOCTOR: (doctorId: string) => `/api/appointments/doctor/${doctorId}`,
     BY_PATIENT: (patientId: string) => `/api/appointments/patient/${patientId}`,
 };
