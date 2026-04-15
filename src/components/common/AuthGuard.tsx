@@ -1,8 +1,13 @@
 /**
  * Auth Guard Component
- * Chặn truy cập trái phép bằng cách kiểm tra role từ localStorage
+ * Chặn truy cập trái phép bằng cách kiểm tra roles[] từ localStorage
  * Nếu user chưa đăng nhập → redirect về /login
  * Nếu user không đúng role → redirect về /403
+ *
+ * Hỗ trợ alias map giữa BE roles và FE aliases:
+ *   - STAFF (BE) → receptionist (FE)
+ *   - NURSE (BE) → doctor (FE)
+ *   - SUPER_ADMIN/SUPERADMIN → admin
  */
 
 "use client";
@@ -14,6 +19,36 @@ import { AUTH_CONFIG } from "@/config";
 interface AuthGuardProps {
     children: ReactNode;
     allowedRoles: string[];
+}
+
+/**
+ * Map BE role name → FE aliases (lowercase, có thể có nhiều alias)
+ */
+const ROLE_ALIAS_MAP: Record<string, string[]> = {
+    admin: ["admin", "super_admin", "superadmin"],
+    super_admin: ["admin", "super_admin", "superadmin"],
+    superadmin: ["admin", "super_admin", "superadmin"],
+    doctor: ["doctor", "nurse"],
+    nurse: ["doctor", "nurse"],
+    pharmacist: ["pharmacist"],
+    receptionist: ["receptionist", "staff", "cashier"],
+    staff: ["receptionist", "staff", "cashier"],
+    cashier: ["receptionist", "staff", "cashier"],
+    patient: ["patient"],
+};
+
+/**
+ * Mở rộng danh sách roles của user thành tất cả aliases có thể có
+ */
+function expandUserRoles(roles: string[]): string[] {
+    const expanded = new Set<string>();
+    roles.forEach(r => {
+        const lower = r.toLowerCase();
+        expanded.add(lower);
+        const aliases = ROLE_ALIAS_MAP[lower] || [];
+        aliases.forEach(a => expanded.add(a));
+    });
+    return Array.from(expanded);
 }
 
 export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
@@ -35,10 +70,24 @@ export function AuthGuard({ children, allowedRoles }: AuthGuardProps) {
                 }
 
                 const user = JSON.parse(userStr);
-                const userRole = (user.role || "").toLowerCase();
 
-                // Không đúng role → về 403
-                if (!allowedRoles.includes(userRole)) {
+                // Lấy tất cả roles của user (hỗ trợ cả roles[] lẫn role đơn cũ)
+                let userRoles: string[] = [];
+                if (Array.isArray(user.roles) && user.roles.length > 0) {
+                    userRoles = user.roles.map((r: string) => r.toLowerCase());
+                } else if (user.role) {
+                    userRoles = [user.role.toLowerCase()];
+                }
+
+                // Mở rộng roles thông qua alias map (STAFF ↔ receptionist, NURSE ↔ doctor, ...)
+                const expandedUserRoles = expandUserRoles(userRoles);
+
+                // Kiểm tra xem user có ít nhất 1 role match với allowedRoles (cả 2 đều expand)
+                const allowedLower = allowedRoles.map(r => r.toLowerCase());
+                const expandedAllowed = expandUserRoles(allowedLower);
+                const hasAccess = expandedUserRoles.some(r => expandedAllowed.includes(r));
+
+                if (!hasAccess) {
                     router.replace("/403");
                     return;
                 }

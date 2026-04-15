@@ -8,12 +8,32 @@
  */
 
 // ============================================
-// API Configuration
-// Cấu hình kết nối API Backend
+// Environment Detection
 // ============================================
+export const ENV = {
+    // 'development' | 'production' | 'test'
+    NODE_ENV: process.env.NODE_ENV || 'development',
+    // Custom env flag
+    APP_ENV: process.env.NEXT_PUBLIC_ENV || process.env.NODE_ENV || 'development',
+    IS_DEV: (process.env.NEXT_PUBLIC_ENV || process.env.NODE_ENV) === 'development',
+    IS_PROD: (process.env.NEXT_PUBLIC_ENV || process.env.NODE_ENV) === 'production',
+};
+
+// ============================================
+// API Configuration — Tự động switch theo môi trường
+//
+// Priority:
+//   1. NEXT_PUBLIC_API_URL từ .env.local (override thủ công)
+//   2. NEXT_PUBLIC_API_URL từ .env.development / .env.production (auto load)
+//   3. Fallback mặc định theo NODE_ENV
+// ============================================
+const DEFAULT_DEV_API = 'http://160.250.186.97:3000';
+const DEFAULT_PROD_API = 'https://dev.thanhhaishopwebsite.id.vn';
+
 export const API_CONFIG = {
-    // URL của Backend API
-    BASE_URL: process.env.NEXT_PUBLIC_API_URL || (process.env.NODE_ENV === 'development' ? 'http://localhost:3000' : 'https://dev.thanhhaishopwebsite.id.vn'),
+    // URL của Backend API — tự động chọn theo môi trường
+    BASE_URL: process.env.NEXT_PUBLIC_API_URL
+        || (ENV.IS_PROD ? DEFAULT_PROD_API : DEFAULT_DEV_API),
 
     // Thời gian timeout cho mỗi request (30 giây)
     TIMEOUT: 30000,
@@ -21,6 +41,12 @@ export const API_CONFIG = {
     // Số lần thử lại khi request thất bại
     RETRY_COUNT: 3,
 };
+
+// Log API URL khi khởi động (dev mode only)
+if (typeof window !== 'undefined' && ENV.IS_DEV) {
+    // eslint-disable-next-line no-console
+    console.log(`%c[EHealth] API: ${API_CONFIG.BASE_URL} (${ENV.APP_ENV})`, 'color:#3C81C6;font-weight:bold');
+}
 
 // ============================================
 // App Configuration  

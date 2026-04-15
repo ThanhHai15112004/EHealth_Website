@@ -1,19 +1,17 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import axiosClient from "@/api/axiosClient";
 import { PROFILE_ENDPOINTS, PATIENT_ENDPOINTS } from "@/api/endpoints";
+import { getProfileSessions, deleteProfileSession } from "@/services/authService";
 import { validateName, validatePhone, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
-import { getPatientsByAccountId } from "@/services/patientService";
 
 const TABS = [
     { id: "personal", label: "Thông tin cá nhân", icon: "person" },
     { id: "family", label: "Người thân", icon: "group" },
-    { id: "history", label: "Lịch sử khám", icon: "history" },
     { id: "insurance", label: "Bảo hiểm", icon: "health_and_safety" },
-    { id: "results", label: "Kết quả", icon: "lab_profile" },
     { id: "security", label: "Bảo mật", icon: "lock" },
 ];
 
@@ -35,23 +33,12 @@ interface FamilyMember {
     dob: string;
     gender: string;
     relation: string;
-    relationTypeId?: string;
     phone: string;
-}
-
-interface RelationType {
-    relation_types_id: string;
-    code: string;
-    name: string;
-    description?: string;
-    is_active: boolean;
 }
 
 export default function ProfilePage() {
     const { user, updateUser } = useAuth();
     const { showToast } = useToast();
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
     const [activeTab, setActiveTab] = useState("personal");
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
@@ -67,64 +54,15 @@ export default function ProfilePage() {
     });
     const [familyMembers, setFamilyMembers] = useState<FamilyMember[]>([]);
     const [showAddFamily, setShowAddFamily] = useState(false);
-    const [primaryPatientId, setPrimaryPatientId] = useState<string | null>(null);
     const [newFamily, setNewFamily] = useState<Partial<FamilyMember>>({ name: "", dob: "", gender: "male", relation: "", phone: "" });
-    const [relationTypes, setRelationTypes] = useState<RelationType[]>([]);
-    const [isEditFamily, setIsEditFamily] = useState(false);
-    const [editFamilyId, setEditFamilyId] = useState<string | null>(null);
 
     // Password change
     const [passwords, setPasswords] = useState({ current: "", new: "", confirm: "" });
     const [errors, setErrors] = useState<Record<string, string>>({});
 
-    const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (!file) return;
-
-        if (!file.type.startsWith('image/')) {
-            showToast("Vui lòng chọn file hình ảnh", "error");
-            return;
-        }
-
-        if (file.size > 5 * 1024 * 1024) {
-            showToast("Kích thước ảnh không được vượt quá 5MB", "error");
-            return;
-        }
-
-        try {
-            setIsUploadingAvatar(true);
-            const formData = new FormData();
-            formData.append('avatar', file);
-
-            const res = await axiosClient.post(PROFILE_ENDPOINTS.AVATAR, formData, {
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                },
-            });
-
-            const data = res.data?.data || res.data;
-            let avatarUrl = data?.avatarUrl || data?.avatar_url || data?.url || data?.file_path;
-            if (Array.isArray(avatarUrl)) {
-                 avatarUrl = avatarUrl[0]?.url || avatarUrl[0];
-            }
-
-            if ((res.data?.success || res.data?.status === 'success') && avatarUrl) {
-                setProfile(prev => ({ ...prev, avatar: avatarUrl }));
-                updateUser({ avatar: avatarUrl });
-                showToast("Cập nhật ảnh đại diện thành công", "success");
-            } else {
-                throw new Error("Lỗi khi kết nối hoặc URL rỗng");
-            }
-        } catch (error: any) {
-            console.error("Upload avatar error:", error);
-            showToast(error.response?.data?.message || "Lỗi khi tải ảnh lên", "error");
-        } finally {
-            setIsUploadingAvatar(false);
-            if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-            }
-        }
-    };
+    // Sessions
+    const [sessions, setSessions] = useState<any[]>([]);
+    const [sessionsLoading, setSessionsLoading] = useState(false);
 
     const validateProfile = (): boolean => {
         const errs: Record<string, string> = {};
@@ -152,73 +90,40 @@ export default function ProfilePage() {
 
     useEffect(() => {
         loadProfile();
-        loadRelationTypes();
     }, []);
 
-    const loadRelationTypes = async () => {
-        try {
-            const res = await axiosClient.get('/api/relation-types');
-            const data = res.data?.data || res.data;
-            if (Array.isArray(data)) {
-                setRelationTypes(data.filter((rt: RelationType) => rt.is_active));
-            }
-        } catch (err) {
-            console.error('Failed to load relation types', err);
-        }
-    };
-
+    // Load sessions khi chuyển sang tab security
     useEffect(() => {
-        if (user?.id) {
-            initFamilyMembers();
+        if (activeTab === "security") {
+            loadSessions();
         }
-    }, [user?.id]);
+    }, [activeTab]);
 
-    const initFamilyMembers = async () => {
-        if (!user?.id) return;
+    const loadSessions = async () => {
+        setSessionsLoading(true);
         try {
-            const patientsRes = await getPatientsByAccountId(user.id);
-            if (patientsRes.success && patientsRes.data && patientsRes.data.length > 0) {
-                const pId = patientsRes.data[0].id; // assuming first is primary
-                setPrimaryPatientId(pId);
-                await loadFamilyMembers(pId);
+            const res = await getProfileSessions();
+            const data = res?.data || res?.sessions || [];
+            setSessions(Array.isArray(data) ? data : []);
+        } catch {
+            setSessions([]);
+        } finally {
+            setSessionsLoading(false);
+        }
+    };
+
+    const handleRevokeSession = async (sessionId: string) => {
+        try {
+            const result = await deleteProfileSession(sessionId);
+            if (result.success) {
+                setSessions(prev => prev.filter(s => (s.id || s.sessionId) !== sessionId));
+                showToast("Đã thu hồi phiên đăng nhập", "success");
             } else {
-                setFamilyMembers([]);
+                showToast(result.message || "Thu hồi thất bại", "error");
             }
-        } catch (err: any) {
-            console.error("Failed to init family members", err);
+        } catch {
+            showToast("Đã xảy ra lỗi. Vui lòng thử lại.", "error");
         }
-    };
-
-    const loadFamilyMembers = async (pId: string = primaryPatientId as string) => {
-        if (!pId) return;
-        try {
-            const res = await axiosClient.get(PATIENT_ENDPOINTS.GET_ALL_RELATIONS(pId));
-            const dataObj = res.data?.data || res.data;
-            const membersList = Array.isArray(dataObj) ? dataObj : (Array.isArray(dataObj?.data) ? dataObj.data : []);
-            
-            setFamilyMembers(membersList.map((r: any) => ({
-                id: r.patient_contacts_id || r.relation_id || r.id,
-                name: r.contact_name || r.full_name || r.name,
-                dob: r.dob || "",
-                gender: r.gender || "MALE",
-                relation: r.relation_type_name || r.relationship || r.relation,
-                relationTypeId: r.relation_type_id,
-                phone: r.phone_number || r.phone || "",
-            })));
-        } catch (err: any) {
-            console.error("Failed to load family members", err);
-        }
-    };
-
-    /** Convert ISO/any date string to yyyy-MM-dd for <input type="date"> */
-    const toDateInputValue = (raw: string | undefined | null): string => {
-        if (!raw) return "";
-        // Already yyyy-MM-dd
-        if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-        // ISO string like "2000-04-11T17:00:00.000Z"
-        const d = new Date(raw);
-        if (isNaN(d.getTime())) return "";
-        return d.toISOString().split("T")[0];
     };
 
     const loadProfile = async () => {
@@ -230,14 +135,12 @@ export default function ProfilePage() {
                     fullName: data.full_name || data.fullName || user?.fullName || "",
                     phone: data.phone_number || data.phone || user?.phone || "",
                     email: data.email || user?.email || "",
-                    dob: toDateInputValue(data.dob || data.dateOfBirth || data.date_of_birth),
+                    dob: data.dob || data.dateOfBirth || "",
                     gender: data.gender || "MALE",
                     idNumber: data.identity_card_number || data.idNumber || data.citizenId || "",
                     insuranceNumber: data.insuranceNumber || data.healthInsuranceId || "",
                     address: data.address || "",
-                    avatar: (Array.isArray(data.avatar_url) && data.avatar_url.length > 0) 
-                        ? data.avatar_url[data.avatar_url.length - 1].url 
-                        : (data.avatar_url?.url || data.avatar),
+                    avatar: data.avatar_url?.[0]?.url || data.avatar,
                 });
             }
         } catch { /* use defaults */ }
@@ -290,68 +193,18 @@ export default function ProfilePage() {
         }
     };
 
-    const handleEditClick = (fm: FamilyMember) => {
-        setNewFamily({ 
-            name: fm.name, 
-            dob: fm.dob, 
-            gender: fm.gender, 
-            relation: fm.relationTypeId || fm.relation, 
-            phone: fm.phone 
-        });
-        setEditFamilyId(fm.id);
-        setIsEditFamily(true);
-        setShowAddFamily(true);
-    };
-
-    const handleDeleteFamily = async (id: string) => {
-        if (!window.confirm("Bạn có chắc muốn xoá người thân này?")) return;
+    const handleAddFamily = async () => {
+        if (!newFamily.name || !newFamily.relation) return;
         try {
-            if (primaryPatientId) {
-                await axiosClient.delete(PATIENT_ENDPOINTS.DELETE_RELATION(primaryPatientId, id));
-                await loadFamilyMembers(primaryPatientId);
-            } else {
-                setFamilyMembers(p => p.filter(fm => fm.id !== id));
+            if (user?.id) {
+                await axiosClient.post(PATIENT_ENDPOINTS.ADD_RELATION(user.id), newFamily);
             }
-            showToast("Đã xoá người thân", "success");
-        } catch (err: any) {
-            showToast(err?.response?.data?.message || "Xoá người thân thất bại", "error");
-        }
-    };
-
-    const handleSaveFamily = async () => {
-        if (!newFamily.name || !newFamily.relation || !newFamily.phone) {
-            showToast("Vui lòng điền đầy đủ họ tên, mối quan hệ và số điện thoại.", "error");
-            return;
-        }
-        try {
-            if (primaryPatientId) {
-                const payload = {
-                    patient_id: primaryPatientId,
-                    relation_type_id: newFamily.relation,
-                    contact_name: newFamily.name,
-                    phone_number: newFamily.phone,
-                    is_emergency_contact: false,
-                };
-                if (isEditFamily && editFamilyId) {
-                    await axiosClient.put(PATIENT_ENDPOINTS.EDIT_RELATION(primaryPatientId, editFamilyId), payload);
-                } else {
-                    await axiosClient.post(PATIENT_ENDPOINTS.ADD_RELATION(primaryPatientId), payload);
-                }
-                await loadFamilyMembers(primaryPatientId);
-            } else {
-                if (isEditFamily && editFamilyId) {
-                    setFamilyMembers(p => p.map(fm => fm.id === editFamilyId ? { ...fm, ...newFamily, relationTypeId: newFamily.relation } as FamilyMember : fm));
-                } else {
-                    setFamilyMembers(prev => [...prev, { ...newFamily, id: `fm-${Date.now()}` } as FamilyMember]);
-                }
-            }
+            setFamilyMembers(prev => [...prev, { ...newFamily, id: `fm-${Date.now()}` } as FamilyMember]);
             setShowAddFamily(false);
             setNewFamily({ name: "", dob: "", gender: "male", relation: "", phone: "" });
-            setIsEditFamily(false);
-            setEditFamilyId(null);
-            showToast(isEditFamily ? "Cập nhật thành công!" : "Thêm người thân thành công!", "success");
+            showToast("Thêm người thân thành công!", "success");
         } catch (err: any) {
-            const msg = err?.response?.data?.message || "Thao tác thất bại.";
+            const msg = err?.response?.data?.message || "Thêm người thân thất bại.";
             showToast(msg, "error");
         }
     };
@@ -371,32 +224,12 @@ export default function ProfilePage() {
             {/* Profile card */}
             <div className="bg-white rounded-2xl border border-gray-100 p-6 flex flex-col sm:flex-row items-center sm:items-start gap-5">
                 <div className="relative">
-                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-[#3C81C6]/20 overflow-hidden">
-                        {profile.avatar ? (
-                            <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
-                        ) : (
-                            profile.fullName?.charAt(0)?.toUpperCase() || "U"
-                        )}
-                        {isUploadingAvatar && (
-                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                            </div>
-                        )}
+                    <div className="w-20 h-20 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-[#3C81C6]/20">
+                        {profile.fullName?.charAt(0)?.toUpperCase() || "U"}
                     </div>
-                    <button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploadingAvatar}
-                        className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 shadow-sm transition-colors disabled:opacity-50"
-                    >
+                    <button className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-white border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50 shadow-sm transition-colors">
                         <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>edit</span>
                     </button>
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={handleAvatarUpload}
-                        accept="image/*"
-                        className="hidden"
-                    />
                 </div>
                 <div className="text-center sm:text-left">
                     <h2 className="text-xl font-bold text-gray-900">{profile.fullName || "Bệnh nhân"}</h2>
@@ -446,7 +279,7 @@ export default function ProfilePage() {
                             ) : (
                                 <div className="flex gap-2">
                                     <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm font-medium text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50">Huỷ</button>
-                                    <button onClick={handleSave} disabled={saving} aria-label="Lưu thông tin"
+                                    <button onClick={handleSave} disabled={saving}
                                         className="px-4 py-2 text-sm font-semibold text-white bg-[#3C81C6] rounded-xl hover:bg-[#2a6da8] disabled:opacity-50 transition-colors">
                                         {saving ? "Đang lưu..." : "Lưu"}
                                     </button>
@@ -485,12 +318,7 @@ export default function ProfilePage() {
                     <div>
                         <div className="flex items-center justify-between mb-6">
                             <h3 className="text-lg font-bold text-gray-900">Người thân</h3>
-                            <button onClick={() => {
-                                setIsEditFamily(false);
-                                setEditFamilyId(null);
-                                setNewFamily({ name: "", dob: "", gender: "male", relation: "", phone: "" });
-                                setShowAddFamily(true);
-                            }}
+                            <button onClick={() => setShowAddFamily(true)}
                                 className="px-4 py-2 text-sm font-medium text-[#3C81C6] bg-[#3C81C6]/[0.06] rounded-xl hover:bg-[#3C81C6]/[0.12] transition-colors flex items-center gap-1.5">
                                 <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>person_add</span>
                                 Thêm người thân
@@ -504,55 +332,36 @@ export default function ProfilePage() {
                                 <p className="text-gray-400 text-sm mt-1">Thêm người thân để đặt lịch khám hộ</p>
                             </div>
                         ) : (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-3">
                                 {familyMembers.map(fm => (
-                                    <div key={fm.id} className="flex flex-col p-5 border border-gray-100 rounded-2xl bg-white hover:border-[#3C81C6]/30 hover:shadow-md hover:shadow-[#3C81C6]/5 transition-all group">
-                                        <div className="flex items-start justify-between mb-4">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#3C81C6]/5 text-[#3C81C6] flex items-center justify-center">
-                                                    <span className="material-symbols-outlined" style={{ fontSize: "24px" }}>
-                                                        {fm.gender === "FEMALE" ? "face_3" : "face"}
-                                                    </span>
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-base font-bold text-gray-900 leading-tight">{fm.name}</h4>
-                                                    <div className="flex items-center gap-2 mt-1.5">
-                                                        <span className="px-2 py-0.5 text-xs font-medium bg-[#3C81C6]/10 text-[#3C81C6] rounded-md">
-                                                            {fm.relation}
-                                                        </span>
-                                                        <span className="w-1 h-1 rounded-full bg-gray-300"></span>
-                                                        <span className="text-xs text-gray-500 font-medium">
-                                                            {fm.gender === "MALE" ? "Nam" : fm.gender === "FEMALE" ? "Nữ" : "Khác"}
-                                                        </span>
-                                                    </div>
-                                                </div>
+                                    <div key={fm.id} className="flex items-center justify-between p-4 border border-gray-100 rounded-xl hover:border-[#3C81C6]/20 transition-colors">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center">
+                                                <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "20px" }}>person</span>
                                             </div>
-                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => handleEditClick(fm)} className="p-2 rounded-lg text-gray-400 hover:text-[#3C81C6] hover:bg-[#3C81C6]/10 transition-colors" title="Sửa">
-                                                    <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>edit</span>
-                                                </button>
-                                                <button onClick={() => handleDeleteFamily(fm.id)} className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors" title="Xóa">
-                                                    <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>delete</span>
-                                                </button>
+                                            <div>
+                                                <p className="text-sm font-semibold text-gray-900">{fm.name}</p>
+                                                <p className="text-xs text-gray-400">{fm.relation} • {fm.gender === "MALE" ? "Nam" : "Nữ"}</p>
                                             </div>
                                         </div>
-                                        
-                                        <div className="pt-4 border-t border-gray-50 mt-auto">
-                                            <div className="flex items-center gap-2 text-sm text-gray-600">
-                                                <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "18px" }}>call</span>
-                                                {fm.phone || "Chưa cập nhật số điện thoại"}
-                                            </div>
+                                        <div className="flex gap-2">
+                                            <button className="p-2 rounded-lg text-gray-400 hover:text-[#3C81C6] hover:bg-[#3C81C6]/[0.06] transition-colors">
+                                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>edit</span>
+                                            </button>
+                                            <button className="p-2 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>delete</span>
+                                            </button>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         )}
 
-                        {/* Add/Edit family modal */}
+                        {/* Add family modal */}
                         {showAddFamily && (
                             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowAddFamily(false)}>
                                 <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                                    <h3 className="text-lg font-bold text-gray-900 mb-4">{isEditFamily ? "Sửa thông tin" : "Thêm người thân"}</h3>
+                                    <h3 className="text-lg font-bold text-gray-900 mb-4">Thêm người thân</h3>
                                     <div className="space-y-3">
                                         <ProfileField label="Họ tên" icon="person" value={newFamily.name || ""} onChange={v => setNewFamily(p => ({ ...p, name: v }))} />
                                         <ProfileField label="Số điện thoại" icon="call" value={newFamily.phone || ""} onChange={v => setNewFamily(p => ({ ...p, phone: v }))} />
@@ -562,43 +371,21 @@ export default function ProfilePage() {
                                             <select value={newFamily.relation || ""} onChange={e => setNewFamily(p => ({ ...p, relation: e.target.value }))}
                                                 className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30">
                                                 <option value="">— Chọn —</option>
-                                                {relationTypes.length > 0 ? (
-                                                    relationTypes.map(rt => (
-                                                        <option key={rt.relation_types_id} value={rt.relation_types_id}>
-                                                            {rt.name}
-                                                        </option>
-                                                    ))
-                                                ) : (
-                                                    <>
-                                                        <option value="Vợ/Chồng">Vợ/Chồng</option>
-                                                        <option value="Con">Con</option>
-                                                        <option value="Cha/Mẹ">Cha/Mẹ</option>
-                                                        <option value="Anh/Chị/Em">Anh/Chị/Em</option>
-                                                        <option value="Khác">Khác</option>
-                                                    </>
-                                                )}
+                                                <option value="Vợ/Chồng">Vợ/Chồng</option>
+                                                <option value="Con">Con</option>
+                                                <option value="Cha/Mẹ">Cha/Mẹ</option>
+                                                <option value="Anh/Chị/Em">Anh/Chị/Em</option>
+                                                <option value="Khác">Khác</option>
                                             </select>
                                         </div>
                                     </div>
                                     <div className="flex gap-3 mt-6">
                                         <button onClick={() => setShowAddFamily(false)} className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50">Huỷ</button>
-                                        <button onClick={handleSaveFamily} className="flex-1 py-2.5 text-sm font-semibold text-white bg-[#3C81C6] rounded-xl hover:bg-[#2a6da8] transition-colors">{isEditFamily ? "Lưu thay đổi" : "Thêm"}</button>
+                                        <button onClick={handleAddFamily} className="flex-1 py-2.5 text-sm font-semibold text-white bg-[#3C81C6] rounded-xl hover:bg-[#2a6da8] transition-colors">Thêm</button>
                                     </div>
                                 </div>
                             </div>
                         )}
-                    </div>
-                )}
-
-                {/* ===== Medical History ===== */}
-                {activeTab === "history" && (
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-900 mb-4">Lịch sử khám bệnh</h3>
-                        <div className="text-center py-12">
-                            <span className="material-symbols-outlined text-gray-300 mb-3" style={{ fontSize: "56px" }}>history</span>
-                            <p className="text-gray-500 font-medium">Lịch sử khám sẽ được cập nhật tự động</p>
-                            <p className="text-gray-400 text-sm mt-1">Sau mỗi lần khám tại EHealth, kết quả sẽ được lưu tại đây</p>
-                        </div>
                     </div>
                 )}
 
@@ -628,33 +415,81 @@ export default function ProfilePage() {
                     </div>
                 )}
 
-                {/* ===== Results ===== */}
-                {activeTab === "results" && (
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-900 mb-4">Kết quả khám & xét nghiệm</h3>
-                        <div className="text-center py-12">
-                            <span className="material-symbols-outlined text-gray-300 mb-3" style={{ fontSize: "56px" }}>lab_profile</span>
-                            <p className="text-gray-500 font-medium">Chưa có kết quả xét nghiệm</p>
-                            <p className="text-gray-400 text-sm mt-1">Kết quả sẽ được cập nhật sau mỗi lần khám</p>
-                        </div>
-                    </div>
-                )}
-
                 {/* ===== Security ===== */}
                 {activeTab === "security" && (
-                    <div>
-                        <h3 className="text-lg font-bold text-gray-900 mb-6">Bảo mật tài khoản</h3>
-                        <div className="max-w-md space-y-4">
-                            <ProfileField label="Mật khẩu hiện tại" icon="lock" value={passwords.current} onChange={v => setPasswords(p => ({ ...p, current: v }))} type="password" />
-                            <ProfileField label="Mật khẩu mới" icon="lock" value={passwords.new} onChange={v => setPasswords(p => ({ ...p, new: v }))} type="password" />
-                            <ProfileField label="Xác nhận mật khẩu mới" icon="lock" value={passwords.confirm} onChange={v => setPasswords(p => ({ ...p, confirm: v }))} type="password" />
-                            {passwords.new && passwords.confirm && passwords.new !== passwords.confirm && (
-                                <p className="text-xs text-red-500">Mật khẩu xác nhận không khớp</p>
+                    <div className="space-y-8">
+                        {/* Đổi mật khẩu */}
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-900 mb-4">Đổi mật khẩu</h3>
+                            <div className="max-w-md space-y-4">
+                                <ProfileField label="Mật khẩu hiện tại" icon="lock" value={passwords.current} onChange={v => setPasswords(p => ({ ...p, current: v }))} type="password" />
+                                <ProfileField label="Mật khẩu mới" icon="lock" value={passwords.new} onChange={v => setPasswords(p => ({ ...p, new: v }))} type="password" />
+                                <ProfileField label="Xác nhận mật khẩu mới" icon="lock" value={passwords.confirm} onChange={v => setPasswords(p => ({ ...p, confirm: v }))} type="password" />
+                                {passwords.new && passwords.confirm && passwords.new !== passwords.confirm && (
+                                    <p className="text-xs text-red-500">Mật khẩu xác nhận không khớp</p>
+                                )}
+                                <button onClick={handleChangePassword} disabled={!passwords.current || !passwords.new || passwords.new !== passwords.confirm || saving}
+                                    className="px-5 py-2.5 text-sm font-semibold text-white bg-[#3C81C6] rounded-xl hover:bg-[#2a6da8] disabled:opacity-50 transition-colors">
+                                    {saving ? "Đang xử lý..." : "Đổi mật khẩu"}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Phiên đăng nhập */}
+                        <div>
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-bold text-gray-900">Phiên đăng nhập</h3>
+                                <button onClick={loadSessions} disabled={sessionsLoading}
+                                    className="p-2 rounded-lg text-gray-400 hover:text-[#3C81C6] hover:bg-[#3C81C6]/[0.06] transition-colors">
+                                    <span className={`material-symbols-outlined ${sessionsLoading ? "animate-spin" : ""}`} style={{ fontSize: "18px" }}>refresh</span>
+                                </button>
+                            </div>
+
+                            {sessionsLoading ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <div className="w-6 h-6 border-2 border-[#3C81C6] border-t-transparent rounded-full animate-spin" />
+                                </div>
+                            ) : sessions.length === 0 ? (
+                                <div className="text-center py-8">
+                                    <span className="material-symbols-outlined text-gray-300 mb-2" style={{ fontSize: "48px" }}>devices</span>
+                                    <p className="text-gray-500 text-sm">Không có phiên đăng nhập nào khác</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {sessions.map((session: any) => {
+                                        const sessionId = session.id || session.sessionId;
+                                        return (
+                                            <div key={sessionId} className="flex items-center justify-between p-4 border border-gray-100 rounded-xl hover:border-[#3C81C6]/20 transition-colors">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-10 h-10 rounded-full bg-gray-50 border border-gray-200 flex items-center justify-center">
+                                                        <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "20px" }}>
+                                                            {session.deviceName?.toLowerCase().includes("mobile") ? "phone_android" : "computer"}
+                                                        </span>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-sm font-semibold text-gray-900">
+                                                            {session.deviceName || session.clientInfo?.deviceName || "Thiết bị không xác định"}
+                                                        </p>
+                                                        <p className="text-xs text-gray-400">
+                                                            {session.ipAddress || session.ip || "IP không xác định"}
+                                                            {session.lastActive && ` • ${new Date(session.lastActive).toLocaleDateString("vi-VN")}`}
+                                                            {session.isCurrent && <span className="ml-2 text-green-600 font-medium">• Phiên hiện tại</span>}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                {!session.isCurrent && (
+                                                    <button
+                                                        onClick={() => handleRevokeSession(sessionId)}
+                                                        className="px-3 py-1.5 text-xs font-medium text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-colors"
+                                                    >
+                                                        Thu hồi
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             )}
-                            <button onClick={handleChangePassword} disabled={!passwords.current || !passwords.new || passwords.new !== passwords.confirm || saving}
-                                className="px-5 py-2.5 text-sm font-semibold text-white bg-[#3C81C6] rounded-xl hover:bg-[#2a6da8] disabled:opacity-50 transition-colors">
-                                {saving ? "Đang xử lý..." : "Đổi mật khẩu"}
-                            </button>
                         </div>
                     </div>
                 )}

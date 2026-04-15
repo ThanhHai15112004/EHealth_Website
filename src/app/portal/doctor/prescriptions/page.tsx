@@ -3,18 +3,22 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { UI_TEXT } from "@/constants/ui-text";
-import { MOCK_DOCTOR_PRESCRIPTIONS } from "@/lib/mock-data/doctor";
 import { prescriptionService } from "@/services/prescriptionService";
 import { useAuth } from "@/contexts/AuthContext";
+import { AIPrescriptionAudit } from "@/components/portal/ai";
+import { usePageAIContext } from "@/hooks/usePageAIContext";
 
 type StatusFilter = "all" | "pending" | "completed" | "cancelled";
 
-type Prescription = typeof MOCK_DOCTOR_PRESCRIPTIONS[0];
+type Prescription = {
+    id: string; patientName: string; patientGender?: string; patientAge?: number;
+    patientAvatar?: string; diagnosis: string; date: string; medicines: string; status: string;
+};
 
 export default function PrescriptionsPage() {
     const router = useRouter();
     const { user } = useAuth();
-    const [prescriptions, setPrescriptions] = useState(MOCK_DOCTOR_PRESCRIPTIONS);
+    const [prescriptions, setPrescriptions] = useState<Prescription[]>([]);
 
     useEffect(() => {
         if (!user?.id) return;
@@ -24,18 +28,21 @@ export default function PrescriptionsPage() {
                 const items: any[] = res?.data?.data ?? res?.data ?? res ?? [];
                 if (Array.isArray(items) && items.length > 0) {
                     setPrescriptions(items.map((p: any) => ({
-                        ...MOCK_DOCTOR_PRESCRIPTIONS[0],
-                        id: p.id ?? p.prescriptionId,
+                        id: p.id ?? p.prescriptionId ?? "",
                         patientName: p.patientName ?? p.patient?.fullName ?? "",
+                        patientGender: p.patientGender ?? p.patient?.gender ?? "",
+                        patientAge: p.patientAge ?? p.patient?.age ?? undefined,
+                        patientAvatar: p.patientAvatar ?? p.patient?.avatar ?? undefined,
                         medicines: Array.isArray(p.items) ? p.items.map((m: any) => m.drugName ?? m.name ?? "").join(", ") : p.medicines ?? "",
                         status: p.status?.toLowerCase() ?? "pending",
                         date: p.createdAt?.split("T")[0] ?? p.date ?? "",
                         diagnosis: p.diagnosis ?? "",
-                    })) as typeof MOCK_DOCTOR_PRESCRIPTIONS);
+                    })));
                 }
             })
-            .catch(() => {/* keep mock */});
+            .catch((err) => { console.error("Lỗi tải đơn thuốc:", err); setPrescriptions([]); });
     }, [user?.id]);
+    usePageAIContext({ pageKey: "prescriptions" });
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
     const [selectedMonth, setSelectedMonth] = useState("this_month");
@@ -172,6 +179,16 @@ export default function PrescriptionsPage() {
                         </button>
                     </div>
                 </div>
+
+                {/* AI Prescription Safety Audit */}
+                <AIPrescriptionAudit
+                    prescriptions={prescriptions.map(p => ({
+                        id: p.id,
+                        patientName: p.patientName,
+                        medicines: p.medicines,
+                        status: p.status,
+                    }))}
+                />
 
                 {/* Stats Card */}
                 <div className="bg-gradient-to-r from-[#3C81C6] to-[#2a6da8] rounded-xl p-6 text-white shadow-lg shadow-blue-200 dark:shadow-none">

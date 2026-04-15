@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
-import { MOCK_USERS } from "@/lib/mock-data/admin";
 import { ROLE_LABELS, ROLE_COLORS, type Role } from "@/constants/roles";
 import { USER_STATUS } from "@/constants/status";
 import type { User } from "@/types";
@@ -25,8 +24,15 @@ export default function UserDetailPage() {
     const [activeTab, setActiveTab] = useState("overview");
 
     useEffect(() => {
-        const found = MOCK_USERS.find((u) => u.id === userId);
-        setUser(found || null);
+        let cancelled = false;
+        import("@/services/userService").then(({ getUserById }) => {
+            getUserById(userId).then((res: any) => {
+                if (cancelled) return;
+                const data = res?.data?.data ?? res?.data ?? res;
+                setUser(data || null);
+            }).catch(() => { if (!cancelled) setUser(null); });
+        });
+        return () => { cancelled = true; };
     }, [userId]);
 
     if (!user) {

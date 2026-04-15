@@ -68,7 +68,7 @@ export default function DocumentsTab({ profile }: TabProps) {
     const handleDelete = async (docId: string) => {
         if (!window.confirm("Bạn có chắc chắn muốn xóa tài liệu này? Hành động này không thể hoàn tác.")) return;
         try {
-            await axiosClient.delete(DOCUMENT_ENDPOINTS.DELETE(docId));
+            await axiosClient.delete(DOCUMENT_ENDPOINTS.DELETE(profile.id.toString(), docId));
             alert("Đã xóa tài liệu thành công.");
             fetchDocuments();
         } catch (error) {
@@ -113,7 +113,7 @@ export default function DocumentsTab({ profile }: TabProps) {
             formData.append("document_type_id", fileType);
             formData.append("patient_id", patientId.toString());
 
-            await axiosClient.post(DOCUMENT_ENDPOINTS.UPLOAD(), formData, {
+            await axiosClient.post(DOCUMENT_ENDPOINTS.UPLOAD(patientId.toString()), formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data'
                 }

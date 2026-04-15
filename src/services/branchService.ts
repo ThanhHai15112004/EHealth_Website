@@ -1,35 +1,37 @@
-import axiosClient from '@/api/axiosClient';
-import { BRANCH_ENDPOINTS } from '@/api/endpoints';
+import axiosClient from "@/api/axiosClient";
+import { BRANCH_ENDPOINTS } from "@/api/endpoints";
+import { unwrap, unwrapList } from "@/api/response";
 
 export interface Branch {
-    id: string;
-    facilities_id?: string;
-    code?: string;
-    name: string;
-    address?: string;
-    phone?: string;
-    status?: 'active' | 'inactive';
-}
-
-export interface BranchListResponse {
-    data: Branch[];
+  id: string;
+  name: string;
+  code?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  facilityId?: string;
+  status?: "active" | "inactive";
+  createdAt?: string;
 }
 
 export const branchService = {
-    getList: (params?: { page?: number; limit?: number; search?: string; status?: string; facility_id?: string }): Promise<BranchListResponse> =>
-        axiosClient.get(BRANCH_ENDPOINTS.LIST, { params }).then(r => {
-            const result = r.data;
-            if (result && Array.isArray(result.data)) {
-                result.data = result.data.map((b: any) => ({ ...b, id: b.branches_id || b.id }));
-            }
-            return result;
-        }),
-    getDropdown: (): Promise<BranchListResponse> =>
-        axiosClient.get(BRANCH_ENDPOINTS.DROPDOWN).then(r => {
-            const result = r.data;
-            if (result && Array.isArray(result.data)) {
-                result.data = result.data.map((b: any) => ({ ...b, id: b.branches_id || b.id }));
-            }
-            return result;
-        })
+  getList: async (params?: any) => {
+    const res = await axiosClient.get(BRANCH_ENDPOINTS.LIST, { params });
+    return unwrapList(res);
+  },
+
+  getDropdown: async (params?: any) => {
+    const res = await axiosClient.get(BRANCH_ENDPOINTS.DROPDOWN, { params });
+    return unwrapList(res);
+  },
+
+  getDetail: async (id: string) => {
+    const res = await axiosClient.get(BRANCH_ENDPOINTS.DETAIL(id));
+    return unwrap(res);
+  },
+
+  updateStatus: async (id: string, data: any) => {
+    const res = await axiosClient.put(BRANCH_ENDPOINTS.STATUS(id), data);
+    return unwrap(res);
+  },
 };

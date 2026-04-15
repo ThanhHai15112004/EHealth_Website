@@ -5,22 +5,37 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { UI_TEXT } from "@/constants/ui-text";
 import { ROUTES } from "@/constants/routes";
-import { MOCK_PATIENT_QUEUE, MOCK_QUEUE_STATS } from "@/lib/mock-data/doctor";
 import { getAppointments } from "@/services/appointmentService";
 import { appointmentStatusService } from "@/services/appointmentStatusService";
 import { useAuth } from "@/contexts/AuthContext";
+import { AIQueuePriority, AIPreExamHint } from "@/components/portal/ai";
+import { usePageAIContext } from "@/hooks/usePageAIContext";
 
 type QueueStatus = "all" | "waiting" | "examining" | "completed" | "cancelled";
+type QueueItem = {
+    id: string; fullName: string; phone: string; gender: string;
+    dob: string; reason: string; status: string; priority: string;
+    waitTime: string; appointmentTime: string; queueNumber: number;
+    checkInTime: string; age: number; avatar?: string; allergies?: string[];
+};
+const DEFAULT_QUEUE_STATS = { waiting: 0, examining: 0, completed: 0, cancelled: 0, total: 0, remaining: 0, avgWaitTime: 0 };
 
 export default function QueuePage() {
     const router = useRouter();
     const { user } = useAuth();
     const [searchQuery, setSearchQuery] = useState("");
     const [statusFilter, setStatusFilter] = useState<QueueStatus>("all");
-    const [queue, setQueue] = useState(MOCK_PATIENT_QUEUE);
-    const [stats, setStats] = useState(MOCK_QUEUE_STATS);
+    const DEFAULT_STATS = DEFAULT_QUEUE_STATS;
+    const [queue, setQueue] = useState<QueueItem[]>([]);
+    const [stats, setStats] = useState(DEFAULT_STATS);
     const [currentPage, setCurrentPage] = useState(1);
     const ITEMS_PER_PAGE = 10;
+
+    // AI state
+    const [preExamPatient, setPreExamPatient] = useState<{ id: string; name: string } | null>(null);
+
+    // AI Copilot context
+    usePageAIContext({ pageKey: "queue" });
 
     useEffect(() => {
         if (!user?.id) return;
@@ -46,12 +61,12 @@ export default function QueuePage() {
                         queueNumber: a.queueNumber,
                         checkInTime: a.checkInTime,
                     }));
-                    setQueue(mapped.map((m: any) => ({ ...MOCK_PATIENT_QUEUE[0], ...m })) as typeof MOCK_PATIENT_QUEUE);
+                    setQueue(mapped as QueueItem[]);
                     const w = mapped.filter((q: any) => q.status === "waiting").length;
                     const e = mapped.filter((q: any) => q.status === "examining").length;
                     const c = mapped.filter((q: any) => q.status === "completed").length;
                     const x = mapped.filter((q: any) => q.status === "cancelled").length;
-                    setStats({ ...MOCK_QUEUE_STATS, waiting: w, examining: e, completed: c, cancelled: x, total: mapped.length, remaining: w + e });
+                    setStats({ ...DEFAULT_STATS, waiting: w, examining: e, completed: c, cancelled: x, total: mapped.length, remaining: w + e });
                 }
             })
             .catch(() => {
@@ -73,15 +88,15 @@ export default function QueuePage() {
                                 waitTime: a.waitTime ?? "—",
                                 appointmentTime: a.time ?? "",
                             }));
-                            setQueue(mapped.map((m: any) => ({ ...MOCK_PATIENT_QUEUE[0], ...m })) as typeof MOCK_PATIENT_QUEUE);
+                            setQueue(mapped as QueueItem[]);
                             const w = mapped.filter((q: any) => q.status === "waiting").length;
                             const e = mapped.filter((q: any) => q.status === "examining").length;
                             const c = mapped.filter((q: any) => q.status === "completed").length;
                             const x = mapped.filter((q: any) => q.status === "cancelled").length;
-                            setStats({ ...MOCK_QUEUE_STATS, waiting: w, examining: e, completed: c, cancelled: x, total: mapped.length, remaining: w + e });
+                            setStats({ ...DEFAULT_STATS, waiting: w, examining: e, completed: c, cancelled: x, total: mapped.length, remaining: w + e });
                         }
                     })
-                    .catch(() => {/* keep mock */});
+                    .catch(() => { setQueue([]); });
             });
     }, [user?.id]);
 
@@ -117,7 +132,7 @@ export default function QueuePage() {
         return filteredQueue.slice(startIndex, startIndex + ITEMS_PER_PAGE);
     }, [filteredQueue, currentPage, ITEMS_PER_PAGE]);
 
-    const handleViewCompleted = (patient: typeof MOCK_PATIENT_QUEUE[0]) => {
+    const handleViewCompleted = (patient: QueueItem) => {
         alert(
             `Thông tin bệnh nhân đã khám:\n\n` +
             `Họ tên: ${patient.fullName}\n` +
@@ -169,21 +184,38 @@ export default function QueuePage() {
         }
     };
 
-    const handleCallPatient = (patientId: string) => {
-        alert(`Đang gọi bệnh nhân ${patientId}...`);
+    const handleCallPatient = async (patientId: string) => {
+        try {
+            await appointmentStatusService.recall(patientId);
+        } catch { /* local fallback only */ }
     };
 
-    const handleStartExam = (patientId: string) => {
-        setQueue((prev) =>
-            prev.map((p) =>
-                p.id === patientId ? { ...p, status: "examining" } : p
-            )
-        );
-        router.push(`${ROUTES.PORTAL.DOCTOR.EXAMINATION}?patient=${patientId}`);
+    const handleStartExam = async (patientId: string) => {
+        const patient = queue.find(p => p.id === patientId);
+        // Call API start-exam
+        try {
+            await appointmentStatusService.startExam(patientId);
+        } catch { /* continue anyway */ }
+
+        if (patient) {
+            setPreExamPatient({ id: patientId, name: patient.fullName });
+            // Delay navigation to show AI hint briefly
+            setTimeout(() => {
+                setQueue((prev) =>
+                    prev.map((p) =>
+                        p.id === patientId ? { ...p, status: "examining" } : p
+                    )
+                );
+                router.push(`${ROUTES.PORTAL.DOCTOR.EXAMINATION}?patient=${patientId}`);
+            }, 2000);
+        } else {
+            router.push(`${ROUTES.PORTAL.DOCTOR.EXAMINATION}?patient=${patientId}`);
+        }
     };
 
     return (
         <div className="p-6 md:p-8">
+            <h1 className="sr-only">Hàng đợi bệnh nhân</h1>
             <div className="max-w-7xl mx-auto space-y-6">
                 {/* Page Header */}
                 <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
@@ -297,6 +329,29 @@ export default function QueuePage() {
                         </div>
                     </div>
                 </div>
+
+                {/* AI Queue Priority & Anomaly Alerts */}
+                <AIQueuePriority
+                    queue={queue.map(p => ({
+                        id: p.id,
+                        fullName: p.fullName,
+                        age: p.age,
+                        reason: p.reason,
+                        status: p.status,
+                        waitTime: (p as any).waitTime,
+                        checkInTime: p.checkInTime,
+                    }))}
+                />
+
+                {/* AI Pre-Exam Hint */}
+                {preExamPatient && (
+                    <AIPreExamHint
+                        patientId={preExamPatient.id}
+                        patientName={preExamPatient.name}
+                        visible={!!preExamPatient}
+                        onClose={() => setPreExamPatient(null)}
+                    />
+                )}
 
                 {/* Queue Table */}
                 <div className="bg-white dark:bg-[#1e242b] border border-[#e5e7eb] dark:border-[#2d353e] rounded-xl shadow-sm">

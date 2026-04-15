@@ -3,8 +3,11 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { ROUTES, ADMIN_MENU_ITEMS } from "@/constants/routes";
-import { NotificationDropdown } from "./notification-dropdown";
+import { NotificationBell } from "./NotificationBell";
 import { SettingsDropdown } from "./settings-dropdown";
+import AIStatusBadge from '@/components/ai-copilot/AIStatusBadge';
+import AISearchBar from '@/components/ai-copilot/AISearchBar';
+import AIGamificationBadge from '@/components/ai-copilot/AIGamificationBadge';
 
 export function AdminHeader() {
     const pathname = usePathname();
@@ -50,8 +53,11 @@ export function AdminHeader() {
             </nav>
 
             {/* Right Actions */}
-            <div className="flex items-center gap-1">
-                <NotificationDropdown />
+            <div className="flex items-center gap-2">
+                <AISearchBar />
+                <AIGamificationBadge />
+                <AIStatusBadge />
+                <NotificationBell />
                 <SettingsDropdown />
             </div>
         </header>
