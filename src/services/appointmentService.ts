@@ -41,12 +41,17 @@ export interface CreateAppointmentData {
     doctorName?: string;
     departmentId?: string;
     departmentName?: string;
-    date: string;
-    time: string;
+    date: string;          // YYYY-MM-DD — sẽ map sang appointment_date
+    time: string;          // HH:mm — dùng để resolve slot nếu chưa có slotId
     type?: string;
     reason?: string;
     note?: string;
     serviceId?: string;
+    // BE schema mới (Module 3.3)
+    slotId?: string;
+    shiftId?: string;
+    branchId?: string;
+    bookingChannel?: 'WEB' | 'APP' | 'DIRECT_CLINIC' | 'HOTLINE';
 }
 
 export interface AppointmentListResponse {
@@ -109,24 +114,50 @@ export const getAppointmentById = async (id: string): Promise<Appointment> => {
 
 // ============================================
 // Tạo lịch hẹn mới
+// BE schema (Module 3.3): { patient_id, branch_id, slot_id|shift_id,
+//                            appointment_date, booking_channel, ... }
 // ============================================
 export const createAppointment = async (data: CreateAppointmentData): Promise<Appointment> => {
     try {
+        // Resolve slot/branch nếu FE chỉ có doctorId + date + time
+        let slotId = data.slotId;
+        let branchId = data.branchId;
+        let shiftId = data.shiftId;
+
+        if (!slotId && !shiftId && data.doctorId && data.date && data.time) {
+            try {
+                const slots = await doctorAvailabilityService.getSlots({
+                    doctorId: data.doctorId,
+                    date: data.date,
+                });
+                const hhmm = data.time.slice(0, 5);
+                const matched = (slots as any[]).find(s => {
+                    const t = (s.start_time || s.startTime || s.time || '').toString();
+                    return t.slice(0, 5) === hhmm;
+                });
+                if (matched) {
+                    slotId = matched.slot_id || matched.id || matched.slotId;
+                    branchId = matched.branch_id || matched.branchId || branchId;
+                    shiftId = matched.shift_id || matched.shiftId || shiftId;
+                }
+            } catch { /* resolver fail — để BE validate sẽ throw */ }
+        }
+
         const payload: Record<string, any> = {
-            date: data.date,
-            time: data.time,
+            appointment_date: data.date,
+            booking_channel: data.bookingChannel || 'WEB',
         };
         if (data.patientId) payload.patient_id = data.patientId;
+        if (slotId) payload.slot_id = slotId;
+        if (shiftId) payload.shift_id = shiftId;
+        if (branchId) payload.branch_id = branchId;
+        if (data.doctorId) payload.doctor_id = data.doctorId;
+        if (data.reason) payload.reason_for_visit = data.reason;
+        if (data.note) payload.symptoms_notes = data.note;
+        if (data.serviceId) payload.facility_service_id = data.serviceId;
+        // Back-compat: giữ lại tên field cũ cho các validator linh hoạt
         if (data.patientName) payload.patient_name = data.patientName;
         if (data.phone) payload.phone = data.phone;
-        if (data.doctorId) payload.doctor_id = data.doctorId;
-        if (data.doctorName) payload.doctor_name = data.doctorName;
-        if (data.departmentId) payload.department_id = data.departmentId;
-        if (data.departmentName) payload.department_name = data.departmentName;
-        if (data.type) payload.type = data.type;
-        if (data.reason) payload.reason = data.reason;
-        if (data.note) payload.notes = data.note;
-        if (data.serviceId) payload.service_id = data.serviceId;
 
         const response = await axiosClient.post(APPOINTMENT_ENDPOINTS.CREATE, payload);
         return unwrapOne(response);
@@ -255,11 +286,20 @@ export const getAppointmentsByPatient = async (
 // /api/doctor-availability
 // ============================================
 export const doctorAvailabilityService = {
-    /** GET /api/doctor-availability?doctorId=X&date=Y */
+    /**
+     * GET /api/doctor-availability/:doctorId?date=Y
+     * Lấy lịch làm việc của 1 bác sĩ theo ngày.
+     */
     getSlots: (params: { doctorId: string; date: string }) =>
-        axiosClient.get('/api/doctor-availability', { params }).then(r => {
+        axiosClient.get(`/api/doctor-availability/${params.doctorId}`, {
+            params: { date: params.date },
+        }).then(r => {
             const d = r?.data?.data ?? r?.data ?? r;
-            return Array.isArray(d) ? d : [];
+            if (Array.isArray(d)) return d;
+            if (d && typeof d === 'object') {
+                return d[params.date] || d.slots || [];
+            }
+            return [];
         }),
 
     /** GET /api/doctor-availability/available — Tất cả slot trống */

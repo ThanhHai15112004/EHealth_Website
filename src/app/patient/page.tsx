@@ -9,6 +9,7 @@ import { loadFromStorage, STORAGE_KEYS } from "@/utils/localStorage";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 import { AISymptomCheckerWidget, AIHealthCoach, AIAppointmentSuggester } from "@/components/portal/ai";
 import { ehrService } from "@/services/ehrService";
+import { patientProfileService } from "@/services/patientProfileService";
 import { telemedicineService, type TelemedicineSession } from "@/services/telemedicineService";
 
 interface MedicationReminder {
@@ -70,9 +71,21 @@ export default function PatientDashboard() {
         if (!user?.id) return;
         setLoadingVitals(true);
         try {
+            // EHR endpoints cần patient_id (không phải user/account_id)
+            // → Lấy default profile trước, rồi query EHR theo patient_id thật
+            let patientId: string | null = null;
+            try {
+                const def = await patientProfileService.getDefault();
+                patientId = def?.id ?? null;
+            } catch { /* không có profile mặc định, bỏ qua */ }
+            if (!patientId) {
+                setLoadingVitals(false);
+                return;
+            }
+
             const [vitalRes, medRes] = await Promise.allSettled([
-                ehrService.getVitalLatest(user.id),
-                ehrService.getCurrentMedications(user.id),
+                ehrService.getVitalLatest(patientId),
+                ehrService.getCurrentMedications(patientId),
             ]);
 
             // Vital signs
