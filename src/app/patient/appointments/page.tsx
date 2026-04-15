@@ -1,13 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
 import { useAuth } from "@/contexts/AuthContext";
-import { getMyAppointments, cancelAppointment, appointmentChangesService, appointmentConfirmationService, type Appointment } from "@/services/appointmentService";
+import {
+    appointmentChangesService,
+    appointmentConfirmationService,
+    cancelAppointment,
+    getMyAppointments,
+    type Appointment,
+} from "@/services/appointmentService";
 import { patientProfileService, type PatientProfileBE } from "@/services/patientProfileService";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 import { AIAppointmentSuggester } from "@/components/portal/ai";
+import { useToast } from "@/contexts/ToastContext";
 
 const TABS = [
     { id: "upcoming", label: "Sắp tới", icon: "event_upcoming" },
@@ -16,77 +23,56 @@ const TABS = [
 ];
 
 export default function AppointmentsPage() {
-    usePageAIContext({ pageKey: 'appointments' });
+    usePageAIContext({ pageKey: "appointments" });
     const { user } = useAuth();
+    const { showToast } = useToast();
+
     const [activeTab, setActiveTab] = useState("upcoming");
     const [appointments, setAppointments] = useState<Appointment[]>([]);
     const [loading, setLoading] = useState(true);
     const [profiles, setProfiles] = useState<PatientProfileBE[]>([]);
     const [selectedProfileId, setSelectedProfileId] = useState("");
-
-    // Cancel modal
     const [cancelModal, setCancelModal] = useState<{ id: string } | null>(null);
     const [cancelReason, setCancelReason] = useState("");
     const [cancelling, setCancelling] = useState(false);
-
-    // Reschedule modal
     const [rescheduleModal, setRescheduleModal] = useState<{ id: string; doctorName: string } | null>(null);
     const [resendingId, setResendingId] = useState<string | null>(null);
-
-    const handleResendEmail = async (id: string) => {
-        setResendingId(id);
-        try {
-            await appointmentConfirmationService.resendNotification(id);
-            alert("Đã gửi lại email xác nhận. Vui lòng kiểm tra hộp thư.");
-        } catch (err: any) {
-            alert(err?.response?.data?.message || err?.message || "Gửi lại email thất bại");
-        } finally {
-            setResendingId(null);
-        }
-    };
     const [newDate, setNewDate] = useState("");
     const [newTime, setNewTime] = useState("");
     const [rescheduling, setRescheduling] = useState(false);
     const [minDate, setMinDate] = useState("");
+    const [profilesLoaded, setProfilesLoaded] = useState(false);
+
     useEffect(() => {
         setMinDate(new Date().toISOString().split("T")[0]);
     }, []);
 
-    const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
-
-    const showToast = (msg: string, type: "success" | "error" = "success") => {
-        setToast({ msg, type });
-        setTimeout(() => setToast(null), 3000);
-    };
-
-    // profilesLoaded: true khi đã thử load (dù thành công hay thất bại)
-    const [profilesLoaded, setProfilesLoaded] = useState(false);
-
     useEffect(() => {
         if (!user?.id) return;
+
         const loadProfiles = async () => {
             try {
-                const res = await patientProfileService.getMyProfiles();
-                if (res && res.length > 0) {
-                    setProfiles(res);
+                const response = await patientProfileService.getMyProfiles();
+                if (response && response.length > 0) {
+                    setProfiles(response);
                     const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
-                    const exists = res.some(p => p.id === cachedId);
-                    setSelectedProfileId(exists ? cachedId! : res[0].id);
+                    const exists = response.some((profile) => profile.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : response[0].id);
                 }
             } catch {
-                // profiles failed — vẫn load appointments theo account
+                // Vẫn cho phép tải lịch hẹn theo account nếu tải hồ sơ lỗi.
             } finally {
                 setProfilesLoaded(true);
             }
         };
-        loadProfiles();
+
+        void loadProfiles();
     }, [user?.id]);
 
-    // Load appointments khi profiles đã được thử load (với hoặc không có selectedProfileId)
     useEffect(() => {
         if (!user?.id || !profilesLoaded) return;
-        loadAppointments();
-    }, [activeTab, profilesLoaded, selectedProfileId]);
+        void loadAppointments();
+    }, [activeTab, profilesLoaded, selectedProfileId, user?.id]);
 
     const loadAppointments = async () => {
         const statusMap: Record<string, string> = {
@@ -94,15 +80,15 @@ export default function AppointmentsPage() {
             completed: "COMPLETED",
             cancelled: "CANCELLED",
         };
+
         try {
             setLoading(true);
-            const res = await getMyAppointments({
-                // Nếu có profile được chọn thì filter theo profile đó, nếu không thì lấy tất cả của account
+            const response = await getMyAppointments({
                 ...(selectedProfileId ? { patient_id: selectedProfileId } : {}),
                 status: statusMap[activeTab],
                 limit: 20,
             });
-            setAppointments(res.data && res.data.length > 0 ? res.data : []);
+            setAppointments(response.data && response.data.length > 0 ? response.data : []);
         } catch {
             setAppointments([]);
         } finally {
@@ -110,14 +96,27 @@ export default function AppointmentsPage() {
         }
     };
 
+    const handleResendEmail = async (id: string) => {
+        setResendingId(id);
+        try {
+            await appointmentConfirmationService.resendNotification(id);
+            showToast("Đã gửi lại email xác nhận. Vui lòng kiểm tra hộp thư.", "success");
+        } catch (error: any) {
+            showToast(error?.response?.data?.message || error?.message || "Gửi lại email thất bại", "error");
+        } finally {
+            setResendingId(null);
+        }
+    };
+
     const handleCancel = async () => {
         if (!cancelModal) return;
+
         setCancelling(true);
         try {
             await cancelAppointment(cancelModal.id, cancelReason);
             setCancelModal(null);
             setCancelReason("");
-            showToast("Đã hủy lịch hẹn thành công");
+            showToast("Đã hủy lịch hẹn thành công", "success");
             await loadAppointments();
         } catch {
             showToast("Hủy lịch thất bại. Vui lòng thử lại.", "error");
@@ -128,8 +127,10 @@ export default function AppointmentsPage() {
 
     const handleReschedule = async () => {
         if (!rescheduleModal || !newDate || !newTime) {
-            showToast("Vui lòng chọn ngày và giờ mới", "error"); return;
+            showToast("Vui lòng chọn ngày và giờ mới", "error");
+            return;
         }
+
         setRescheduling(true);
         try {
             await appointmentChangesService.request({
@@ -139,8 +140,9 @@ export default function AppointmentsPage() {
                 reason: "Bệnh nhân yêu cầu dời lịch",
             });
             setRescheduleModal(null);
-            setNewDate(""); setNewTime("");
-            showToast("Đã gửi yêu cầu dời lịch. Chờ xác nhận.");
+            setNewDate("");
+            setNewTime("");
+            showToast("Đã gửi yêu cầu dời lịch. Chờ xác nhận.", "success");
         } catch {
             showToast("Gửi yêu cầu dời lịch thất bại.", "error");
         } finally {
@@ -150,226 +152,309 @@ export default function AppointmentsPage() {
 
     return (
         <div className="space-y-6">
-            {/* Toast */}
-            {toast && (
-                <div className={`fixed top-4 right-4 z-50 px-5 py-3 rounded-xl text-sm font-medium shadow-lg ${toast.type === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"}`}>
-                    {toast.msg}
-                </div>
-            )}
-
-            {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-900">Lịch hẹn của tôi</h1>
-                    <p className="text-sm text-gray-500 mt-0.5">Quản lý tất cả lịch hẹn khám bệnh</p>
+                    <h1 className="text-2xl font-bold text-[#121417]">Lịch hẹn của tôi</h1>
+                    <p className="mt-0.5 text-sm text-[#687582]">Quản lý tất cả lịch hẹn khám bệnh</p>
                 </div>
-                <Link href="/booking"
-                    className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white text-sm font-semibold rounded-xl shadow-md shadow-[#3C81C6]/20 hover:shadow-lg transition-all active:scale-[0.97]">
-                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
+                <Link
+                    href="/booking"
+                    className="hidden items-center gap-2 rounded-xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#3C81C6]/20 transition-all hover:shadow-lg active:scale-[0.97] sm:flex"
+                >
+                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                        add
+                    </span>
                     Đặt lịch mới
                 </Link>
             </div>
 
-            {/* Profile Selector */}
             {profiles.length > 0 && (
-                <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar mt-2">
-                    {profiles.map(p => (
+                <div className="mt-2 flex snap-x gap-3 overflow-x-auto pb-2 hide-scrollbar -mx-2 px-2">
+                    {profiles.map((profile) => (
                         <div
-                            key={p.id}
+                            key={profile.id}
                             onClick={() => {
-                                setSelectedProfileId(p.id);
-                                sessionStorage.setItem("patientPortal_selectedProfileId", p.id);
+                                setSelectedProfileId(profile.id);
+                                sessionStorage.setItem("patientPortal_selectedProfileId", profile.id);
                             }}
-                            className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 shadow-sm' : 'border-gray-200 bg-white hover:border-blue-300'}`}
+                            className={`min-w-[240px] cursor-pointer snap-start rounded-2xl border p-3 transition-all ${
+                                selectedProfileId === profile.id
+                                    ? "border-[#3C81C6] bg-blue-50/50 shadow-sm"
+                                    : "border-gray-200 bg-white hover:border-blue-300"
+                            }`}
                         >
-                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
-                                {p.full_name?.charAt(0)?.toUpperCase() || "U"}
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] text-sm font-bold text-white shadow-md shadow-[#3C81C6]/20">
+                                    {profile.full_name?.charAt(0)?.toUpperCase() || "U"}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <p className={`truncate text-sm font-bold ${selectedProfileId === profile.id ? "text-[#3C81C6]" : "text-gray-900"}`}>
+                                        {profile.full_name}
+                                    </p>
+                                    <p className="truncate text-xs text-gray-500">{profile.phone_number || "Chưa có SĐT"}</p>
+                                </div>
+                                {selectedProfileId === profile.id && (
+                                    <span className="material-symbols-outlined shrink-0 text-[#3C81C6]" style={{ fontSize: "20px" }}>
+                                        check_circle
+                                    </span>
+                                )}
                             </div>
-                            <div className="flex-1 min-w-0">
-                                <p className={`text-sm font-bold truncate ${selectedProfileId === p.id ? 'text-[#3C81C6]' : 'text-gray-900'}`}>{p.full_name}</p>
-                                <p className="text-xs text-gray-500 truncate">{p.phone_number || "Chưa có SĐT"}</p>
-                            </div>
-                            {selectedProfileId === p.id && (
-                                <span className="material-symbols-outlined text-[#3C81C6] shrink-0" style={{ fontSize: "20px" }}>check_circle</span>
-                            )}
                         </div>
                     ))}
                 </div>
             )}
 
-            {/* AI Appointment Suggester */}
             <AIAppointmentSuggester />
 
-            {/* Tabs */}
-            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
-                {TABS.map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                        className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-medium transition-all
-                        ${activeTab === tab.id ? "bg-white text-[#3C81C6] shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{tab.icon}</span>
-                        <span className="hidden sm:inline">{tab.label}</span>
+            <div className="scrollbar-hide flex gap-1 overflow-x-auto pb-1">
+                {TABS.map((tab) => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all ${
+                            activeTab === tab.id
+                                ? "bg-[#3C81C6] text-white shadow-sm shadow-[#3C81C6]/20"
+                                : "border border-[#e5e7eb] bg-white text-[#687582] hover:bg-gray-50"
+                        }`}
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                            {tab.icon}
+                        </span>
+                        {tab.label}
                     </button>
                 ))}
             </div>
 
-            {/* List */}
             {loading ? (
                 <div className="space-y-4">
-                    {Array.from({ length: 3 }).map((_, i) => (
-                        <div key={i} className="bg-white rounded-2xl border border-gray-100 p-5 animate-pulse">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                        <div key={index} className="animate-pulse rounded-2xl border border-gray-100 bg-white p-5">
                             <div className="flex gap-4">
-                                <div className="w-12 h-12 rounded-xl bg-gray-200" />
+                                <div className="h-12 w-12 rounded-xl bg-gray-200" />
                                 <div className="flex-1 space-y-2">
-                                    <div className="h-4 bg-gray-200 rounded w-1/3" />
-                                    <div className="h-3 bg-gray-100 rounded w-1/2" />
-                                    <div className="h-3 bg-gray-100 rounded w-1/4" />
+                                    <div className="h-4 w-1/3 rounded bg-gray-200" />
+                                    <div className="h-3 w-1/2 rounded bg-gray-100" />
+                                    <div className="h-3 w-1/4 rounded bg-gray-100" />
                                 </div>
                             </div>
                         </div>
                     ))}
                 </div>
             ) : profiles.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-gray-100 py-16 text-center">
-                    <span className="material-symbols-outlined text-gray-300 mb-4" style={{ fontSize: "64px" }}>
+                <div className="rounded-2xl border border-gray-100 bg-white py-16 text-center">
+                    <span className="material-symbols-outlined mb-4 text-gray-300" style={{ fontSize: "64px" }}>
                         person_add
                     </span>
-                    <h3 className="text-lg font-semibold text-gray-700 mb-1">
-                        Chưa có hồ sơ bệnh nhân
-                    </h3>
-                    <p className="text-sm text-gray-400 mb-6">
-                        Vui lòng thêm hồ sơ bệnh nhân để có thể xem và đặt lịch khám
-                    </p>
-                    <Link href="/patient/medical-records"
-                        className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all">
-                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
+                    <h3 className="mb-1 text-lg font-semibold text-gray-700">Chưa có hồ sơ bệnh nhân</h3>
+                    <p className="mb-6 text-sm text-gray-400">Vui lòng thêm hồ sơ bệnh nhân để có thể xem và đặt lịch khám</p>
+                    <Link
+                        href="/patient/medical-records"
+                        className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-6 py-3 font-semibold text-white shadow-md transition-all hover:shadow-lg"
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                            add
+                        </span>
                         Thêm hồ sơ ngay
                     </Link>
                 </div>
             ) : appointments.length === 0 ? (
-                <div className="bg-white rounded-2xl border border-gray-100 py-16 text-center">
-                    <span className="material-symbols-outlined text-gray-300 mb-4" style={{ fontSize: "64px" }}>
+                <div className="rounded-2xl border border-gray-100 bg-white py-16 text-center">
+                    <span className="material-symbols-outlined mb-4 text-gray-300" style={{ fontSize: "64px" }}>
                         {activeTab === "upcoming" ? "event_upcoming" : activeTab === "completed" ? "task_alt" : "event_busy"}
                     </span>
-                    <h3 className="text-lg font-semibold text-gray-700 mb-1">
-                        {activeTab === "upcoming" ? "Chưa có lịch hẹn sắp tới" : activeTab === "completed" ? "Chưa có lịch khám hoàn thành" : "Không có lịch hẹn đã hủy"}
+                    <h3 className="mb-1 text-lg font-semibold text-gray-700">
+                        {activeTab === "upcoming"
+                            ? "Chưa có lịch hẹn sắp tới"
+                            : activeTab === "completed"
+                              ? "Chưa có lịch khám hoàn thành"
+                              : "Không có lịch hẹn đã hủy"}
                     </h3>
-                    <p className="text-sm text-gray-400 mb-6">
-                        {activeTab === "upcoming" ? "Đặt lịch khám ngay để bắt đầu chăm sóc sức khoẻ" : ""}
+                    <p className="mb-6 text-sm text-gray-400">
+                        {activeTab === "upcoming" ? "Đặt lịch khám ngay để bắt đầu chăm sóc sức khỏe" : ""}
                     </p>
                     {activeTab === "upcoming" && (
-                        <Link href="/booking"
-                            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all">
-                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>calendar_month</span>
+                        <Link
+                            href="/booking"
+                            className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-6 py-3 font-semibold text-white shadow-md transition-all hover:shadow-lg"
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                                calendar_month
+                            </span>
                             Đặt lịch ngay
                         </Link>
                     )}
                 </div>
             ) : (
                 <div className="space-y-4">
-                    {appointments.map(apt => (
-                        <div key={apt.id} className="bg-white rounded-2xl border border-gray-100 hover:border-[#3C81C6]/20 hover:shadow-md transition-all p-5 group">
-                            <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                                {/* Date badge */}
-                                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10 flex flex-col items-center justify-center flex-shrink-0">
-                                    <span className="text-lg font-bold text-[#3C81C6] leading-none">{apt.date?.split("-")[2] || "--"}</span>
-                                    <span className="text-[10px] text-[#3C81C6]/70 font-medium">T{apt.date?.split("-")[1] || "--"}</span>
+                    {appointments.map((appointment, index) => {
+                        const raw = appointment as any;
+                        const appointmentId = raw.appointments_id || appointment.id || index;
+                        const appointmentDate = raw.appointment_date || appointment.date;
+                        const slotStart = raw.slot_start_time?.substring(0, 5) || appointment.time || "--:--";
+                        const slotEnd = raw.slot_end_time ? raw.slot_end_time.substring(0, 5) : "";
+                        const doctorName = raw.doctor_name || appointment.doctorName || "Chưa xếp bác sĩ";
+                        const subtitle = raw.service_name || raw.department_name || appointment.departmentName || "Khám bệnh";
+                        const branchName = raw.branch_name || "EHealth Hospital";
+                        const reason = raw.reason_for_visit || appointment.reason || appointment.notes;
+
+                        return (
+                            <div
+                                key={appointmentId}
+                                className="group rounded-2xl border border-gray-100 bg-white p-5 transition-all hover:border-[#3C81C6]/20 hover:shadow-md"
+                            >
+                                <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+                                    <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10">
+                                        <span className="text-lg leading-none font-bold text-[#3C81C6]">
+                                            {appointmentDate?.split("-")[2] || "--"}
+                                        </span>
+                                        <span className="text-[10px] font-medium text-[#3C81C6]/70">
+                                            T{appointmentDate?.split("-")[1] || "--"}
+                                        </span>
+                                    </div>
+
+                                    <div className="min-w-0 flex-1">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <h3 className="flex items-center gap-2 font-semibold text-gray-900 transition-colors group-hover:text-[#3C81C6]">
+                                                    {doctorName}
+                                                    {appointment.status === "completed" && (
+                                                        <span
+                                                            className="material-symbols-outlined text-xs text-green-500"
+                                                            title="Đã hoàn thành khám"
+                                                        >
+                                                            verified
+                                                        </span>
+                                                    )}
+                                                </h3>
+                                                <p className="mt-0.5 text-sm font-medium text-[#3C81C6]">{subtitle}</p>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <AppointmentStatusBadge status={appointment.status} />
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+                                            <span className="inline-flex items-center gap-1 font-medium text-gray-700">
+                                                <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "14px" }}>
+                                                    schedule
+                                                </span>
+                                                {slotStart}
+                                                {slotEnd ? ` - ${slotEnd}` : ""}
+                                            </span>
+                                            <span className="inline-flex items-center gap-1">
+                                                <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "14px" }}>
+                                                    location_on
+                                                </span>
+                                                <span className="max-w-[200px] truncate" title={branchName}>
+                                                    {branchName}
+                                                </span>
+                                            </span>
+                                            {raw.room_name && (
+                                                <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-blue-600">
+                                                    <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
+                                                        meeting_room
+                                                    </span>
+                                                    {raw.room_name}
+                                                </span>
+                                            )}
+                                        </div>
+
+                                        {reason && (
+                                            <div className="mt-2 rounded-lg bg-gray-50 p-2.5 text-xs text-gray-500 line-clamp-2">
+                                                <span className="mr-1 font-medium text-gray-700">Lý do khám:</span>
+                                                {reason}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
-                                {/* Info */}
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <h3 className="font-semibold text-gray-900 group-hover:text-[#3C81C6] transition-colors">{apt.doctorName || "Bác sĩ"}</h3>
-                                            <p className="text-sm text-gray-500 mt-0.5">{apt.departmentName || "Chuyên khoa"}</p>
-                                        </div>
-                                        <AppointmentStatusBadge status={apt.status} />
-                                    </div>
-
-                                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2.5 text-xs text-gray-400">
-                                        <span className="inline-flex items-center gap-1">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>schedule</span>
-                                            {apt.time || "--:--"}
-                                        </span>
-                                        <span className="inline-flex items-center gap-1">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>location_on</span>
-                                            EHealth Hospital
-                                        </span>
-                                    </div>
-
-                                    {apt.notes && (
-                                        <p className="text-xs text-gray-400 mt-2 line-clamp-1">
-                                            <span className="material-symbols-outlined align-middle mr-1" style={{ fontSize: "12px" }}>notes</span>
-                                            {apt.notes}
-                                        </p>
+                                <div className="mt-4 flex items-center gap-2 border-t border-gray-50 pt-4">
+                                    <Link
+                                        href={`/patient/appointments/${appointmentId}`}
+                                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                                    >
+                                        Xem chi tiết
+                                    </Link>
+                                    {(appointment.status === "pending" || appointment.status === "confirmed") && (
+                                        <>
+                                            <button
+                                                onClick={() => handleResendEmail(String(appointmentId))}
+                                                disabled={resendingId === appointmentId}
+                                                className="flex items-center gap-1 rounded-lg border border-[#3C81C6]/20 bg-[#3C81C6]/[0.08] px-3 py-1.5 text-xs font-medium text-[#3C81C6] transition-colors hover:bg-[#3C81C6]/[0.15] disabled:opacity-50"
+                                            >
+                                                <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
+                                                    {resendingId === appointmentId ? "hourglass_empty" : "mail"}
+                                                </span>
+                                                {resendingId === appointmentId ? "Đang gửi..." : "Gửi lại email"}
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setRescheduleModal({ id: String(appointmentId), doctorName });
+                                                    setNewDate("");
+                                                    setNewTime("");
+                                                }}
+                                                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100"
+                                            >
+                                                Dời lịch
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    setCancelModal({ id: String(appointmentId) });
+                                                    setCancelReason("");
+                                                }}
+                                                className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
+                                            >
+                                                Hủy lịch
+                                            </button>
+                                        </>
+                                    )}
+                                    {appointment.status === "completed" && (
+                                        <button
+                                            onClick={() => showToast("Bạn có thể đánh giá ở trang chi tiết lịch hẹn", "info")}
+                                            className="rounded-lg border border-[#3C81C6]/20 bg-[#3C81C6]/[0.06] px-3 py-1.5 text-xs font-medium text-[#3C81C6] transition-colors hover:bg-[#3C81C6]/[0.12]"
+                                        >
+                                            Đánh giá
+                                        </button>
                                     )}
                                 </div>
                             </div>
-
-                            {/* Actions */}
-                            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-50">
-                                <Link href={`/patient/appointments/${apt.id}`}
-                                    className="px-3 py-1.5 text-xs font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                                    Xem chi tiết
-                                </Link>
-                                {(apt.status === "pending" || apt.status === "confirmed") && (
-                                    <>
-                                        <button
-                                            onClick={() => handleResendEmail(apt.id)}
-                                            disabled={resendingId === apt.id}
-                                            className="flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-[#3C81C6] bg-[#3C81C6]/[0.08] border border-[#3C81C6]/20 rounded-lg hover:bg-[#3C81C6]/[0.15] transition-colors disabled:opacity-50">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>
-                                                {resendingId === apt.id ? "hourglass_empty" : "mail"}
-                                            </span>
-                                            {resendingId === apt.id ? "Đang gửi..." : "Gửi lại email"}
-                                        </button>
-                                        <button
-                                            onClick={() => { setRescheduleModal({ id: apt.id, doctorName: apt.doctorName }); setNewDate(""); setNewTime(""); }}
-                                            className="px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors">
-                                            Dời lịch
-                                        </button>
-                                        <button
-                                            onClick={() => { setCancelModal({ id: apt.id }); setCancelReason(""); }}
-                                            className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">
-                                            Hủy lịch
-                                        </button>
-                                    </>
-                                )}
-                                {apt.status === "completed" && (
-                                    <button
-                                        onClick={() => alert("Tính năng đánh giá sẽ sớm có")}
-                                        className="px-3 py-1.5 text-xs font-medium text-[#3C81C6] bg-[#3C81C6]/[0.06] border border-[#3C81C6]/20 rounded-lg hover:bg-[#3C81C6]/[0.12] transition-colors">
-                                        Đánh giá
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
-            {/* Cancel Modal */}
             {cancelModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setCancelModal(null)}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center">
-                                <span className="material-symbols-outlined text-red-600" style={{ fontSize: "22px" }}>warning</span>
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" onClick={() => setCancelModal(null)}>
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                        <div className="mb-4 flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
+                                <span className="material-symbols-outlined text-red-600" style={{ fontSize: "22px" }}>
+                                    warning
+                                </span>
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900">Xác nhận hủy lịch</h3>
                                 <p className="text-xs text-gray-500">Hành động này không thể hoàn tác</p>
                             </div>
                         </div>
-                        <textarea value={cancelReason} onChange={e => setCancelReason(e.target.value)}
+                        <textarea
+                            value={cancelReason}
+                            onChange={(event) => setCancelReason(event.target.value)}
                             placeholder="Lý do hủy lịch (không bắt buộc)..."
-                            className="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm mb-4 bg-gray-50 min-h-[80px] resize-none focus:outline-none focus:ring-2 focus:ring-red-200" />
+                            className="mb-4 min-h-[80px] w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-200"
+                        />
                         <div className="flex gap-3">
-                            <button onClick={() => setCancelModal(null)}
-                                className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                            <button
+                                onClick={() => setCancelModal(null)}
+                                className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                            >
                                 Quay lại
                             </button>
-                            <button onClick={handleCancel} disabled={cancelling}
-                                className="flex-1 py-2.5 text-sm font-semibold text-white bg-red-500 rounded-xl hover:bg-red-600 disabled:opacity-50 transition-colors">
+                            <button
+                                onClick={handleCancel}
+                                disabled={cancelling}
+                                className="flex-1 rounded-xl bg-red-500 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-600 disabled:opacity-50"
+                            >
                                 {cancelling ? "Đang xử lý..." : "Xác nhận hủy"}
                             </button>
                         </div>
@@ -377,38 +462,56 @@ export default function AppointmentsPage() {
                 </div>
             )}
 
-            {/* Reschedule Modal */}
             {rescheduleModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setRescheduleModal(null)}>
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
-                        <div className="flex items-center gap-3 mb-4">
-                            <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
-                                <span className="material-symbols-outlined text-amber-600" style={{ fontSize: "22px" }}>event_repeat</span>
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+                    onClick={() => setRescheduleModal(null)}
+                >
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                        <div className="mb-4 flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
+                                <span className="material-symbols-outlined text-amber-600" style={{ fontSize: "22px" }}>
+                                    event_repeat
+                                </span>
                             </div>
                             <div>
                                 <h3 className="text-lg font-bold text-gray-900">Dời lịch hẹn</h3>
                                 <p className="text-xs text-gray-500">{rescheduleModal.doctorName}</p>
                             </div>
                         </div>
-                        <div className="space-y-3 mb-4">
+                        <div className="mb-4 space-y-3">
                             <div>
-                                <label className="text-xs text-gray-500 font-medium mb-1 block">Ngày mới *</label>
-                                <input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} min={minDate}
-                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 bg-gray-50" />
+                                <label className="mb-1 block text-xs font-medium text-gray-500">Ngày mới *</label>
+                                <input
+                                    type="date"
+                                    value={newDate}
+                                    onChange={(event) => setNewDate(event.target.value)}
+                                    min={minDate}
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
+                                />
                             </div>
                             <div>
-                                <label className="text-xs text-gray-500 font-medium mb-1 block">Giờ mới *</label>
-                                <input type="time" value={newTime} onChange={e => setNewTime(e.target.value)}
-                                    className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-200 bg-gray-50" />
+                                <label className="mb-1 block text-xs font-medium text-gray-500">Giờ mới *</label>
+                                <input
+                                    type="time"
+                                    value={newTime}
+                                    onChange={(event) => setNewTime(event.target.value)}
+                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
+                                />
                             </div>
                         </div>
                         <div className="flex gap-3">
-                            <button onClick={() => setRescheduleModal(null)}
-                                className="flex-1 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+                            <button
+                                onClick={() => setRescheduleModal(null)}
+                                className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
+                            >
                                 Quay lại
                             </button>
-                            <button onClick={handleReschedule} disabled={rescheduling}
-                                className="flex-1 py-2.5 text-sm font-semibold text-white bg-amber-500 rounded-xl hover:bg-amber-600 disabled:opacity-50 transition-colors">
+                            <button
+                                onClick={handleReschedule}
+                                disabled={rescheduling}
+                                className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
+                            >
                                 {rescheduling ? "Đang gửi..." : "Gửi yêu cầu"}
                             </button>
                         </div>
