@@ -109,7 +109,7 @@ export const createAppointment = async (data: CreateAppointmentData): Promise<Ap
         const response = await axiosClient.post(APPOINTMENT_ENDPOINTS.CREATE, {
             patient_id: data.patientId,
             doctor_id: data.doctorId,
-            branch_id: data.branchId,
+            branch_id: data.branchId || data.facilityId,
             appointment_date: data.date,
             slot_id: data.slot_id,
             booking_channel: "WEB",
