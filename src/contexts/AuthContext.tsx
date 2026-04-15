@@ -16,6 +16,30 @@ import { AUTH_CONFIG } from '@/config';
 import * as authService from '@/services/authService';
 
 // ============================================
+// Helper: Lấy URL redirect theo role (module-level để login page import)
+// ============================================
+export const getRedirectUrl = (role: string): string => {
+    switch ((role || '').toLowerCase()) {
+        case 'admin':
+        case 'super_admin':
+            return '/admin';
+        case 'doctor':
+        case 'nurse':
+            return '/portal/doctor';
+        case 'pharmacist':
+            return '/portal/pharmacist';
+        case 'staff':
+        case 'receptionist':
+        case 'cashier':
+            return '/portal/receptionist';
+        case 'patient':
+            return '/patient';
+        default:
+            return '/patient';
+    }
+};
+
+// ============================================
 // Types
 // ============================================
 
@@ -243,26 +267,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
         return roles.some(r => userRolesLower.includes(r.toLowerCase()));
     };
 
-    // ============================================
-    // Helper: Lấy URL redirect theo role
-    // ============================================
-    const getRedirectUrl = (role: string): string => {
-        switch (role.toLowerCase()) {
-            case 'admin':
-                return '/admin';
-            case 'doctor':
-                return '/portal/doctor';
-            case 'pharmacist':
-                return '/portal/pharmacist';
-            case 'staff':
-            case 'receptionist':
-                return '/portal/receptionist';
-            case 'patient':
-                return '/patient';
-            default:
-                return '/patient';
-        }
-    };
 
     // ============================================
     // Context Value
