@@ -323,6 +323,7 @@ export const getAvailableSlots = async (params: {
     service_id?: string;
     branch_id?: string;
     facility_id?: string;
+    exclude_appointment_id?: string;
 }): Promise<any[]> => {
     try {
         const response = await axiosClient.get('/api/appointments/available-slots', { params });
@@ -432,7 +433,7 @@ export const appointmentChangesService = {
     getById: (id: string) =>
         axiosClient.get(`/api/appointment-changes/${id}`).then(r => r?.data?.data ?? r?.data ?? r),
 
-    request: (data: { appointmentId: string; newDate: string; newTime: string; reason?: string }) =>
+    request: (data: { appointmentId: string; newDate: string; newSlotId: string; reason?: string }) =>
         axiosClient.post('/api/appointment-changes', data).then(r => r?.data?.data ?? r?.data ?? r),
 
     approve: (id: string) =>

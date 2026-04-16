@@ -3,9 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
+import { AppointmentRescheduleModal } from "@/components/patient/AppointmentRescheduleModal";
 import { useAuth } from "@/contexts/AuthContext";
 import {
-    appointmentChangesService,
     appointmentConfirmationService,
     cancelAppointment,
     getMyAppointments,
@@ -22,6 +22,16 @@ const TABS = [
     { id: "cancelled", label: "Đã hủy", icon: "event_busy" },
 ];
 
+type RescheduleModalState = {
+    id: string;
+    doctorId?: string;
+    doctorName: string;
+    branchId?: string;
+    facilityId?: string;
+    currentDate?: string;
+    currentSlotId?: string;
+};
+
 export default function AppointmentsPage() {
     usePageAIContext({ pageKey: "appointments" });
     const { user } = useAuth();
@@ -35,17 +45,9 @@ export default function AppointmentsPage() {
     const [cancelModal, setCancelModal] = useState<{ id: string } | null>(null);
     const [cancelReason, setCancelReason] = useState("");
     const [cancelling, setCancelling] = useState(false);
-    const [rescheduleModal, setRescheduleModal] = useState<{ id: string; doctorName: string } | null>(null);
+    const [rescheduleModal, setRescheduleModal] = useState<RescheduleModalState | null>(null);
     const [resendingId, setResendingId] = useState<string | null>(null);
-    const [newDate, setNewDate] = useState("");
-    const [newTime, setNewTime] = useState("");
-    const [rescheduling, setRescheduling] = useState(false);
-    const [minDate, setMinDate] = useState("");
     const [profilesLoaded, setProfilesLoaded] = useState(false);
-
-    useEffect(() => {
-        setMinDate(new Date().toISOString().split("T")[0]);
-    }, []);
 
     useEffect(() => {
         if (!user?.id) return;
@@ -122,31 +124,6 @@ export default function AppointmentsPage() {
             showToast("Hủy lịch thất bại. Vui lòng thử lại.", "error");
         } finally {
             setCancelling(false);
-        }
-    };
-
-    const handleReschedule = async () => {
-        if (!rescheduleModal || !newDate || !newTime) {
-            showToast("Vui lòng chọn ngày và giờ mới", "error");
-            return;
-        }
-
-        setRescheduling(true);
-        try {
-            await appointmentChangesService.request({
-                appointmentId: rescheduleModal.id,
-                newDate,
-                newTime,
-                reason: "Bệnh nhân yêu cầu dời lịch",
-            });
-            setRescheduleModal(null);
-            setNewDate("");
-            setNewTime("");
-            showToast("Đã gửi yêu cầu dời lịch. Chờ xác nhận.", "success");
-        } catch {
-            showToast("Gửi yêu cầu dời lịch thất bại.", "error");
-        } finally {
-            setRescheduling(false);
         }
     };
 
@@ -388,11 +365,17 @@ export default function AppointmentsPage() {
                                                 {resendingId === appointmentId ? "Đang gửi..." : "Gửi lại email"}
                                             </button>
                                             <button
-                                                onClick={() => {
-                                                    setRescheduleModal({ id: String(appointmentId), doctorName });
-                                                    setNewDate("");
-                                                    setNewTime("");
-                                                }}
+                                                onClick={() =>
+                                                    setRescheduleModal({
+                                                        id: String(appointmentId),
+                                                        doctorId: raw.doctor_id || appointment.doctorId,
+                                                        doctorName,
+                                                        branchId: raw.branch_id,
+                                                        facilityId: raw.facility_id,
+                                                        currentDate: raw.appointment_date || appointment.date,
+                                                        currentSlotId: raw.slot_id,
+                                                    })
+                                                }
                                                 className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700 transition-colors hover:bg-amber-100"
                                             >
                                                 Dời lịch
@@ -463,60 +446,18 @@ export default function AppointmentsPage() {
             )}
 
             {rescheduleModal && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
-                    onClick={() => setRescheduleModal(null)}
-                >
-                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
-                        <div className="mb-4 flex items-center gap-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-100">
-                                <span className="material-symbols-outlined text-amber-600" style={{ fontSize: "22px" }}>
-                                    event_repeat
-                                </span>
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-900">Dời lịch hẹn</h3>
-                                <p className="text-xs text-gray-500">{rescheduleModal.doctorName}</p>
-                            </div>
-                        </div>
-                        <div className="mb-4 space-y-3">
-                            <div>
-                                <label className="mb-1 block text-xs font-medium text-gray-500">Ngày mới *</label>
-                                <input
-                                    type="date"
-                                    value={newDate}
-                                    onChange={(event) => setNewDate(event.target.value)}
-                                    min={minDate}
-                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
-                                />
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-xs font-medium text-gray-500">Giờ mới *</label>
-                                <input
-                                    type="time"
-                                    value={newTime}
-                                    onChange={(event) => setNewTime(event.target.value)}
-                                    className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-200"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setRescheduleModal(null)}
-                                className="flex-1 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-50"
-                            >
-                                Quay lại
-                            </button>
-                            <button
-                                onClick={handleReschedule}
-                                disabled={rescheduling}
-                                className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
-                            >
-                                {rescheduling ? "Đang gửi..." : "Gửi yêu cầu"}
-                            </button>
-                        </div>
-                    </div>
-                </div>
+                <AppointmentRescheduleModal
+                    isOpen
+                    appointmentId={rescheduleModal.id}
+                    doctorId={rescheduleModal.doctorId}
+                    doctorName={rescheduleModal.doctorName}
+                    branchId={rescheduleModal.branchId}
+                    facilityId={rescheduleModal.facilityId}
+                    currentDate={rescheduleModal.currentDate}
+                    currentSlotId={rescheduleModal.currentSlotId}
+                    onClose={() => setRescheduleModal(null)}
+                    onSuccess={loadAppointments}
+                />
             )}
         </div>
     );

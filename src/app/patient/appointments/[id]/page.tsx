@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import QRCode from "react-qr-code";
+import { AppointmentRescheduleModal } from "@/components/patient/AppointmentRescheduleModal";
 import { AppointmentStatusBadge } from "@/components/patient/AppointmentStatusBadge";
 import {
     cancelAppointment,
@@ -32,6 +33,7 @@ export default function AppointmentDetailPage() {
     const [loading, setLoading] = useState(true);
     const [cancelling, setCancelling] = useState(false);
     const [showCancelModal, setShowCancelModal] = useState(false);
+    const [showRescheduleModal, setShowRescheduleModal] = useState(false);
     const [cancelReason, setCancelReason] = useState("");
     const [cancelConfirmKeyword, setCancelConfirmKeyword] = useState("");
     const [reviewRating, setReviewRating] = useState(0);
@@ -490,15 +492,16 @@ export default function AppointmentDetailPage() {
             <div className="flex items-center gap-3">
                 {isCancellable && (
                     <>
-                        <Link
-                            href={`/booking?reschedule=${appointmentId}`}
+                        <button
+                            type="button"
+                            onClick={() => setShowRescheduleModal(true)}
                             className="flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-5 py-2.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-100"
                         >
                             <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
                                 event_repeat
                             </span>
                             Dời lịch
-                        </Link>
+                        </button>
                         <button
                             onClick={() => setShowCancelModal(true)}
                             className="flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-5 py-2.5 text-sm font-medium text-red-600 transition-colors hover:bg-red-100"
@@ -574,6 +577,22 @@ export default function AppointmentDetailPage() {
                     </div>
                 </div>
             )}
+
+            <AppointmentRescheduleModal
+                isOpen={showRescheduleModal}
+                appointmentId={String(appointmentId)}
+                doctorId={raw.doctor_id || appointment.doctorId}
+                doctorName={raw.doctor_name || appointment.doctorName}
+                branchId={raw.branch_id}
+                facilityId={raw.facility_id}
+                currentDate={raw.appointment_date || appointment.date}
+                currentSlotId={raw.slot_id}
+                onClose={() => setShowRescheduleModal(false)}
+                onSuccess={async () => {
+                    setShowRescheduleModal(false);
+                    await loadAppointment();
+                }}
+            />
 
             {showQRModal && raw.qr_token && (
                 <div
