@@ -1,53 +1,171 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { unwrap } from "@/api/response";
+import { clinicalResultsService } from "@/services/clinicalResultsService";
 import { medicalRecordService } from "@/services/medicalRecordService";
+import type { PatientClinicalResultVM, PatientMedicalRecordDetailVM } from "@/types/patient-medical-record";
+import { adaptPatientClinicalResult, adaptPatientMedicalRecordDetail } from "@/utils/patientMedicalRecordAdapters";
+
+const TRUST_STYLES: Record<string, string> = {
+    verified: "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300",
+    finalized: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300",
+    draft: "bg-orange-100 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300",
+};
+
+function SectionCard({
+    icon,
+    title,
+    children,
+    accent = "text-[#3C81C6]",
+}: {
+    icon: string;
+    title: string;
+    children: React.ReactNode;
+    accent?: string;
+}) {
+    return (
+        <section className="rounded-2xl border border-[#e5e7eb] bg-white p-6 dark:border-[#2d353e] dark:bg-[#1e242b]">
+            <h2 className={`mb-5 flex items-center gap-2 text-lg font-bold ${accent}`}>
+                <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>{icon}</span>
+                <span className="text-[#121417] dark:text-white">{title}</span>
+            </h2>
+            {children}
+        </section>
+    );
+}
+
+function InfoTile({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="rounded-xl border border-[#e5e7eb] bg-[#f6f7f8] p-4 dark:border-[#2d353e] dark:bg-[#13191f]">
+            <p className="mb-1 text-sm text-[#687582]">{label}</p>
+            <p className="text-sm font-semibold text-[#121417] dark:text-white">{value}</p>
+        </div>
+    );
+}
+
+function EmptyState({ title, message, icon }: { title: string; message: string; icon: string }) {
+    return (
+        <div className="py-12 text-center">
+            <span className="material-symbols-outlined mb-3 text-gray-300 dark:text-gray-600" style={{ fontSize: "48px" }}>{icon}</span>
+            <h3 className="text-base font-semibold text-[#121417] dark:text-white">{title}</h3>
+            <p className="mt-1 text-sm text-[#687582]">{message}</p>
+        </div>
+    );
+}
+
+function buildClinicalResultsBlock(medicalOrders: PatientMedicalRecordDetailVM["medicalOrders"], clinicalResults: PatientClinicalResultVM[]) {
+    const resultMap = new Map(clinicalResults.map((item) => [item.orderId, item]));
+
+    const mergedOrders = medicalOrders.map((order) => {
+        const result = resultMap.get(order.id);
+        return {
+            id: order.id,
+            serviceName: order.serviceName,
+            priority: order.priority,
+            statusLabel: result?.statusLabel || order.statusLabel,
+            orderedAt: result?.orderedAt || order.orderedAt,
+            performedAt: result?.performedAt || null,
+            ordererName: result?.ordererName || "",
+            performerName: result?.performerName || "",
+            clinicalIndicator: result?.clinicalIndicator || null,
+            resultSummary: result?.resultSummary || order.resultSummary,
+            attachmentUrls: result?.attachmentUrls || order.attachmentUrls,
+            isAbnormal: Boolean(result?.isAbnormal),
+            abnormalReason: result?.abnormalReason || null,
+        };
+    });
+
+    const extraResults = clinicalResults
+        .filter((item) => !mergedOrders.some((order) => order.id === item.orderId))
+        .map((item) => ({
+            id: item.orderId,
+            serviceName: item.serviceName,
+            priority: item.priority,
+            statusLabel: item.statusLabel,
+            orderedAt: item.orderedAt,
+            performedAt: item.performedAt,
+            ordererName: item.ordererName,
+            performerName: item.performerName,
+            clinicalIndicator: item.clinicalIndicator,
+            resultSummary: item.resultSummary,
+            attachmentUrls: item.attachmentUrls,
+            isAbnormal: item.isAbnormal,
+            abnormalReason: item.abnormalReason || null,
+        }));
+
+    return [...mergedOrders, ...extraResults];
+}
 
 export default function MedicalRecordDetailPage() {
     const { id } = useParams() as { id: string };
     const router = useRouter();
     const [loading, setLoading] = useState(true);
-    const [recordData, setRecordData] = useState<any>(null);
+    const [record, setRecord] = useState<PatientMedicalRecordDetailVM | null>(null);
+    const [clinicalResults, setClinicalResults] = useState<PatientClinicalResultVM[]>([]);
 
     useEffect(() => {
         if (!id) return;
-        const fetchDetail = async () => {
+
+        const loadDetail = async () => {
+            setLoading(true);
             try {
-                setLoading(true);
-                const res = await medicalRecordService.getDetail(id);
-                // The backend returns { success: true, data: { ... } }
-                const result = res.data?.data || res.data;
-                setRecordData(result);
+                const detailRes = await medicalRecordService.getDetail(id);
+                const detailData = adaptPatientMedicalRecordDetail(unwrap<any>(detailRes));
+                setRecord(detailData);
+
+                if (detailData.encounter.patientId) {
+                    try {
+                        const resultsRes = await clinicalResultsService.getByEncounter(id, detailData.encounter.patientId);
+                        setClinicalResults(resultsRes.data.map(adaptPatientClinicalResult));
+                    } catch (error) {
+                        console.error("Failed to load clinical results", error);
+                        setClinicalResults([]);
+                    }
+                }
             } catch (error) {
                 console.error("Failed to load medical record details", error);
+                setRecord(null);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchDetail();
+        loadDetail();
     }, [id]);
+
+    const clinicalBlocks = useMemo(() => {
+        if (!record) return [];
+        return buildClinicalResultsBlock(record.medicalOrders, clinicalResults);
+    }, [record, clinicalResults]);
+
+    const completedClinicalBlocks = useMemo(
+        () => clinicalBlocks.filter((item) => Boolean(item.resultSummary || item.performedAt || item.attachmentUrls.length > 0)),
+        [clinicalBlocks],
+    );
+
+    const pendingClinicalBlocks = useMemo(
+        () => clinicalBlocks.filter((item) => !completedClinicalBlocks.some((completed) => completed.id === item.id)),
+        [clinicalBlocks, completedClinicalBlocks],
+    );
 
     if (loading) {
         return (
-            <div className="flex justify-center flex-col items-center h-64 space-y-4">
+            <div className="flex h-64 flex-col items-center justify-center space-y-4">
                 <span className="material-symbols-outlined animate-spin text-[#3C81C6]" style={{ fontSize: "40px" }}>progress_activity</span>
-                <p className="text-gray-500 font-medium">Đang tải thông tin bệnh án...</p>
+                <p className="font-medium text-[#687582]">Đang tải thông tin bệnh án...</p>
             </div>
         );
     }
 
-    if (!recordData || !recordData.encounter) {
+    if (!record) {
         return (
-            <div className="bg-white rounded-2xl border border-gray-100 py-16 text-center">
-                <span className="material-symbols-outlined text-gray-300 mb-4" style={{ fontSize: "64px" }}>error_outline</span>
-                <h3 className="text-lg font-semibold text-gray-700 mb-1">Không tìm thấy bệnh án</h3>
-                <p className="text-sm text-gray-400 mb-6">Bệnh án bạn đang tìm kiếm không tồn tại hoặc bạn không có quyền xem.</p>
-                <button 
-                    onClick={() => router.back()}
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all"
-                >
+            <div className="rounded-2xl border border-[#e5e7eb] bg-white px-6 py-16 text-center dark:border-[#2d353e] dark:bg-[#1e242b]">
+                <span className="material-symbols-outlined mb-4 text-gray-300 dark:text-gray-600" style={{ fontSize: "64px" }}>error_outline</span>
+                <h3 className="mb-1 text-lg font-semibold text-[#121417] dark:text-white">Không tìm thấy bệnh án</h3>
+                <p className="mb-6 text-sm text-[#687582]">Bệnh án bạn đang tìm kiếm không tồn tại hoặc bạn không có quyền xem.</p>
+                <button onClick={() => router.back()} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-6 py-3 font-semibold text-white shadow-md transition-all hover:shadow-lg">
                     <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_back</span>
                     Quay lại
                 </button>
@@ -55,203 +173,204 @@ export default function MedicalRecordDetailPage() {
         );
     }
 
-    const { encounter, clinical_examination, diagnoses, medical_orders, prescription, completeness } = recordData;
-
     return (
-        <div className="space-y-6 pb-12">
-            {/* Header */}
+        <div className="space-y-6 pb-10">
             <div className="flex items-center gap-4">
-                <button 
-                    onClick={() => router.back()}
-                    className="p-2 hover:bg-gray-100 dark:hover:bg-[#1e242b] rounded-full transition-colors text-gray-500"
-                >
-                    <span className="material-symbols-outlined hidden dark:block">arrow_back</span>
-                    <span className="material-symbols-outlined dark:hidden">arrow_back_ios_new</span>
+                <button onClick={() => router.back()} className="rounded-full p-2 text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-[#1e242b]">
+                    <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>arrow_back</span>
                 </button>
-                <div>
+                <div className="min-w-0">
                     <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Chi tiết bệnh án</h1>
-                    <p className="text-sm text-[#687582] mt-0.5">Mã lần khám: {encounter.id}</p>
+                    <p className="mt-0.5 text-sm text-[#687582]">Mã lần khám: {record.encounter.encounterId}</p>
                 </div>
             </div>
 
-            {/* Overview / General Info */}
-            <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
-                <h3 className="text-lg font-bold text-[#121417] dark:text-white mb-4 border-b pb-2 border-gray-100 dark:border-gray-800">Thông tin chung</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div>
-                        <p className="text-sm text-[#687582] mb-1">Họ tên bác sĩ</p>
-                        <p className="font-semibold text-gray-900 dark:text-white">{encounter.doctor_name || "Chưa cập nhật"}</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-[#687582] mb-1">Chuyên khoa / Phòng</p>
-                        <p className="font-semibold text-gray-900 dark:text-white">{encounter.specialty_name || encounter.encounter_type}</p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-[#687582] mb-1">Thời gian bắt đầu</p>
-                        <p className="font-semibold text-gray-900 dark:text-white">
-                            {encounter.start_time ? new Date(encounter.start_time).toLocaleString('vi-VN') : "--"}
-                        </p>
-                    </div>
-                    <div>
-                        <p className="text-sm text-[#687582] mb-1">Trạng thái bệnh án</p>
-                        <p className="font-semibold text-gray-900 dark:text-white">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${encounter.is_finalized ? "bg-blue-50 text-blue-600 dark:bg-blue-500/10" : "bg-amber-50 text-amber-600 dark:bg-amber-500/10"}`}>
-                                {encounter.is_finalized ? "Đã khóa" : "Đang xử lý"}
-                            </span>
-                        </p>
+            <SectionCard icon="overview" title="Tổng quan lần khám">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+                    <InfoTile label="Bác sĩ điều trị" value={record.encounter.doctorName} />
+                    <InfoTile label="Chuyên khoa / phòng" value={`${record.encounter.specialtyName}${record.encounter.roomName ? ` • ${record.encounter.roomName}` : ""}`} />
+                    <InfoTile label="Thời gian bắt đầu" value={record.encounter.formattedStartTime} />
+                    <InfoTile label="Thời gian kết thúc" value={record.encounter.formattedEndTime} />
+                    <InfoTile label="Loại lần khám" value={record.encounter.encounterTypeLabel} />
+                    <InfoTile label="Trạng thái khám" value={record.encounter.statusLabel} />
+                    <InfoTile label="Lượt khám" value={record.encounter.visitNumber ? `#${record.encounter.visitNumber}` : "--"} />
+                    <div className="rounded-xl border border-[#e5e7eb] bg-[#f6f7f8] p-4 dark:border-[#2d353e] dark:bg-[#13191f]">
+                        <p className="mb-1 text-sm text-[#687582]">Tình trạng hồ sơ</p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${TRUST_STYLES[record.trustState] || TRUST_STYLES.draft}`}>{record.trustLabel}</span>
+                            {record.isFinalized ? <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-bold text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400">Hồ sơ đã hoàn tất</span> : null}
+                        </div>
                     </div>
                 </div>
-                {encounter.notes && (
-                    <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
-                        <p className="text-sm text-[#687582] mb-1">Ghi chú</p>
-                        <p className="text-sm text-gray-800 dark:text-gray-300">{encounter.notes}</p>
+            </SectionCard>
+
+            <SectionCard icon="stethoscope" title="Khám lâm sàng & sinh hiệu">
+                {record.clinicalExam ? (
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+                        <InfoTile label="Lý do khám bệnh" value={record.clinicalExam.chiefComplaint} />
+                        <InfoTile label="Tiền sử / triệu chứng" value={record.clinicalExam.medicalHistoryNotes} />
+                        <InfoTile label="Khám thực thể" value={record.clinicalExam.physicalExamination} />
+                        <InfoTile label="Huyết áp" value={record.clinicalExam.bloodPressureSystolic && record.clinicalExam.bloodPressureDiastolic ? `${record.clinicalExam.bloodPressureSystolic}/${record.clinicalExam.bloodPressureDiastolic}` : "--"} />
+                        <InfoTile label="Mạch" value={record.clinicalExam.pulse ? `${record.clinicalExam.pulse} bpm` : "--"} />
+                        <InfoTile label="Nhiệt độ" value={record.clinicalExam.temperature ? `${record.clinicalExam.temperature}°C` : "--"} />
+                        <InfoTile label="Nhịp thở" value={record.clinicalExam.respiratoryRate ? `${record.clinicalExam.respiratoryRate}/phút` : "--"} />
+                        <InfoTile label="SpO2" value={record.clinicalExam.spo2 ? `${record.clinicalExam.spo2}%` : "--"} />
+                        <InfoTile label="Cân nặng" value={record.clinicalExam.weight ? `${record.clinicalExam.weight} kg` : "--"} />
+                        <InfoTile label="Chiều cao" value={record.clinicalExam.height ? `${record.clinicalExam.height} cm` : "--"} />
+                        <InfoTile label="BMI" value={record.clinicalExam.bmi ? String(record.clinicalExam.bmi) : "--"} />
                     </div>
+                ) : (
+                    <EmptyState title="Chưa có dữ liệu khám lâm sàng" message="Thông tin sinh hiệu và nhận định lâm sàng sẽ hiển thị khi hồ sơ được cập nhật." icon="monitor_heart" />
                 )}
-            </div>
+            </SectionCard>
 
-            {/* Clinical Examination */}
-            {clinical_examination && (
-                <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
-                    <h3 className="text-lg font-bold text-[#121417] dark:text-white mb-4 border-b pb-2 border-gray-100 dark:border-gray-800 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "22px" }}>stethoscope</span>
-                        Khám lâm sàng
-                    </h3>
-                    
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="p-4 bg-gray-50 dark:bg-[#13191f] rounded-xl border border-gray-100 dark:border-gray-800">
-                                <p className="text-sm text-[#687582] mb-1 font-medium">Lý do khám bệnh</p>
-                                <p className="text-sm font-semibold">{clinical_examination.chief_complaint || "--"}</p>
-                            </div>
-                            <div className="p-4 bg-gray-50 dark:bg-[#13191f] rounded-xl border border-gray-100 dark:border-gray-800">
-                                <p className="text-sm text-[#687582] mb-1 font-medium">Bệnh sử</p>
-                                <p className="text-sm font-semibold">{clinical_examination.present_illness || "--"}</p>
-                            </div>
-                        </div>
-
-                        {/* Vitals inside Clinical */}
-                        <h4 className="text-sm font-bold text-gray-700 dark:text-gray-300 uppercase mt-4 mb-2 tracking-wider">Chỉ số sinh hiệu</h4>
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                            <div className="flex flex-col items-center justify-center p-3 border border-gray-100 dark:border-gray-800 rounded-lg">
-                                <span className="text-xs text-gray-500 mb-1">Huyết áp</span>
-                                <span className="font-bold text-lg text-rose-500">
-                                    {(clinical_examination.blood_pressure_systolic && clinical_examination.blood_pressure_diastolic) 
-                                        ? `${clinical_examination.blood_pressure_systolic}/${clinical_examination.blood_pressure_diastolic}` 
-                                        : "--"}
-                                </span>
-                            </div>
-                            <div className="flex flex-col items-center justify-center p-3 border border-gray-100 dark:border-gray-800 rounded-lg">
-                                <span className="text-xs text-gray-500 mb-1">Nhịp tim</span>
-                                <span className="font-bold text-lg text-red-500">
-                                    {clinical_examination.pulse ? `${clinical_examination.pulse} bpm` : "--"}
-                                </span>
-                            </div>
-                            <div className="flex flex-col items-center justify-center p-3 border border-gray-100 dark:border-gray-800 rounded-lg">
-                                <span className="text-xs text-gray-500 mb-1">Nhiệt độ</span>
-                                <span className="font-bold text-lg text-orange-500">
-                                    {clinical_examination.temperature ? `${clinical_examination.temperature}°C` : "--"}
-                                </span>
-                            </div>
-                            <div className="flex flex-col items-center justify-center p-3 border border-gray-100 dark:border-gray-800 rounded-lg">
-                                <span className="text-xs text-gray-500 mb-1">Cân nặng</span>
-                                <span className="font-bold text-lg text-blue-500">
-                                    {clinical_examination.weight ? `${clinical_examination.weight}kg` : "--"}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Diagnoses */}
-            {diagnoses && diagnoses.length > 0 && (
-                <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
-                    <h3 className="text-lg font-bold text-[#121417] dark:text-white mb-4 border-b pb-2 border-gray-100 dark:border-gray-800 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-green-500" style={{ fontSize: "22px" }}>clinical_notes</span>
-                        Chẩn đoán
-                    </h3>
+            <SectionCard icon="clinical_notes" title="Chẩn đoán" accent="text-emerald-600">
+                {record.diagnoses.length > 0 ? (
                     <div className="space-y-3">
-                        {diagnoses.map((diag: any, index: number) => (
-                            <div key={diag.id || `diag-${index}`} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-green-50 dark:bg-[#13191f] rounded-xl border border-green-100 dark:border-green-900/30">
-                                <div className={`px-2 py-1 rounded text-xs font-bold w-max ${diag.diagnosis_type === "PRIMARY" ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"}`}>
-                                    {diag.diagnosis_type === "PRIMARY" ? "Chẩn đoán chính" : "Chẩn đoán phụ"}
+                        {record.diagnoses.map((diagnosis) => (
+                            <div key={diagnosis.id} className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-4 dark:border-emerald-500/20 dark:bg-emerald-500/5">
+                                <div className="mb-2 flex flex-wrap items-center gap-2">
+                                    <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-[11px] font-bold text-white">{diagnosis.diagnosisTypeLabel}</span>
+                                    {diagnosis.icd10Code ? <span className="text-xs text-[#687582]">ICD-10: {diagnosis.icd10Code}</span> : null}
                                 </div>
-                                <div className="flex-1">
-                                    <p className="text-sm font-bold text-gray-900 dark:text-gray-100">{diag.diagnosis_name}</p>
-                                    {diag.icd10_code && <p className="text-xs text-gray-500 mt-0.5">ICD-10: <span className="font-mono bg-white dark:bg-gray-800 px-1 py-0.5 rounded border border-gray-200 dark:border-gray-700">{diag.icd10_code}</span></p>}
-                                </div>
-                                {diag.notes && <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm italic">"{diag.notes}"</p>}
+                                <p className="text-sm font-bold text-[#121417] dark:text-white">{diagnosis.diagnosisName}</p>
+                                {diagnosis.notes ? <p className="mt-2 text-sm text-[#687582]">{diagnosis.notes}</p> : null}
                             </div>
                         ))}
                     </div>
-                </div>
-            )}
+                ) : (
+                    <EmptyState title="Chưa có chẩn đoán" message="Thông tin chẩn đoán sẽ hiển thị sau khi bác sĩ cập nhật hồ sơ." icon="diagnosis" />
+                )}
+            </SectionCard>
 
-            {/* Medical Orders (Cận lâm sàng) */}
-            {medical_orders && medical_orders.length > 0 && (
-                <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
-                    <h3 className="text-lg font-bold text-[#121417] dark:text-white mb-4 border-b pb-2 border-gray-100 dark:border-gray-800 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-purple-500" style={{ fontSize: "22px" }}>biotech</span>
-                        Chỉ định cận lâm sàng
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {medical_orders.map((order: any, index: number) => (
-                            <div key={order.id || `order-${index}`} className="p-4 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-md transition-shadow">
-                                <div className="flex items-start gap-3">
-                                    <div className="w-10 h-10 rounded-lg bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center flex-shrink-0">
-                                        <span className="material-symbols-outlined text-purple-500" style={{ fontSize: "20px" }}>science</span>
-                                    </div>
-                                    <div>
-                                        <p className="font-bold text-sm text-gray-900 dark:text-gray-100">{order.service_name}</p>
-                                        <p className="text-xs text-gray-500 mt-1">Trạng thái: <span className="font-semibold">{order.status || "Hoàn thành"}</span></p>
-                                        {order.result_summary && (
-                                            <div className="mt-2 text-sm bg-gray-50 dark:bg-gray-800 p-2 rounded border border-gray-100 dark:border-gray-700">
-                                                <span className="font-medium">Kết quả:</span> {order.result_summary}
+            <SectionCard icon="science" title="Kết quả cận lâm sàng" accent="text-violet-600">
+                {clinicalBlocks.length > 0 ? (
+                    <div className="space-y-6">
+                        {completedClinicalBlocks.length > 0 ? (
+                            <div className="space-y-4">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-[#121417] dark:text-white">Chỉ định đã có kết quả</h3>
+                                    <p className="mt-1 text-xs text-[#687582]">Bao gồm các xét nghiệm hoặc cận lâm sàng đã được trả kết quả cho buổi khám này.</p>
+                                </div>
+                                {completedClinicalBlocks.map((item) => (
+                                    <div key={item.id} className={`rounded-2xl border p-4 ${item.isAbnormal ? "border-amber-200 bg-amber-50/60 dark:border-amber-500/20 dark:bg-amber-500/5" : "border-[#e5e7eb] bg-[#f6f7f8] dark:border-[#2d353e] dark:bg-[#13191f]"}`}>
+                                        <div className="space-y-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <h4 className="text-sm font-bold text-[#121417] dark:text-white">{item.serviceName}</h4>
+                                                <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-bold text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">{item.statusLabel}</span>
+                                                {item.priority ? <span className="rounded-full border border-[#e5e7eb] bg-white px-2.5 py-1 text-[11px] font-semibold text-[#687582] dark:border-[#2d353e] dark:bg-[#1e242b]">Ưu tiên: {item.priority}</span> : null}
                                             </div>
-                                        )}
+                                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#687582]">
+                                                {item.orderedAt ? <span>Chỉ định: {new Date(item.orderedAt).toLocaleString("vi-VN")}</span> : null}
+                                                {item.performedAt ? <span>Thực hiện: {new Date(item.performedAt).toLocaleString("vi-VN")}</span> : null}
+                                                {item.ordererName ? <span>Người chỉ định: {item.ordererName}</span> : null}
+                                                {item.performerName ? <span>Người thực hiện: {item.performerName}</span> : null}
+                                            </div>
+                                            {item.clinicalIndicator ? <p className="text-sm text-[#687582]"><span className="font-semibold">Chỉ định lâm sàng:</span> {item.clinicalIndicator}</p> : null}
+                                            {item.resultSummary ? <p className="text-sm text-[#121417] dark:text-white"><span className="font-semibold">Tóm tắt kết quả:</span> {item.resultSummary}</p> : null}
+                                            {item.abnormalReason ? <p className="text-sm font-medium text-amber-700 dark:text-amber-300">{item.abnormalReason}</p> : null}
+                                            {item.attachmentUrls.length > 0 ? (
+                                                <div className="flex flex-wrap gap-2 pt-1">
+                                                    {item.attachmentUrls.map((url, index) => (
+                                                        <a
+                                                            key={`${item.id}-${index}`}
+                                                            href={url}
+                                                            target="_blank"
+                                                            rel="noreferrer"
+                                                            className="inline-flex items-center gap-1 rounded-full border border-[#d6e6f7] bg-white px-3 py-1 text-xs font-semibold text-[#3C81C6] hover:border-[#3C81C6] dark:border-[#2d4f73] dark:bg-[#1e242b]"
+                                                        >
+                                                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>attach_file</span>
+                                                            Xem tệp đính kèm
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
+
+                        {pendingClinicalBlocks.length > 0 ? (
+                            <div className="space-y-4">
+                                <div>
+                                    <h3 className="text-sm font-semibold text-[#121417] dark:text-white">Chỉ định đã tạo nhưng chưa có kết quả</h3>
+                                    <p className="mt-1 text-xs text-[#687582]">Các chỉ định này đã được ghi nhận trong hồ sơ nhưng hiện chưa có kết quả trả về.</p>
+                                </div>
+                                {pendingClinicalBlocks.map((item) => (
+                                    <div key={item.id} className="rounded-2xl border border-[#e5e7eb] bg-[#f6f7f8] p-4 dark:border-[#2d353e] dark:bg-[#13191f]">
+                                        <div className="space-y-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <h4 className="text-sm font-bold text-[#121417] dark:text-white">{item.serviceName}</h4>
+                                                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Chưa có kết quả</span>
+                                            </div>
+                                            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#687582]">
+                                                {item.orderedAt ? <span>Chỉ định: {new Date(item.orderedAt).toLocaleString("vi-VN")}</span> : null}
+                                                {item.ordererName ? <span>Người chỉ định: {item.ordererName}</span> : null}
+                                            </div>
+                                            {item.clinicalIndicator ? <p className="text-sm text-[#687582]"><span className="font-semibold">Chỉ định lâm sàng:</span> {item.clinicalIndicator}</p> : null}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : null}
+                    </div>
+                ) : (
+                    <EmptyState title="Buổi khám này chưa có chỉ định cận lâm sàng" message="Nếu bác sĩ có chỉ định xét nghiệm hoặc chẩn đoán hình ảnh, thông tin sẽ hiển thị tại đây." icon="biotech" />
+                )}
+            </SectionCard>
+
+            <SectionCard icon="medication" title="Đơn thuốc" accent="text-cyan-600">
+                {record.prescription && record.prescription.details.length > 0 ? (
+                    <div className="space-y-5">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+                            <InfoTile label="Mã đơn thuốc" value={record.prescription.prescriptionCode} />
+                            <InfoTile label="Ngày kê" value={record.prescription.prescribedAt} />
+                            <InfoTile label="Tình trạng toa" value={record.prescription.statusLabel} />
+                            <InfoTile label="Chẩn đoán lâm sàng" value={record.prescription.clinicalDiagnosis} />
+                        </div>
+                        <InfoTile label="Ghi chú bác sĩ" value={record.prescription.doctorNotes} />
+                        <div className="space-y-3">
+                            {record.prescription.details.map((item, index) => (
+                                <div key={`${item.brandName}-${index}`} className="rounded-2xl border border-[#e5e7eb] bg-[#f6f7f8] p-4 dark:border-[#2d353e] dark:bg-[#13191f]">
+                                    <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                                        <div>
+                                            <p className="text-sm font-bold text-[#121417] dark:text-white">{item.brandName}</p>
+                                            <p className="mt-1 text-xs text-[#687582]">{item.activeIngredients}</p>
+                                            {item.drugCode ? <p className="mt-1 text-xs text-[#687582]">Mã thuốc: {item.drugCode}</p> : null}
+                                        </div>
+                                        <div className="grid min-w-0 grid-cols-2 gap-3 text-sm md:grid-cols-3 xl:min-w-[420px]">
+                                            <InfoTile label="Số lượng" value={item.quantity ? `${item.quantity} ${item.dispensingUnit}` : `-- ${item.dispensingUnit}`} />
+                                            <InfoTile label="Liều dùng" value={item.dosage} />
+                                            <InfoTile label="Tần suất" value={item.frequency} />
+                                            <InfoTile label="Số ngày" value={item.durationDays ? `${item.durationDays} ngày` : "--"} />
+                                            <InfoTile label="Đường dùng" value={item.routeOfAdministration} />
+                                            <InfoTile label="Hướng dẫn" value={item.usageInstruction} />
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
-            )}
+                ) : (
+                    <EmptyState title="Chưa có đơn thuốc" message="Thông tin toa thuốc sẽ hiển thị tại đây nếu buổi khám có chỉ định dùng thuốc." icon="pill" />
+                )}
+            </SectionCard>
 
-            {/* Prescription */}
-            {prescription && prescription.details && prescription.details.length > 0 && (
-                <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
-                    <h3 className="text-lg font-bold text-[#121417] dark:text-white mb-4 border-b pb-2 border-gray-100 dark:border-gray-800 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-blue-500" style={{ fontSize: "22px" }}>medication</span>
-                        Đơn thuốc
-                    </h3>
-                    {prescription.prescription_code && (
-                        <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-4">Mã đơn thuốc: <span className="text-gray-900 dark:text-white">{prescription.prescription_code}</span></p>
-                    )}
-                    
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="text-xs font-semibold text-[#687582] uppercase border-b border-[#e5e7eb] dark:border-[#2d353e]">
-                                    <th className="text-left py-3">Tên thuốc</th>
-                                    <th className="text-center py-3">S.Lượng</th>
-                                    <th className="text-left py-3">Cách dùng</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {prescription.details.map((med: any, index: number) => (
-                                    <tr key={med.id || `med-${index}`} className="border-b border-[#e5e7eb]/50 dark:border-[#2d353e]/50 hover:bg-[#f6f7f8] dark:hover:bg-[#13191f]">
-                                        <td className="py-3 font-bold text-[#121417] dark:text-white">
-                                            {med.brand_name || med.medicine_name} <span className="font-normal text-xs text-gray-500 ml-1">({med.dispensing_unit || med.unit})</span>
-                                        </td>
-                                        <td className="py-3 text-center font-medium text-[#121417] dark:text-white">{med.quantity}</td>
-                                        <td className="py-3 text-[#121417] dark:text-white italic">{med.usage_instruction || med.usage_instructions}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+            <SectionCard icon="verified_user" title="Tình trạng hồ sơ" accent="text-indigo-600">
+                <div className="space-y-5">
+                    <div className="rounded-2xl border border-[#e5e7eb] bg-[#f6f7f8] p-5 dark:border-[#2d353e] dark:bg-[#13191f]">
+                        <p className="text-sm text-[#687582]">Độ đầy đủ hồ sơ</p>
+                        <p className="mt-1 text-3xl font-bold text-[#121417] dark:text-white">{record.completeness.score}%</p>
+                        <p className="mt-1 text-sm text-[#687582]">{record.completeness.statusLabel}</p>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <InfoTile label="Mức độ tin cậy hồ sơ" value={record.trustLabel} />
+                        <InfoTile label="Hoàn tất hồ sơ" value={record.snapshot?.finalizedAt || "Chưa hoàn tất"} />
+                        <InfoTile label="Xác nhận hồ sơ" value={record.signature?.signedAt || "Chưa xác nhận"} />
                     </div>
                 </div>
-            )}
+            </SectionCard>
         </div>
     );
 }
