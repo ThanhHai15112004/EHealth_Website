@@ -14,6 +14,20 @@ const TRUST_STYLES: Record<string, string> = {
     draft: "bg-orange-100 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300",
 };
 
+function isSafeAttachmentUrl(url: string) {
+    const normalized = url.trim();
+    if (!normalized) return false;
+
+    const lower = normalized.toLowerCase();
+    if (lower === "string" || lower === "null" || lower === "undefined") return false;
+
+    return normalized.startsWith("http://") || normalized.startsWith("https://") || normalized.startsWith("/");
+}
+
+function sanitizeAttachmentUrls(urls: string[]) {
+    return urls.filter((url) => isSafeAttachmentUrl(url));
+}
+
 function SectionCard({
     icon,
     title,
@@ -71,7 +85,7 @@ function buildClinicalResultsBlock(medicalOrders: PatientMedicalRecordDetailVM["
             performerName: result?.performerName || "",
             clinicalIndicator: result?.clinicalIndicator || null,
             resultSummary: result?.resultSummary || order.resultSummary,
-            attachmentUrls: result?.attachmentUrls || order.attachmentUrls,
+            attachmentUrls: sanitizeAttachmentUrls(result?.attachmentUrls || order.attachmentUrls),
             isAbnormal: Boolean(result?.isAbnormal),
             abnormalReason: result?.abnormalReason || null,
         };
@@ -90,7 +104,7 @@ function buildClinicalResultsBlock(medicalOrders: PatientMedicalRecordDetailVM["
             performerName: item.performerName,
             clinicalIndicator: item.clinicalIndicator,
             resultSummary: item.resultSummary,
-            attachmentUrls: item.attachmentUrls,
+            attachmentUrls: sanitizeAttachmentUrls(item.attachmentUrls),
             isAbnormal: item.isAbnormal,
             abnormalReason: item.abnormalReason || null,
         }));
