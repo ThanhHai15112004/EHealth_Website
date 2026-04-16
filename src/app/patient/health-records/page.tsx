@@ -1,11 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { unwrapList } from "@/api/response";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
+import { clinicalResultsService } from "@/services/clinicalResultsService";
 import type { PatientProfile } from "@/types/patient-profile";
 import type { VitalSign, HealthTimelineItem, MedicalHistoryItem, LabResult, Medication } from "@/types/patient-portal";
 import { ehrService } from "@/services/ehrService";
+import { medicalRecordService } from "@/services/medicalRecordService";
+import { adaptPatientClinicalResult, adaptPatientRecordTimelineItem } from "@/utils/patientMedicalRecordAdapters";
 
 const TABS = [
     { id: "overview", label: "Tổng quan", icon: "dashboard" },
@@ -19,18 +23,31 @@ const TABS = [
 // ─── Adapter: chuyển dữ liệu API sang format UI ──────────────────────────────
 
 function adaptVital(v: any): VitalSign {
+    const toNumber = (value: unknown, fallback = 0) => {
+        if (value === null || value === undefined || value === "") return fallback;
+        const parsed = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(parsed) ? parsed : fallback;
+    };
+
+    const weight = toNumber(v.weight ?? v.bodyWeight ?? v.mass, 0);
+    const height = toNumber(v.height ?? v.bodyHeight ?? v.stature, 0);
+    const bmi = toNumber(
+        v.bmi ?? (weight && height ? weight / ((height / 100) ** 2) : 0),
+        0,
+    );
+
     return {
         id: v.id ?? v._id ?? String(Math.random()),
-        date: v.date ?? v.measuredAt ?? v.createdAt ?? "",
-        bloodPressureSystolic: v.bloodPressureSystolic ?? v.systolic ?? v.bp_systolic ?? 0,
-        bloodPressureDiastolic: v.bloodPressureDiastolic ?? v.diastolic ?? v.bp_diastolic ?? 0,
-        heartRate: v.heartRate ?? v.heart_rate ?? v.pulse ?? 0,
-        temperature: v.temperature ?? v.bodyTemperature ?? 36.5,
-        weight: v.weight ?? 0,
-        height: v.height ?? 0,
-        bmi: v.bmi ?? (v.weight && v.height ? +(v.weight / ((v.height / 100) ** 2)).toFixed(1) : 0),
-        bloodSugar: v.bloodSugar ?? v.blood_sugar ?? v.glucose,
-        spo2: v.spo2 ?? v.oxygenSaturation ?? v.oxygen_saturation,
+        date: v.date ?? v.measuredAt ?? v.encounter_start ?? v.createdAt ?? v.created_at ?? "",
+        bloodPressureSystolic: toNumber(v.bloodPressureSystolic ?? v.blood_pressure_systolic ?? v.systolic ?? v.bp_systolic, 0),
+        bloodPressureDiastolic: toNumber(v.bloodPressureDiastolic ?? v.blood_pressure_diastolic ?? v.diastolic ?? v.bp_diastolic, 0),
+        heartRate: toNumber(v.heartRate ?? v.heart_rate ?? v.pulse, 0),
+        temperature: toNumber(v.temperature ?? v.bodyTemperature, 36.5),
+        weight,
+        height,
+        bmi,
+        bloodSugar: toNumber(v.bloodSugar ?? v.blood_sugar ?? v.blood_glucose ?? v.glucose, 0),
+        spo2: toNumber(v.spo2 ?? v.oxygenSaturation ?? v.oxygen_saturation, 0),
     };
 }
 
@@ -59,14 +76,21 @@ function adaptMedHistory(m: any): MedicalHistoryItem {
         chronic: "chronic", allergy: "allergy", surgery: "surgery",
         family: "family", risk_factor: "risk_factor",
         chronic_disease: "chronic", allergic: "allergy",
+        PERSONAL: "chronic", FAMILY: "family", SURGICAL: "surgery",
+    };
+    const statusMap: Record<string, MedicalHistoryItem["status"]> = {
+        ACTIVE: "active",
+        RESOLVED: "resolved",
+        INACTIVE: "monitoring",
+        MONITORING: "monitoring",
     };
     return {
-        id: m.id ?? m._id ?? String(Math.random()),
-        type: typeMap[m.type] ?? "chronic",
-        name: m.name ?? m.condition ?? m.diagnosis ?? "",
-        details: m.details ?? m.description ?? m.notes ?? "",
-        diagnosedDate: m.diagnosedDate ?? m.diagnosed_date ?? m.onset_date,
-        status: m.status ?? "active",
+        id: m.id ?? m._id ?? m.patient_medical_histories_id ?? m.patient_allergies_id ?? String(Math.random()),
+        type: typeMap[m.type ?? m.history_type] ?? "chronic",
+        name: m.name ?? m.condition_name ?? m.allergen_name ?? m.condition ?? m.diagnosis ?? "",
+        details: m.details ?? m.reaction ?? m.description ?? m.notes ?? "",
+        diagnosedDate: m.diagnosedDate ?? m.diagnosis_date ?? m.diagnosed_date ?? m.onset_date ?? m.created_at,
+        status: statusMap[m.status] ?? m.status ?? "active",
     };
 }
 
@@ -89,17 +113,122 @@ function adaptLabResult(r: any): LabResult {
     };
 }
 
-function adaptMedication(m: any): Medication {
+function adaptClinicalResultToLabResult(result: any): LabResult {
+    const collectItems = (input: any): any[] => {
+        if (!input) return [];
+        if (Array.isArray(input)) return input.flatMap(collectItems);
+        if (typeof input !== "object") return [];
+        if ("value" in input || "result" in input || "referenceRange" in input || "unit" in input) {
+            return [input];
+        }
+
+        return Object.entries(input).flatMap(([key, value]) => {
+            if (value && typeof value === "object" && !Array.isArray(value)) {
+                const detail = value as Record<string, any>;
+                return [{
+                    name: detail.name ?? key,
+                    value: detail.value ?? detail.result ?? detail.text ?? detail.summary ?? "",
+                    unit: detail.unit ?? "",
+                    reference: detail.reference ?? detail.referenceRange ?? detail.normalRange ?? "",
+                    status: detail.status ?? detail.flag ?? "",
+                }];
+            }
+
+            return [{
+                name: key,
+                value,
+                unit: "",
+                reference: "",
+                status: "",
+            }];
+        });
+    };
+
+    const details = result?.resultDetails;
+    const detailItems = Array.isArray(details?.items)
+        ? details.items
+        : Array.isArray(details?.results)
+            ? details.results
+            : collectItems(details);
+    const summary = typeof result?.resultSummary === "string" ? result.resultSummary.trim() : "";
+
     return {
-        id: m.id ?? m._id ?? String(Math.random()),
-        name: m.name ?? m.drugName ?? m.drug_name ?? m.medication ?? "",
+        id: result?.orderId ?? String(Math.random()),
+        date: result?.performedAt ?? result?.orderedAt ?? "",
+        testName: result?.serviceName ?? "Xét nghiệm",
+        category: result?.orderType || "Cận lâm sàng",
+        doctorName: result?.doctorName || result?.ordererName || result?.performerName || "",
+        status: result?.status === "pending" ? "pending" : "completed",
+        results: detailItems.length > 0
+            ? detailItems.map((item: any) => ({
+                name: item?.name ?? item?.label ?? item?.parameter ?? "Chỉ số",
+                value: String(item?.value ?? item?.result ?? ""),
+                unit: item?.unit ?? "",
+                reference: item?.reference ?? item?.referenceRange ?? item?.normalRange ?? "",
+                status: item?.status === "low" || item?.flag === "low"
+                    ? "low"
+                    : item?.status === "high" || item?.flag === "high" || item?.status === "abnormal"
+                        ? "high"
+                        : "normal",
+            }))
+            : summary
+                ? [{
+                    name: "Tóm tắt",
+                    value: summary,
+                    unit: "",
+                    reference: "",
+                    status: result?.isAbnormal ? "high" : "normal",
+                }]
+                : [],
+    };
+}
+
+function adaptRecordTimelineToHealthTimeline(item: any): HealthTimelineItem {
+    const adapted = adaptPatientRecordTimelineItem(item);
+    const typeMap: Record<string, HealthTimelineItem["type"]> = {
+        ENCOUNTER: "examination",
+        DIAGNOSIS: "examination",
+        PRESCRIPTION: "prescription",
+        LAB_ORDER: "lab_result",
+        LAB_RESULT: "lab_result",
+        EMR_FINALIZED: "examination",
+        EMR_SIGNED: "examination",
+        EMR_OFFICIAL_SIGNED: "examination",
+        SIGN_REVOKED: "examination",
+    };
+
+    return {
+        id: adapted.id,
+        date: adapted.date,
+        type: typeMap[adapted.type] ?? "examination",
+        title: adapted.title,
+        description: adapted.description,
+        doctorName: undefined,
+        department: undefined,
+        status: adapted.status,
+        icon: adapted.icon,
+        color: adapted.color,
+    };
+}
+
+function adaptMedication(m: any): Medication {
+    const daysRemaining = Number(m.days_remaining);
+    const normalizedStatus = String(m.status ?? "").toUpperCase();
+
+    return {
+        id: m.id ?? m._id ?? m.prescription_details_id ?? String(Math.random()),
+        name: m.name ?? m.brand_name ?? m.drugName ?? m.drug_name ?? m.drug_name ?? m.medication ?? "",
         dosage: m.dosage ?? m.dose ?? "",
         frequency: m.frequency ?? m.schedule ?? "",
-        startDate: m.startDate ?? m.start_date ?? "",
+        startDate: m.startDate ?? m.start_date ?? m.prescribed_at ?? "",
         endDate: m.endDate ?? m.end_date,
-        prescribedBy: m.prescribedBy ?? m.prescribed_by ?? m.doctor?.name ?? "",
-        status: m.status ?? "active",
-        notes: m.notes ?? m.instructions,
+        prescribedBy: m.prescribedBy ?? m.prescribed_by ?? m.doctor_name ?? m.doctor?.name ?? "",
+        status: normalizedStatus === "COMPLETED" || normalizedStatus === "DISCONTINUED"
+            ? "completed"
+            : Number.isFinite(daysRemaining) && daysRemaining < 0
+                ? "completed"
+                : "active",
+        notes: m.notes ?? m.usage_instruction ?? m.instructions ?? m.active_ingredients,
     };
 }
 
@@ -134,7 +263,7 @@ export default function HealthRecordsPage() {
     usePageAIContext({ pageKey: 'health-records' });
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState("overview");
-    const [selectedProfileId, setSelectedProfileId] = useState(user?.id ?? "");
+    const [selectedProfileId, setSelectedProfileId] = useState("");
     const [profiles, setProfiles] = useState<PatientProfile[]>([]);
 
     useEffect(() => {
@@ -178,25 +307,36 @@ export default function HealthRecordsPage() {
     const [loadingMeds, setLoadingMeds] = useState(false);
     const [loadingOverview, setLoadingOverview] = useState(false);
 
-    const patientId = user?.id ?? selectedProfileId;
+    const patientId = selectedProfileId;
 
     // ── Fetch functions ────────────────────────────────────────────────
 
     const fetchOverview = useCallback(async () => {
+        if (!patientId || !selectedProfileId) return;
         if (fetched[`overview_${selectedProfileId}`]) return;
         setLoadingOverview(true);
         try {
-            const [profileRes, medsRes, allergiesRes] = await Promise.allSettled([
+            const [profileRes, medsRes, allergiesRes, timelineRes] = await Promise.allSettled([
                 ehrService.getHealthProfile(patientId),
                 ehrService.getCurrentMedications(patientId),
                 ehrService.getAllergies(patientId),
+                medicalRecordService.getTimeline(patientId),
             ]);
 
+            if (profileRes.status === "fulfilled") {
+                const latest = profileRes.value?.latest_vitals ?? profileRes.value?.latestVital ?? null;
+                if (latest) {
+                    setLatestVital(adaptVital(latest));
+                }
+            }
             if (medsRes.status === "fulfilled" && medsRes.value.data?.length) {
                 setMedications(medsRes.value.data.map(adaptMedication));
             }
             if (allergiesRes.status === "fulfilled" && allergiesRes.value.data?.length) {
                 setAllergies(allergiesRes.value.data.map((a: any) => adaptMedHistory({ ...a, type: "allergy" })));
+            }
+            if (timelineRes.status === "fulfilled") {
+                setTimeline(unwrapList<any>(timelineRes.value).data.map(adaptRecordTimelineToHealthTimeline));
             }
             setFetched(prev => ({ ...prev, [`overview_${selectedProfileId}`]: true }));
         } catch {
@@ -207,6 +347,7 @@ export default function HealthRecordsPage() {
     }, [patientId, selectedProfileId, fetched]);
 
     const fetchVitals = useCallback(async () => {
+        if (!patientId || !selectedProfileId) return;
         if (fetched[`vitals_${selectedProfileId}`]) return;
         setLoadingVitals(true);
         try {
@@ -230,11 +371,21 @@ export default function HealthRecordsPage() {
     }, [patientId, selectedProfileId, fetched]);
 
     const fetchHistory = useCallback(async () => {
+        if (!patientId || !selectedProfileId) return;
         if (fetched[`history_${selectedProfileId}`]) return;
         setLoadingHistory(true);
         try {
-            const res = await ehrService.getMedicalHistoryByProfile(patientId);
-            if (res.data?.length) setMedHistory(res.data.map(adaptMedHistory));
+            const [historyRes, allergyRes] = await Promise.allSettled([
+                ehrService.getMedicalHistoryByProfile(patientId),
+                ehrService.getAllergies(patientId),
+            ]);
+
+            if (historyRes.status === "fulfilled") {
+                setMedHistory((historyRes.value.data ?? []).map(adaptMedHistory));
+            }
+            if (allergyRes.status === "fulfilled") {
+                setAllergies((allergyRes.value.data ?? []).map((item: any) => adaptMedHistory({ ...item, type: "allergy" })));
+            }
             setFetched(prev => ({ ...prev, [`history_${selectedProfileId}`]: true }));
         } catch {
             // giữ fallback mock
@@ -244,11 +395,44 @@ export default function HealthRecordsPage() {
     }, [patientId, selectedProfileId, fetched]);
 
     const fetchLab = useCallback(async () => {
+        if (!patientId || !selectedProfileId) return;
         if (fetched[`lab_${selectedProfileId}`]) return;
         setLoadingLab(true);
         try {
-            const res = await ehrService.getClinicalResults(patientId);
-            if (res.data?.length) setLabResults(res.data.map(adaptLabResult));
+            const [patientResultsRes, encounterResultsRes] = await Promise.allSettled([
+                clinicalResultsService.getByPatient(patientId, { page: 1, limit: 100 }),
+                (async () => {
+                    const encountersRes = await medicalRecordService.getByPatient(patientId);
+                    const encounterIds = unwrapList<any>(encountersRes).data
+                        .map((encounter) => encounter?.encounters_id || encounter?.encounter_id || encounter?.id)
+                        .filter(Boolean);
+
+                    const settledResults = await Promise.allSettled(
+                        encounterIds.map((encounterId) => clinicalResultsService.getByEncounter(encounterId, patientId)),
+                    );
+
+                    return settledResults.flatMap((result) =>
+                        result.status === "fulfilled"
+                            ? result.value.data
+                            : [],
+                    );
+                })(),
+            ]);
+
+            const patientResults = patientResultsRes.status === "fulfilled" ? patientResultsRes.value.data : [];
+            const encounterResults = encounterResultsRes.status === "fulfilled" ? encounterResultsRes.value : [];
+            const deduped = Array.from(
+                new Map(
+                    [...patientResults, ...encounterResults]
+                        .map(adaptPatientClinicalResult)
+                        .map((item) => [
+                            item.orderId ?? `${item.serviceName}_${item.performedAt}`,
+                            item,
+                        ]),
+                ).values(),
+            );
+
+            setLabResults(deduped.map(adaptClinicalResultToLabResult));
             setFetched(prev => ({ ...prev, [`lab_${selectedProfileId}`]: true }));
         } catch {
             // giữ fallback mock
@@ -258,10 +442,11 @@ export default function HealthRecordsPage() {
     }, [patientId, selectedProfileId, fetched]);
 
     const fetchMedications = useCallback(async () => {
+        if (!patientId || !selectedProfileId) return;
         if (fetched[`meds_${selectedProfileId}`]) return;
         setLoadingMeds(true);
         try {
-            const res = await ehrService.getMedicationTreatments(patientId);
+            const res = await ehrService.getCurrentMedications(patientId);
             if (res.data?.length) setMedications(res.data.map(adaptMedication));
             setFetched(prev => ({ ...prev, [`meds_${selectedProfileId}`]: true }));
         } catch {
@@ -272,11 +457,13 @@ export default function HealthRecordsPage() {
     }, [patientId, selectedProfileId, fetched]);
 
     const fetchTimeline = useCallback(async () => {
+        if (!patientId || !selectedProfileId) return;
         if (fetched[`timeline_${selectedProfileId}`]) return;
         setLoadingTimeline(true);
         try {
-            const res = await ehrService.getHealthTimeline(patientId);
-            if (res.data?.length) setTimeline(res.data.map(adaptTimeline));
+            const res = await medicalRecordService.getTimeline(patientId);
+            const items = unwrapList<any>(res).data.map(adaptRecordTimelineToHealthTimeline);
+            if (items.length) setTimeline(items);
             setFetched(prev => ({ ...prev, [`timeline_${selectedProfileId}`]: true }));
         } catch {
             // giữ fallback mock
@@ -287,6 +474,7 @@ export default function HealthRecordsPage() {
 
     // Lazy load khi chuyển tab
     useEffect(() => {
+        if (!selectedProfileId) return;
         switch (activeTab) {
             case "overview": fetchOverview(); break;
             case "vitals": fetchVitals(); break;
@@ -295,7 +483,7 @@ export default function HealthRecordsPage() {
             case "medications": fetchMedications(); break;
             case "timeline": fetchTimeline(); break;
         }
-    }, [activeTab, selectedProfileId]);
+    }, [activeTab, selectedProfileId, fetchHistory, fetchLab, fetchMedications, fetchOverview, fetchTimeline, fetchVitals]);
 
     // Reset fetched khi đổi profile
     const handleProfileChange = (profileId: string) => {
@@ -356,7 +544,7 @@ export default function HealthRecordsPage() {
             <div>
                 {activeTab === "overview" && (loadingOverview ? <Skeleton rows={2} /> : <OverviewTab vital={latestVital} allergies={allergies} medications={medications} recentTimeline={timeline} />)}
                 {activeTab === "vitals" && (loadingVitals ? <Skeleton rows={2} /> : <VitalsTab vitals={vitals} />)}
-                {activeTab === "history" && (loadingHistory ? <Skeleton /> : <MedicalHistoryTab items={medHistory} />)}
+                {activeTab === "history" && (loadingHistory ? <Skeleton /> : <MedicalHistoryTab items={medHistory} allergies={allergies} />)}
                 {activeTab === "lab" && (loadingLab ? <Skeleton /> : <LabResultsTab results={labResults} />)}
                 {activeTab === "medications" && (loadingMeds ? <Skeleton /> : <MedicationsTab medications={medications} />)}
                 {activeTab === "timeline" && (loadingTimeline ? <Skeleton /> : <TimelineTab items={timeline} />)}
@@ -375,6 +563,11 @@ function OverviewTab({
     medications: Medication[];
     recentTimeline: HealthTimelineItem[];
 }) {
+    const safeFixed = (value: unknown, digits = 1) => {
+        const parsed = typeof value === "number" ? value : Number(value);
+        return Number.isFinite(parsed) ? parsed.toFixed(digits) : "—";
+    };
+
     const healthCards = [
         { label: "Huyết áp", value: vital ? `${vital.bloodPressureSystolic}/${vital.bloodPressureDiastolic}` : "—", unit: "mmHg", icon: "bloodtype", color: "from-red-500 to-rose-600", ok: !vital || vital.bloodPressureSystolic <= 130 },
         { label: "Nhịp tim", value: vital ? `${vital.heartRate}` : "—", unit: "bpm", icon: "cardiology", color: "from-pink-500 to-red-500", ok: true },
@@ -499,8 +692,8 @@ function TimelineTab({ items }: { items: HealthTimelineItem[] }) {
     );
 }
 
-function MedicalHistoryTab({ items }: { items: MedicalHistoryItem[] }) {
-    if (items.length === 0) return <EmptyState icon="history_edu" message="Chưa có tiền sử bệnh" />;
+function MedicalHistoryTab({ items, allergies }: { items: MedicalHistoryItem[]; allergies: MedicalHistoryItem[] }) {
+    if (items.length === 0 && allergies.length === 0) return <EmptyState icon="history_edu" message="Chưa có tiền sử bệnh" />;
     const cfg: Record<string, { label: string; icon: string; color: string }> = {
         chronic: { label: "Bệnh mãn tính", icon: "medical_information", color: "text-red-500 bg-red-50 dark:bg-red-500/10" },
         allergy: { label: "Dị ứng", icon: "warning", color: "text-amber-500 bg-amber-50 dark:bg-amber-500/10" },
@@ -512,6 +705,33 @@ function MedicalHistoryTab({ items }: { items: MedicalHistoryItem[] }) {
 
     return (
         <div className="space-y-4">
+            {allergies.length > 0 && (
+                <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
+                    <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
+                        <div className="w-8 h-8 rounded-lg text-amber-500 bg-amber-50 dark:bg-amber-500/10 flex items-center justify-center">
+                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>warning</span>
+                        </div>
+                        Dị ứng
+                        <span className="ml-auto text-xs bg-[#f6f7f8] dark:bg-[#13191f] text-[#687582] px-2 py-0.5 rounded-full">{allergies.length}</span>
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {allergies.map(item => (
+                            <div key={item.id} className="rounded-2xl border border-amber-100 dark:border-amber-500/20 bg-amber-50/70 dark:bg-amber-500/5 p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div>
+                                        <p className="text-sm font-bold text-[#121417] dark:text-white">{item.name}</p>
+                                        {item.details && <p className="text-xs text-[#687582] mt-1.5">{item.details}</p>}
+                                    </div>
+                                    <span className="px-2 py-1 text-[10px] font-bold rounded-full uppercase bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                                        Cảnh báo
+                                    </span>
+                                </div>
+                                {item.diagnosedDate && <p className="text-xs text-[#687582]/80 mt-3">Ghi nhận: {item.diagnosedDate}</p>}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
             {Object.entries(grouped).map(([type, group]) => {
                 const c = cfg[type] || { label: type, icon: "info", color: "text-gray-500 bg-gray-50" };
                 return (
@@ -523,19 +743,21 @@ function MedicalHistoryTab({ items }: { items: MedicalHistoryItem[] }) {
                             {c.label}
                             <span className="ml-auto text-xs bg-[#f6f7f8] dark:bg-[#13191f] text-[#687582] px-2 py-0.5 rounded-full">{group.length}</span>
                         </h3>
-                        <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {group.map(item => (
-                                <div key={item.id} className="flex items-start gap-3 p-3 rounded-xl bg-[#f6f7f8] dark:bg-[#13191f]">
-                                    <div className="flex-1">
-                                        <div className="flex items-center gap-2">
+                                <div key={item.id} className="rounded-2xl border border-[#edf0f2] dark:border-[#2d353e] bg-[#fbfcfd] dark:bg-[#13191f] p-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
                                             <p className="text-sm font-semibold text-[#121417] dark:text-white">{item.name}</p>
+                                            {item.details && <p className="text-xs text-[#687582] mt-1.5 leading-5">{item.details}</p>}
+                                        </div>
+                                        <div className="flex items-center gap-2">
                                             <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase ${item.status === "active" ? "bg-red-100 dark:bg-red-500/10 text-red-600" : item.status === "resolved" ? "bg-green-100 dark:bg-green-500/10 text-green-600" : "bg-blue-100 dark:bg-blue-500/10 text-blue-600"}`}>
                                                 {item.status === "active" ? "Hoạt động" : item.status === "resolved" ? "Đã xử lý" : "Theo dõi"}
                                             </span>
                                         </div>
-                                        <p className="text-xs text-[#687582] mt-1">{item.details}</p>
-                                        {item.diagnosedDate && <p className="text-xs text-[#687582]/70 mt-1">Phát hiện: {item.diagnosedDate}</p>}
                                     </div>
+                                    {item.diagnosedDate && <p className="text-xs text-[#687582]/70 mt-3">Phát hiện: {item.diagnosedDate}</p>}
                                 </div>
                             ))}
                         </div>
@@ -579,12 +801,12 @@ function LabResultsTab({ results }: { results: LabResult[] }) {
                                 <tbody>{result.results.map((r, i) => (
                                     <tr key={i} className="border-t border-[#e5e7eb]/50 dark:border-[#2d353e]/50">
                                         <td className="py-2.5 font-medium text-[#121417] dark:text-white">{r.name}</td>
-                                        <td className={`py-2.5 text-center font-bold ${r.status === "normal" ? "text-green-600" : "text-red-600"}`}>{r.value}</td>
+                                        <td className={`py-2.5 text-center font-bold ${r.status === "normal" ? "text-green-600" : r.status === "low" ? "text-amber-600" : "text-red-600"}`}>{r.value}</td>
                                         <td className="py-2.5 text-xs text-[#687582] text-center">{r.unit}</td>
                                         <td className="py-2.5 text-xs text-[#687582] text-center">{r.reference}</td>
                                         <td className="py-2.5 text-right">
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${r.status === "normal" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                                                {r.status === "normal" ? "BT" : "Cao"}
+                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${r.status === "normal" ? "bg-green-100 text-green-700" : r.status === "low" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
+                                                {r.status === "normal" ? "BT" : r.status === "low" ? "Thấp" : "Cao"}
                                             </span>
                                         </td>
                                     </tr>
@@ -648,6 +870,15 @@ function MedicationsTab({ medications }: { medications: Medication[] }) {
 
 function VitalsTab({ vitals }: { vitals: VitalSign[] }) {
     if (vitals.length === 0) return <EmptyState icon="monitor_heart" message="Chưa có dữ liệu sinh hiệu" />;
+    const sortedVitals = vitals
+        .slice()
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+        .slice(-8);
+    const maxPressure = Math.max(
+        160,
+        ...sortedVitals.flatMap((v) => [v.bloodPressureSystolic || 0, v.bloodPressureDiastolic || 0]),
+    );
+
     return (
         <div className="space-y-6">
             <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
@@ -655,13 +886,21 @@ function VitalsTab({ vitals }: { vitals: VitalSign[] }) {
                     <span className="material-symbols-outlined text-red-500" style={{ fontSize: "20px" }}>bloodtype</span>Biểu đồ huyết áp
                 </h3>
                 <div className="flex items-end gap-3 h-40">
-                    {vitals.slice().reverse().map(v => (
+                    {sortedVitals.map(v => (
                         <div key={v.id} className="flex-1 flex flex-col items-center gap-1 group">
                             <div className="flex gap-1 items-end w-full justify-center" style={{ height: "120px" }}>
-                                <div className="w-3 bg-gradient-to-t from-red-500 to-rose-400 rounded-t-md" style={{ height: `${(v.bloodPressureSystolic / 160) * 100}%` }} />
-                                <div className="w-3 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-md" style={{ height: `${(v.bloodPressureDiastolic / 160) * 100}%` }} />
+                                <div
+                                    className="w-3 bg-gradient-to-t from-red-500 to-rose-400 rounded-t-md"
+                                    style={{ height: `${Math.max((v.bloodPressureSystolic / maxPressure) * 100, v.bloodPressureSystolic ? 8 : 0)}%` }}
+                                    title={`Tâm thu: ${v.bloodPressureSystolic}`}
+                                />
+                                <div
+                                    className="w-3 bg-gradient-to-t from-blue-500 to-cyan-400 rounded-t-md"
+                                    style={{ height: `${Math.max((v.bloodPressureDiastolic / maxPressure) * 100, v.bloodPressureDiastolic ? 8 : 0)}%` }}
+                                    title={`Tâm trương: ${v.bloodPressureDiastolic}`}
+                                />
                             </div>
-                            <span className="text-[10px] text-[#687582]">{v.date.slice(5)}</span>
+                            <span className="text-[10px] text-[#687582]">{String(v.date).slice(5, 10) || "—"}</span>
                         </div>
                     ))}
                 </div>
