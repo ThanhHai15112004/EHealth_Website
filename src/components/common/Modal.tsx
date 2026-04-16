@@ -71,10 +71,6 @@ export function Modal({
         if (isOpen) {
             document.addEventListener('keydown', handleEscape);
             document.body.style.overflow = 'hidden';
-            // Focus vào nút close khi modal mở
-            setTimeout(() => {
-                closeButtonRef.current?.focus();
-            }, 50);
         }
 
         return () => {
@@ -82,6 +78,15 @@ export function Modal({
             document.body.style.overflow = 'unset';
         };
     }, [isOpen, onClose]);
+
+    // Focus vào nút close khi modal mở
+    useEffect(() => {
+        if (isOpen) {
+            setTimeout(() => {
+                closeButtonRef.current?.focus();
+            }, 50);
+        }
+    }, [isOpen]);
 
     // Không render nếu modal đóng
     if (!isOpen) return null;

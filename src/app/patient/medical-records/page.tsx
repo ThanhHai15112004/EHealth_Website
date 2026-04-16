@@ -8,6 +8,7 @@ import { MEDICAL_RECORD_ENDPOINTS, EHR_ENDPOINTS } from "@/api/endpoints";
 import { unwrap, unwrapList } from "@/api/response";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 import { AIResultExplainer } from "@/components/portal/ai";
+import type { PatientProfile } from "@/types/patient-profile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -19,6 +20,7 @@ interface MedicalRecord {
     diagnosis: string;
     status: string;
     encounterId?: string;
+    isParaclinical?: boolean;
 }
 
 interface TimelineItem {
@@ -37,14 +39,25 @@ interface TimelineItem {
 // ─── Adapters ─────────────────────────────────────────────────────────────────
 
 function adaptRecord(r: any): MedicalRecord {
+    let dateStr = r.date ?? r.visitDate ?? r.createdAt ?? "";
+    if (r.start_time) {
+        const d = new Date(r.start_time);
+        dateStr = d.toLocaleDateString("vi-VN") + " " + d.toLocaleTimeString("vi-VN", { hour: '2-digit', minute: '2-digit' });
+    }
+
+    const departmentRaw = r.specialty_name ?? r.encounter_type ?? r.department ?? r.speciality ?? r.departmentName ?? "Khám bệnh";
+    const deptLower = typeof departmentRaw === 'string' ? departmentRaw.toLowerCase() : '';
+    const isParaclinical = deptLower.includes("xét nghiệm") || deptLower.includes("chẩn đoán hình ảnh") || deptLower.includes("cận lâm sàng") || deptLower.includes("thăm dò chức năng");
+
     return {
-        id: r.id ?? r._id ?? r.encounterId ?? String(Math.random()),
-        date: r.date ?? r.visitDate ?? r.createdAt ?? "",
-        doctorName: r.doctorName ?? r.doctor_name ?? r.doctor?.name ?? r.doctor?.fullName ?? "",
-        department: r.department ?? r.speciality ?? r.departmentName ?? "",
-        diagnosis: r.diagnosis ?? r.mainDiagnosis ?? r.conclusion ?? "",
+        id: r.encounters_id ?? r.id ?? r._id ?? r.encounterId ?? String(Math.random()),
+        date: dateStr,
+        doctorName: r.doctor_name ?? r.doctorName ?? r.doctor?.name ?? r.doctor?.fullName ?? "Chưa phân công",
+        department: isParaclinical ? (departmentRaw.toLowerCase().includes("khoa") ? departmentRaw : "Khoa " + departmentRaw) : departmentRaw,
+        diagnosis: isParaclinical ? (r.primary_diagnosis ?? r.diagnosis ?? r.mainDiagnosis ?? r.conclusion ?? "Chưa có kết quả nội trú") : (r.primary_diagnosis ?? r.diagnosis ?? r.mainDiagnosis ?? r.conclusion ?? "Chưa có chẩn đoán"),
         status: r.status ?? "completed",
-        encounterId: r.encounterId ?? r.encounter_id ?? r.id,
+        encounterId: r.encounterId ?? r.encounter_id ?? r.encounters_id ?? r.id,
+        isParaclinical
     };
 }
 
@@ -62,15 +75,23 @@ function adaptTimeline(t: any): TimelineItem {
         vaccination: "text-amber-500 bg-amber-50 dark:bg-amber-500/10",
         vital_check: "text-red-500 bg-red-50 dark:bg-red-500/10",
     };
-    const type = t.type ?? "examination";
+    const departmentRaw = t.department ?? t.speciality ?? "";
+    const deptLower = typeof departmentRaw === 'string' ? departmentRaw.toLowerCase() : '';
+    const isParaclinical = deptLower.includes("xét nghiệm") || deptLower.includes("chẩn đoán hình ảnh") || deptLower.includes("cận lâm sàng");
+
+    let type = t.type ?? "examination";
+    if (isParaclinical && type === "examination") {
+        type = "lab";
+    }
+
     return {
         id: t.id ?? t._id ?? String(Math.random()),
         date: t.date ?? t.createdAt ?? "",
         type,
-        title: t.title ?? t.name ?? "Sự kiện y tế",
+        title: isParaclinical && !t.title ? "Dịch vụ " + departmentRaw : (t.title ?? t.name ?? "Sự kiện y tế"),
         description: t.description ?? t.summary ?? "",
         doctorName: t.doctorName ?? t.doctor?.name ?? t.doctor?.fullName,
-        department: t.department ?? t.speciality,
+        department: departmentRaw,
         status: t.status ?? "completed",
         icon: t.icon ?? iconMap[type] ?? "health_and_safety",
         color: t.color ?? colorMap[type] ?? "text-blue-500 bg-blue-50 dark:bg-blue-500/10",
@@ -81,13 +102,14 @@ function adaptTimeline(t: any): TimelineItem {
 
 function StatusBadge({ status }: { status: string }) {
     const map: Record<string, { label: string; cls: string }> = {
-        completed: { label: "Hoàn thành", cls: "bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-400" },
-        finalized: { label: "Đã ký duyệt", cls: "bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400" },
-        pending: { label: "Chờ xử lý", cls: "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" },
-        in_progress: { label: "Đang khám", cls: "bg-cyan-100 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-400" },
+        completed: { label: "Hoàn thành", cls: "bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/30" },
+        finalized: { label: "Đã ký duyệt", cls: "bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30" },
+        pending: { label: "Chờ xử lý", cls: "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30" },
+        in_progress: { label: "Đang khám", cls: "bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-400 border border-cyan-200 dark:border-cyan-500/30" },
     };
-    const cfg = map[status] ?? { label: status, cls: "bg-gray-100 text-gray-600" };
-    return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${cfg.cls}`}>{cfg.label}</span>;
+    const key = (status || "").toLowerCase();
+    const cfg = map[key] ?? { label: status, cls: "bg-gray-100 border border-gray-200 text-gray-600 dark:bg-gray-800 dark:border-gray-700 dark:text-gray-400" };
+    return <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide ${cfg.cls}`}>{cfg.label}</span>;
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -102,21 +124,57 @@ export default function MedicalRecordsPage() {
     const [loading, setLoading] = useState(true);
     const [loadingTimeline, setLoadingTimeline] = useState(false);
     const [viewMode, setViewMode] = useState<ViewMode>("list");
-    const [selectedRecord, setSelectedRecord] = useState<MedicalRecord | null>(null);
     const [timelineFetched, setTimelineFetched] = useState(false);
 
+    const [profiles, setProfiles] = useState<PatientProfile[]>([]);
+    const [selectedProfileId, setSelectedProfileId] = useState("");
+
     useEffect(() => {
-        loadRecords();
+        const fetchProfiles = async () => {
+            try {
+                const { patientProfileService, mapBEToFEProfile } = await import("@/services/patientProfileService");
+                const beProfiles = await patientProfileService.getMyProfiles();
+                const mapped = beProfiles.map((be) => mapBEToFEProfile(be, user?.id));
+                setProfiles(mapped);
+                if (mapped.length > 0) {
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = mapped.some((p) => p.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : mapped[0].id);
+                }
+            } catch (error) {
+                console.error("Failed to fetch profiles", error);
+            }
+        };
+        if (user?.id) {
+            fetchProfiles();
+        }
     }, [user?.id]);
+
+    useEffect(() => {
+        if (selectedProfileId) {
+            loadRecords();
+            if (viewMode === "timeline") {
+                loadTimeline();
+            }
+        }
+    }, [selectedProfileId, viewMode]);
+
+    const handleProfileChange = (profileId: string) => {
+        setSelectedProfileId(profileId);
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem("patientPortal_selectedProfileId", profileId);
+        }
+        setTimelineFetched(false);
+    };
 
     const loadRecords = async () => {
         try {
             setLoading(true);
-            if (user?.id) {
-                const res = await axiosClient.get(MEDICAL_RECORD_ENDPOINTS.BY_PATIENT(user.id));
-                const raw = unwrapList<any>(res);
-                const data = raw.data?.length ? raw.data : (res.data?.data ?? res.data ?? []);
-                setRecords(Array.isArray(data) ? data.map(adaptRecord) : []);
+            if (selectedProfileId) {
+                const res = await axiosClient.get(MEDICAL_RECORD_ENDPOINTS.BY_PATIENT(selectedProfileId));
+                const raw = res.data?.data?.data || res.data?.data || res.data || [];
+                const dataArray = Array.isArray(raw) ? raw : [];
+                setRecords(dataArray.map(adaptRecord));
             }
         } catch {
             setRecords([]);
@@ -126,10 +184,10 @@ export default function MedicalRecordsPage() {
     };
 
     const loadTimeline = async () => {
-        if (timelineFetched || !user?.id) return;
+        if (timelineFetched || !selectedProfileId) return;
         setLoadingTimeline(true);
         try {
-            const res = await axiosClient.get(EHR_ENDPOINTS.TIMELINE(user.id));
+            const res = await axiosClient.get(EHR_ENDPOINTS.TIMELINE(selectedProfileId));
             const raw = unwrapList<any>(res);
             if (raw.data?.length) {
                 setTimeline(raw.data.map(adaptTimeline));
@@ -153,6 +211,28 @@ export default function MedicalRecordsPage() {
                 <div>
                     <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Kết quả khám bệnh</h1>
                     <p className="text-sm text-[#687582] mt-0.5">Xem lại kết quả khám, đơn thuốc và xét nghiệm</p>
+                    {profiles.length > 0 && (
+                        <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar mt-4">
+                            {profiles.map(p => (
+                                <div
+                                    key={p.id}
+                                    onClick={() => handleProfileChange(p.id)}
+                                    className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
+                                >
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
+                                        {p.fullName?.charAt(0)?.toUpperCase() || "U"}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className={`text-sm font-bold truncate ${selectedProfileId === p.id ? 'text-[#3C81C6]' : 'text-gray-900 dark:text-white'}`}>{p.fullName}</p>
+                                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{p.phone || "Chưa có SĐT"}</p>
+                                    </div>
+                                    {selectedProfileId === p.id && (
+                                        <span className="material-symbols-outlined text-[#3C81C6] shrink-0" style={{ fontSize: "20px" }}>check_circle</span>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
                 <div className="flex items-center gap-1 p-1 bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl border border-[#e5e7eb] dark:border-[#2d353e]">
                     {(["list", "timeline"] as ViewMode[]).map(mode => (
@@ -169,7 +249,9 @@ export default function MedicalRecordsPage() {
             <AIResultExplainer />
 
             {/* ── List View ── */}
-            {viewMode === "list" && (
+            {viewMode === "list" && (() => {
+                const clinicalRecords = records.filter(r => !r.isParaclinical);
+                return (
                 <>
                     {loading ? (
                         <div className="space-y-4">
@@ -181,7 +263,7 @@ export default function MedicalRecordsPage() {
                                 </div>
                             ))}
                         </div>
-                    ) : records.length === 0 ? (
+                    ) : clinicalRecords.length === 0 ? (
                         <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
                             <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-4" style={{ fontSize: "64px" }}>folder_open</span>
                             <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Chưa có kết quả khám</h3>
@@ -193,75 +275,78 @@ export default function MedicalRecordsPage() {
                             </Link>
                         </div>
                     ) : (
-                        <div className="space-y-4">
-                            {records.map(record => (
+                        <div className="flex flex-col gap-4">
+                            {clinicalRecords.map(record => (
                                 <div key={record.id}
-                                    className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] hover:border-[#3C81C6]/20 hover:shadow-md transition-all p-5 cursor-pointer"
-                                    onClick={() => setSelectedRecord(selectedRecord?.id === record.id ? null : record)}>
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex gap-4">
-                                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10 flex items-center justify-center flex-shrink-0">
-                                                <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "24px" }}>description</span>
-                                            </div>
-                                            <div>
-                                                <h3 className="font-semibold text-[#121417] dark:text-white">{record.department || "Kết quả khám"}</h3>
-                                                {record.doctorName && <p className="text-sm text-[#687582] mt-0.5">BS. {record.doctorName}</p>}
-                                                <div className="flex items-center gap-3 mt-2 text-xs text-[#687582]">
+                                    className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] hover:border-[#3C81C6]/30 hover:shadow-lg dark:hover:shadow-black/20 transition-all overflow-hidden flex flex-col group">
+                                    <div className="p-5 flex-1 space-y-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center flex-shrink-0 ${
+                                                    record.isParaclinical 
+                                                        ? "from-purple-500/10 to-pink-500/10 text-purple-600" 
+                                                        : "from-[#3C81C6]/10 to-[#60a5fa]/10 text-[#3C81C6]"
+                                                }`}>
+                                                    <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>
+                                                        {record.isParaclinical ? "science" : "clinical_notes"}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-bold text-[#121417] dark:text-white text-base leading-tight">
+                                                        {record.isParaclinical ? `Dịch vụ ${record.department}` : (record.department || "Khám bệnh")}
+                                                    </h3>
                                                     {record.date && (
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>event</span>
+                                                        <p className="text-xs text-[#687582] mt-0.5 flex items-center gap-1">
+                                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>calendar_today</span>
                                                             {record.date}
-                                                        </span>
+                                                        </p>
                                                     )}
-                                                    <StatusBadge status={record.status} />
-                                                </div>
-                                                {record.diagnosis && (
-                                                    <p className="text-sm text-[#687582] mt-2 p-2 bg-[#f6f7f8] dark:bg-[#13191f] rounded-lg">
-                                                        <span className="font-medium text-[#121417] dark:text-white">Chẩn đoán:</span> {record.diagnosis}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`material-symbols-outlined text-[#687582] transition-transform ${selectedRecord?.id === record.id ? "rotate-180" : ""}`} style={{ fontSize: "20px" }}>expand_more</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Detail panel */}
-                                    {selectedRecord?.id === record.id && (
-                                        <div className="mt-4 pt-4 border-t border-[#e5e7eb] dark:border-[#2d353e] space-y-3">
-                                            <div className="grid grid-cols-2 gap-3 text-sm">
-                                                <div className="bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Bác sĩ phụ trách</p>
-                                                    <p className="font-semibold text-[#121417] dark:text-white">{record.doctorName || "—"}</p>
-                                                </div>
-                                                <div className="bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Khoa / Phòng</p>
-                                                    <p className="font-semibold text-[#121417] dark:text-white">{record.department || "—"}</p>
-                                                </div>
-                                                <div className="bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Ngày khám</p>
-                                                    <p className="font-semibold text-[#121417] dark:text-white">{record.date || "—"}</p>
-                                                </div>
-                                                <div className="bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Trạng thái</p>
-                                                    <StatusBadge status={record.status} />
                                                 </div>
                                             </div>
+                                            <StatusBadge status={record.status} />
+                                        </div>
+                                        
+                                        <div className="space-y-2">
+                                            <div className="flex items-start gap-2">
+                                                <span className="material-symbols-outlined text-gray-400 dark:text-gray-500 mt-0.5" style={{ fontSize: "16px" }}>
+                                                    {record.isParaclinical ? "biotech" : "stethoscope"}
+                                                </span>
+                                                <div className="text-sm">
+                                                    <span className="text-[#687582]">
+                                                        {record.isParaclinical ? "Người chỉ định/Thực hiện: " : "Bác sĩ đ.trị: "}
+                                                    </span>
+                                                    <span className="font-medium text-[#121417] dark:text-white">{record.doctorName}</span>
+                                                </div>
+                                            </div>
+                                            
                                             {record.diagnosis && (
-                                                <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Chẩn đoán / Kết luận</p>
-                                                    <p className="text-sm text-[#121417] dark:text-white font-medium">{record.diagnosis}</p>
+                                                <div className="flex items-start gap-2">
+                                                    <span className="material-symbols-outlined text-gray-400 dark:text-gray-500 mt-0.5" style={{ fontSize: "16px" }}>
+                                                        {record.isParaclinical ? "fact_check" : "vaccines"}
+                                                    </span>
+                                                    <div className="text-sm line-clamp-2">
+                                                        <span className="text-[#687582]">Kết luận: </span>
+                                                        <span className="font-medium text-[#121417] dark:text-white">{record.diagnosis}</span>
+                                                    </div>
                                                 </div>
                                             )}
                                         </div>
-                                    )}
+                                    </div>
+                                    
+                                    <div className="px-5 py-3 bg-gray-50 dark:bg-black/20 border-t border-gray-100 dark:border-gray-800 flex justify-end">
+                                        <Link href={`/patient/medical-records/${record.encounterId}`}
+                                            className="inline-flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-[#2d353e] hover:bg-[#3C81C6] hover:text-white text-[#3C81C6] border border-[#3C81C6]/30 hover:border-[#3C81C6] text-sm font-semibold rounded-lg transition-colors shadow-sm">
+                                            Xem chi tiết
+                                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_forward</span>
+                                        </Link>
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     )}
                 </>
-            )}
+                );
+            })()}
 
             {/* ── Timeline View ── */}
             {viewMode === "timeline" && (

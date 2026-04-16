@@ -19,8 +19,8 @@ import { useToast } from "@/contexts/ToastContext";
 const STATUS_TIMELINE = [
     { status: "pending", label: "Đã đặt lịch", icon: "edit_calendar" },
     { status: "confirmed", label: "Đã xác nhận", icon: "check_circle" },
-    { status: "waiting", label: "Đang chờ khám", icon: "groups" },
-    { status: "examining", label: "Đang khám", icon: "stethoscope" },
+    { status: "checked_in", label: "Đang chờ khám", icon: "groups" },
+    { status: "in_progress", label: "Đang khám", icon: "stethoscope" },
     { status: "completed", label: "Hoàn thành", icon: "task_alt" },
 ];
 
@@ -172,6 +172,7 @@ export default function AppointmentDetailPage() {
     const currentStep = getTimelineIndex(appointment.status);
     const isCancellable = normalizedStatus === "pending" || normalizedStatus === "confirmed";
     const isCompleted = normalizedStatus === "completed";
+    const isCancelledOrMissed = normalizedStatus === "cancelled" || normalizedStatus === "missed" || normalizedStatus === "no_show";
     const appointmentId = raw.appointments_id || appointment.id;
     const appointmentDate = raw.appointment_date || appointment.date || "--";
     const slotStart = raw.slot_start_time?.slice(0, 5) || appointment.time || "--:--";
@@ -203,7 +204,7 @@ export default function AppointmentDetailPage() {
                 <AppointmentStatusBadge status={appointment.status} size="md" />
             </div>
 
-            {normalizedStatus !== "cancelled" && (
+            {!isCancelledOrMissed && (
                 <div className="rounded-2xl border border-gray-100 bg-white p-6">
                     <h3 className="mb-5 flex items-center gap-2 text-sm font-bold text-gray-900">
                         <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>
@@ -253,15 +254,19 @@ export default function AppointmentDetailPage() {
                 </div>
             )}
 
-            {normalizedStatus === "cancelled" && (
+            {isCancelledOrMissed && (
                 <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-5">
                     <span className="material-symbols-outlined mt-0.5 text-red-500" style={{ fontSize: "20px" }}>
-                        cancel
+                        {normalizedStatus === "no_show" ? "event_busy" : "cancel"}
                     </span>
                     <div>
-                        <h3 className="text-sm font-bold text-red-800">Lịch hẹn đã bị hủy</h3>
+                        <h3 className="text-sm font-bold text-red-800">
+                            {normalizedStatus === "no_show" ? "Bệnh nhân không đến khám" : "Lịch hẹn đã bị hủy"}
+                        </h3>
                         <p className="mt-0.5 text-xs text-red-600">
-                            Lý do: {raw.cancellation_reason || appointment.notes || "Không có"}
+                            {normalizedStatus === "no_show" 
+                                ? "Quá giờ hẹn nhưng hệ thống không ghi nhận thông tin check-in của bệnh nhân." 
+                                : `Lý do: ${raw.cancellation_reason || appointment.notes || "Không có"}`}
                         </p>
                     </div>
                 </div>

@@ -279,6 +279,51 @@ export const linkPatient = async (patientCode: string, identityNumber: string): 
     }
 };
 
+/**
+ * Lấy danh sách hồ sơ bệnh nhân bằng account_id
+ */
+export const getPatientsByAccountId = async (accountId: string): Promise<{ success: boolean; data?: Patient[]; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_ENDPOINTS.BY_ACCOUNT(accountId));
+        return response.data;
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Không thể lấy danh sách hồ sơ bệnh nhân',
+        };
+    }
+};
+
+/**
+ * Liên kết hồ sơ bệnh nhân với tài khoản hiện tại
+ */
+export const linkAccount = async (patientId: string, accountId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.patch(PATIENT_ENDPOINTS.LINK_ACCOUNT(patientId), { account_id: accountId });
+        return response.data;
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Liên kết hồ sơ thất bại',
+        };
+    }
+};
+
+/**
+ * Hủy liên kết hồ sơ bệnh nhân khỏi tài khoản hiện tại
+ */
+export const unlinkAccount = async (patientId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.patch(PATIENT_ENDPOINTS.UNLINK_ACCOUNT(patientId));
+        return response.data;
+    } catch (error: any) {
+        return {
+            success: false,
+            message: error.response?.data?.message || 'Hủy liên kết hồ sơ thất bại',
+        };
+    }
+};
+
 // ============================================
 // Contact Management
 // ============================================

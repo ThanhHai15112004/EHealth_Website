@@ -2,79 +2,87 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { RELATIONSHIP_OPTIONS, type PatientProfile } from "@/types/patient-profile";
+import { RELATIONSHIP_OPTIONS, type PatientProfile } from "@/data/patient-profiles-mock";
 import { validateName, validatePhone, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
-import { patientProfileService, mapBEToFEProfile, type PatientRelationship } from "@/services/patientProfileService";
+import { getPatientsByAccountId, createPatient, updatePatient, linkAccount, updatePatientStatus, Patient, updateContact } from "@/services/patientService";
+import { mapToProfile, saveLocalRelation } from "@/utils/patientMapper";
 
 // ============================================
-// Module 1 — Multi-Patient Profiles
-// Backend API: /api/patient/profiles
-// Đã thay thế hoàn toàn localStorage
+// Tách logic fetch & map profile từ backend
 // ============================================
 
 export default function PatientProfilesPage() {
     const { user } = useAuth();
     const { showToast } = useToast();
+    const router = useRouter();
+    const searchParams = useSearchParams();
 
+    // Load từ localStorage, fallback sang mock data
     const [profiles, setProfiles] = useState<PatientProfile[]>([]);
     const [loaded, setLoaded] = useState(false);
-    const [loading, setLoading] = useState(true);
-    const [saving, setSaving] = useState(false);
-    const [showForm, setShowForm] = useState(false);
+    const [view, setView] = useState<"list" | "form">("list");
     const [editingId, setEditingId] = useState<string | null>(null);
     const [formData, setFormData] = useState<Partial<PatientProfile>>({});
     const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
     const [errors, setErrors] = useState<Record<string, string>>({});
-    const [detailProfile, setDetailProfile] = useState<PatientProfile | null>(null);
-    const [detailTab, setDetailTab] = useState("info");
 
-    // Load profiles từ API thực
-    const loadProfiles = useCallback(async () => {
-        setLoading(true);
+    // Fetch Data from API
+    const loadData = useCallback(async () => {
+        if (!user?.id) return;
+        setLoaded(false);
         try {
-            const list = await patientProfileService.getMyProfiles();
-            const mapped = list.map(p => mapBEToFEProfile(p, user?.id));
-            setProfiles(mapped);
-        } catch (err: any) {
-            showToast(err?.message || "Không tải được danh sách hồ sơ", "error");
-            setProfiles([]);
+            const res = await getPatientsByAccountId(user.id);
+            if (res.success && res.data) {
+                // Map Backend patients to Frontend struct
+                const mapped = res.data.map(p => {
+                    const prof = mapToProfile(p, user);
+                    prof.userId = user.id;
+                    return prof;
+                });
+                setProfiles(mapped);
+            } else {
+                setProfiles([]);
+            }
+        } catch (error) {
+            showToast("Không thể tải danh sách hồ sơ", "error");
         } finally {
-            setLoading(false);
             setLoaded(true);
         }
     }, [user?.id, showToast]);
 
     useEffect(() => {
-        loadProfiles();
-    }, [loadProfiles]);
+        loadData();
+    }, [loadData]);
 
-    // Map relationship FE → BE enum
-    const mapRelationshipToBE = (rel?: string): PatientRelationship => {
-        const map: Record<string, PatientRelationship> = {
-            self: "SELF",
-            parent: "PARENT",
-            child: "CHILD",
-            spouse: "SPOUSE",
-            sibling: "SIBLING",
-            other: "OTHER",
-        };
-        return map[(rel || "other").toLowerCase()] || "OTHER";
-    };
+    // Handle auto-edit from URL params (e.g. from detail page)
+    useEffect(() => {
+        if (loaded && profiles.length > 0) {
+            const action = searchParams?.get('action');
+            const targetId = searchParams?.get('id');
+            if (action === 'edit' && targetId) {
+                const targetProfile = profiles.find(p => p.id === targetId);
+                if (targetProfile) {
+                    openEdit(targetProfile);
+                }
+            }
+        }
+    }, [loaded, searchParams, profiles]);
 
     const openCreate = () => {
         setFormData({ relationship: "other", relationshipLabel: "Khác", gender: "male", isActive: true, isPrimary: false });
         setEditingId(null);
         setErrors({});
-        setShowForm(true);
+        setView("form");
     };
 
     const openEdit = (profile: PatientProfile) => {
         setFormData({ ...profile });
         setEditingId(profile.id);
         setErrors({});
-        setShowForm(true);
+        setView("form");
     };
 
     // ============================================
@@ -119,72 +127,95 @@ export default function PatientProfilesPage() {
     // ============================================
     // Save
     // ============================================
-    const buildBEPayload = () => {
-        const genderMap: Record<string, "MALE" | "FEMALE" | "OTHER"> = {
-            male: "MALE",
-            female: "FEMALE",
-            other: "OTHER",
-        };
-        return {
-            full_name: formData.fullName?.trim() || "",
-            date_of_birth: formData.dob || "",
-            gender: genderMap[(formData.gender as string) || "other"] || "OTHER",
-            phone_number: formData.phone?.replace(/[\s\-\.]/g, "") || undefined,
-            email: formData.email?.trim() || undefined,
-            id_card_number: formData.idNumber?.replace(/\s/g, "") || undefined,
-            address: formData.address?.trim() || undefined,
-            relationship: mapRelationshipToBE(formData.relationship as string),
-        };
-    };
-
+    // ============================================
+    // Save
+    // ============================================
     const handleSave = async () => {
         if (!validateForm()) {
             showToast("Vui lòng kiểm tra lại thông tin", "error");
             return;
         }
-        setSaving(true);
-        try {
-            const payload = buildBEPayload();
-            if (editingId) {
-                await patientProfileService.update(editingId, payload);
-                showToast("Cập nhật hồ sơ thành công!", "success");
-            } else {
-                await patientProfileService.create(payload);
-                showToast("Tạo hồ sơ mới thành công!", "success");
+
+        if (editingId) {
+            // API call to update patient
+            try {
+                const res = await updatePatient(editingId, {
+                    full_name: formData.fullName?.trim() || "",
+                    date_of_birth: formData.dob || "",
+                    gender: (formData.gender?.toUpperCase() || "MALE") as any,
+                    identity_number: formData.idNumber?.replace(/\s/g, "") || undefined,
+                });
+                
+                // Cập nhật sđt và địa chỉ thông qua updateContact nếu cần
+                if (res.success) {
+                    await updateContact(editingId, {
+                        phone_number: formData.phone?.replace(/[\s\-\.]/g, "") || "",
+                        street_address: formData.address?.trim() || undefined
+                    });
+                }
+                if (res.success) {
+                    saveLocalRelation(editingId, formData.relationship || 'other', formData.relationshipLabel || 'Khác');
+                    showToast("Cập nhật hồ sơ thành công!", "success");
+                    loadData();
+                } else {
+                    showToast(res.message || "Lỗi cập nhật", "error");
+                }
+            } catch (err) {
+                showToast("Lỗi hệ thống", "error");
             }
-            await loadProfiles();
-            setShowForm(false);
-            setEditingId(null);
-        } catch (err: any) {
-            showToast(err?.message || "Lưu hồ sơ thất bại", "error");
-        } finally {
-            setSaving(false);
+            
+        } else {
+            // API call to create patient
+            try {
+                const phoneNumber = formData.phone?.replace(/[\s\-\.]/g, "") || undefined; 
+                const createRes = await createPatient({
+                    full_name: formData.fullName?.trim() || "",
+                    date_of_birth: formData.dob || "1990-01-01",
+                    gender: (formData.gender?.toUpperCase() || "MALE") as any,
+                    identity_number: formData.idNumber?.replace(/\s/g, "") || undefined,
+                    contact: {
+                        phone_number: phoneNumber || "",
+                        street_address: formData.address?.trim() || undefined
+                    }
+                });
+
+                if (createRes.success && createRes.data?.id) {
+                    // Link to account regardless of relationship so it appears in the user's patient list
+                    if (user?.id) {
+                        await linkAccount(createRes.data.id, user.id);
+                    }
+                    saveLocalRelation(createRes.data.id, formData.relationship || 'other', formData.relationshipLabel || 'Khác');
+                    showToast("Tạo hồ sơ mới thành công!", "success");
+                    loadData();
+                } else {
+                    showToast(createRes.message || "Tạo hồ sơ thất bại", "error");
+                }
+            } catch (err) {
+                showToast("Lỗi hệ thống", "error");
+            }
         }
+        setView("list");
+        setEditingId(null);
     };
 
     const handleDeactivate = async (id: string) => {
-        try {
-            await patientProfileService.delete(id);
-            await loadProfiles();
-            setDeleteConfirm(null);
+        const res = await updatePatientStatus(id, "INACTIVE");
+        if (res.success) {
             showToast("Đã ngừng sử dụng hồ sơ", "info");
-        } catch (err: any) {
-            showToast(err?.message || "Xóa hồ sơ thất bại", "error");
+            loadData();
+        } else {
+            showToast("Ngừng sử dụng thất bại", "error");
         }
+        setDeleteConfirm(null);
     };
 
-    const handleReactivate = async (_id: string) => {
-        // BE chưa hỗ trợ reactivate trực tiếp — bệnh nhân tạo hồ sơ mới
-        showToast("Tính năng kích hoạt lại sẽ sớm có. Bạn có thể tạo hồ sơ mới.", "info");
-    };
-
-    const handleSetDefault = async (id: string) => {
-        try {
-            await patientProfileService.setDefault(id);
-            await loadProfiles();
-            showToast("Đã đặt làm hồ sơ mặc định", "success");
-        } catch (err: any) {
-            showToast(err?.message || "Đặt mặc định thất bại", "error");
+    const handleReactivate = async (id: string) => {
+        const res = await updatePatientStatus(id, "ACTIVE");
+        if (res.success) {
+            showToast("Đã kích hoạt lại hồ sơ", "success");
+            loadData();
+        } else {
+            showToast("Kích hoạt lại thất bại", "error");
         }
     };
 
@@ -201,6 +232,8 @@ export default function PatientProfilesPage() {
 
     return (
         <div className="space-y-6">
+            {/* ===== LIST VIEW ===== */}
+            {view === "list" && (<>
             {/* Header */}
             <div className="flex items-center justify-between">
                 <div>
@@ -286,11 +319,11 @@ export default function PatientProfilesPage() {
 
                         {/* Quick actions */}
                         <div className="mt-4 pt-3 border-t border-gray-100 dark:border-[#2d353e] flex items-center gap-2">
-                            <button onClick={() => { setDetailProfile(profile); setDetailTab("info"); }}
+                            <Link href={`/patient/patient-profiles/${profile.id}`}
                                 className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#3C81C6]/10 text-[#3C81C6] text-xs font-bold rounded-lg hover:bg-[#3C81C6]/20 transition-all">
                                 <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>visibility</span>
                                 Xem chi tiết
-                            </button>
+                            </Link>
                             <Link href={`/booking?profileId=${profile.id}`}
                                 className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white text-xs font-bold rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.97]">
                                 <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>calendar_month</span>
@@ -340,151 +373,21 @@ export default function PatientProfilesPage() {
                 </div>
             )}
 
-            {/* ===== Chi tiết hồ sơ bệnh nhân (Full page) ===== */}
-            {detailProfile && (
-                <div className="fixed inset-0 z-50 bg-white dark:bg-[#0d1117] overflow-y-auto">
-                    <div className="max-w-3xl mx-auto py-6 px-4">
-                        {/* Header */}
-                        <div className="flex items-center gap-3 mb-6">
-                            <button onClick={() => setDetailProfile(null)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                                <span className="material-symbols-outlined text-gray-500" style={{ fontSize: "20px" }}>arrow_back</span>
-                            </button>
-                            <div className="flex-1">
-                                <h1 className="text-xl font-bold text-[#121417] dark:text-white">{detailProfile.fullName}</h1>
-                                <p className="text-sm text-gray-500">{detailProfile.relationshipLabel} {detailProfile.isPrimary && "• Hồ sơ chính"}</p>
-                            </div>
-                            <button onClick={() => { openEdit(detailProfile); setDetailProfile(null); }}
-                                className="flex items-center gap-1.5 px-4 py-2 bg-[#3C81C6] text-white text-sm font-bold rounded-xl hover:bg-[#2a6da8] transition-colors">
-                                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>edit</span>
-                                Sửa
-                            </button>
-                        </div>
+            </>)}
 
-                        {/* Tabs */}
-                        <div className="flex gap-1 mb-6 overflow-x-auto pb-1">
-                            {[
-                                { id: "info", label: "Thông tin", icon: "person" },
-                                { id: "contact", label: "Liên hệ", icon: "call" },
-                                { id: "insurance", label: "Bảo hiểm", icon: "health_and_safety" },
-                                { id: "history", label: "Lịch sử khám", icon: "history" },
-                                { id: "docs", label: "Tài liệu", icon: "description" },
-                            ].map(tab => (
-                                <button key={tab.id} onClick={() => setDetailTab(tab.id)}
-                                    className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all
-                                    ${detailTab === tab.id ? "bg-[#3C81C6] text-white shadow-md" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200"}`}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{tab.icon}</span>
-                                    {tab.label}
-                                </button>
-                            ))}
-                        </div>
-
-                        {/* Tab content */}
-                        {detailTab === "info" && (
-                            <div className="bg-gray-50 dark:bg-[#1e242b] rounded-2xl p-6 space-y-4">
-                                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>badge</span>
-                                    Thông tin cá nhân
-                                </h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <DetailField label="Họ và tên" value={detailProfile.fullName} />
-                                    <DetailField label="Giới tính" value={detailProfile.gender === "male" ? "Nam" : detailProfile.gender === "female" ? "Nữ" : "Khác"} />
-                                    <DetailField label="Ngày sinh" value={detailProfile.dob ? new Date(detailProfile.dob + "T00:00:00").toLocaleDateString("vi-VN") : "—"} />
-                                    <DetailField label="CCCD/CMND" value={detailProfile.idNumber || "—"} />
-                                    <DetailField label="Nhóm máu" value={detailProfile.bloodType || "—"} />
-                                    <DetailField label="Quan hệ" value={detailProfile.relationshipLabel} />
-                                </div>
-                                {detailProfile.allergies && detailProfile.allergies.length > 0 && (
-                                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Dị ứng</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {detailProfile.allergies.map(a => (
-                                                <span key={a} className="px-3 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-full">{a}</span>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
-                                {detailProfile.medicalHistory && (
-                                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-                                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Tiền sử bệnh</p>
-                                        <p className="text-sm text-gray-700 dark:text-gray-300">{detailProfile.medicalHistory}</p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {detailTab === "contact" && (
-                            <div className="bg-gray-50 dark:bg-[#1e242b] rounded-2xl p-6 space-y-4">
-                                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>contact_phone</span>
-                                    Thông tin liên hệ
-                                </h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <DetailField label="Số điện thoại" value={detailProfile.phone} />
-                                    <DetailField label="Email" value={detailProfile.email || "—"} />
-                                    <div className="col-span-2">
-                                        <DetailField label="Địa chỉ" value={detailProfile.address || "—"} />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {detailTab === "insurance" && (
-                            <div className="bg-gray-50 dark:bg-[#1e242b] rounded-2xl p-6 space-y-4">
-                                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                                    <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>health_and_safety</span>
-                                    Bảo hiểm y tế
-                                </h3>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <DetailField label="Số BHYT" value={detailProfile.insuranceNumber || "Chưa cập nhật"} />
-                                    <DetailField label="Hạn BHYT" value={detailProfile.insuranceExpiry ? new Date(detailProfile.insuranceExpiry + "T00:00:00").toLocaleDateString("vi-VN") : "—"} />
-                                </div>
-                                {!detailProfile.insuranceNumber && (
-                                    <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
-                                        <span className="material-symbols-outlined text-amber-500" style={{ fontSize: "18px" }}>info</span>
-                                        <p className="text-xs text-amber-700 dark:text-amber-400">Hồ sơ chưa có thông tin bảo hiểm. Bấm &quot;Sửa&quot; để cập nhật.</p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {detailTab === "history" && (
-                            <div className="bg-gray-50 dark:bg-[#1e242b] rounded-2xl p-6">
-                                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
-                                    <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>history</span>
-                                    Lịch sử khám bệnh
-                                </h3>
-                                <div className="text-center py-8 text-gray-400">
-                                    <span className="material-symbols-outlined mb-2" style={{ fontSize: "40px" }}>event_note</span>
-                                    <p className="text-sm">Chưa có lịch sử khám bệnh</p>
-                                    <p className="text-xs mt-1">Dữ liệu sẽ hiển thị khi có kết nối API</p>
-                                </div>
-                            </div>
-                        )}
-
-                        {detailTab === "docs" && (
-                            <div className="bg-gray-50 dark:bg-[#1e242b] rounded-2xl p-6">
-                                <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
-                                    <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>description</span>
-                                    Tài liệu y tế
-                                </h3>
-                                <div className="text-center py-8 text-gray-400">
-                                    <span className="material-symbols-outlined mb-2" style={{ fontSize: "40px" }}>folder_open</span>
-                                    <p className="text-sm">Chưa có tài liệu</p>
-                                    <p className="text-xs mt-1">Kết quả xét nghiệm, phim chụp sẽ hiển thị tại đây</p>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            )}
-
-            {/* ===== Modal Form ===== */}
-            {showForm && (
-                <div className="fixed inset-0 z-50 bg-white dark:bg-[#0d1117] overflow-y-auto">
+            {/* ===== Form tạo/chỉnh sửa (Inline) ===== */}
+            {view === "form" && (
+                <div className="bg-white dark:bg-[#0d1117] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e]">
                     <div className="max-w-lg mx-auto py-6 px-4">
                         <div className="pb-4 mb-4 border-b border-gray-100 dark:border-[#2d353e] flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <button onClick={() => setShowForm(false)} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                                <button onClick={() => {
+                                    setView("list");
+                                    // if there was an action parameter, remove it by routing to base
+                                    if (searchParams?.get('action')) {
+                                        router.replace('/patient/patient-profiles');
+                                    }
+                                }} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                                     <span className="material-symbols-outlined text-gray-500" style={{ fontSize: "20px" }}>arrow_back</span>
                                 </button>
                                 <h2 className="text-lg font-bold text-[#121417] dark:text-white">
@@ -533,27 +436,9 @@ export default function PatientProfilesPage() {
                                 <ModalField label="Số BHYT" value={formData.insuranceNumber || ""} onChange={v => { setFormData(p => ({ ...p, insuranceNumber: v })); setErrors(e => ({ ...e, insuranceNumber: "" })); }} error={errors.insuranceNumber} placeholder="15 ký tự" />
                             </div>
                             <ModalField label="Địa chỉ" value={formData.address || ""} onChange={v => setFormData(p => ({ ...p, address: v }))} />
-
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Dị ứng</label>
-                                <input
-                                    type="text"
-                                    value={(formData.allergies || []).join(", ")}
-                                    onChange={e => setFormData(p => ({ ...p, allergies: e.target.value.split(",").map(s => s.trim()).filter(Boolean) }))}
-                                    placeholder="VD: Penicillin, Aspirin (cách nhau bằng dấu phẩy)"
-                                    className="w-full px-4 py-3 border border-gray-200 dark:border-[#2d353e] rounded-xl text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-[#13191f] focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 placeholder-gray-400"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Tiền sử bệnh</label>
-                                <textarea value={formData.medicalHistory || ""} onChange={e => setFormData(p => ({ ...p, medicalHistory: e.target.value }))}
-                                    placeholder="Ghi chú tiền sử bệnh lý..."
-                                    className="w-full px-4 py-3 border border-gray-200 dark:border-[#2d353e] rounded-xl text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-[#13191f] focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 min-h-[80px] resize-none" />
-                            </div>
                         </div>
                         <div className="pt-4 mt-4 border-t border-gray-100 dark:border-[#2d353e] flex items-center justify-end gap-3">
-                            <button onClick={() => setShowForm(false)}
+                            <button onClick={() => setView("list")}
                                 className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
                                 Hủy
                             </button>

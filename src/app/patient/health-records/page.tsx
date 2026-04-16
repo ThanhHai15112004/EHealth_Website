@@ -135,20 +135,28 @@ export default function HealthRecordsPage() {
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState("overview");
     const [selectedProfileId, setSelectedProfileId] = useState(user?.id ?? "");
-    const profiles: PatientProfile[] = user ? [{
-        id: user.id,
-        userId: user.id,
-        fullName: user.fullName || "Bệnh nhân",
-        dob: "",
-        gender: "other",
-        phone: user.phone || "",
-        relationship: "self",
-        relationshipLabel: "Bản thân",
-        isActive: true,
-        isPrimary: true,
-        createdAt: "",
-        updatedAt: "",
-    }] : [];
+    const [profiles, setProfiles] = useState<PatientProfile[]>([]);
+
+    useEffect(() => {
+        const fetchProfiles = async () => {
+            try {
+                const { patientProfileService, mapBEToFEProfile } = await import("@/services/patientProfileService");
+                const beProfiles = await patientProfileService.getMyProfiles();
+                const mapped = beProfiles.map((be) => mapBEToFEProfile(be, user?.id));
+                setProfiles(mapped);
+                if (mapped.length > 0 && !selectedProfileId) {
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = mapped.some((p) => p.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : mapped[0].id);
+                }
+            } catch (error) {
+                console.error("Failed to fetch profiles", error);
+            }
+        };
+        if (user?.id) {
+            fetchProfiles();
+        }
+    }, [user?.id]);
 
     // Track which tabs đã fetch rồi
     const [fetched, setFetched] = useState<Record<string, boolean>>({});
@@ -292,6 +300,9 @@ export default function HealthRecordsPage() {
     // Reset fetched khi đổi profile
     const handleProfileChange = (profileId: string) => {
         setSelectedProfileId(profileId);
+        if (typeof sessionStorage !== 'undefined') {
+            sessionStorage.setItem("patientPortal_selectedProfileId", profileId);
+        }
         setFetched({});
         setLatestVital(null);
         setVitals([]);
@@ -307,13 +318,28 @@ export default function HealthRecordsPage() {
             <div>
                 <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Hồ sơ sức khỏe điện tử</h1>
                 <p className="text-sm text-[#687582] mt-0.5">Theo dõi toàn diện sức khỏe của bạn qua thời gian</p>
-                <div className="flex items-center gap-2 mt-3">
-                    <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>person</span>
-                    <select value={selectedProfileId} onChange={e => handleProfileChange(e.target.value)}
-                        className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-[#1e242b] text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 font-medium">
-                        {profiles.map(p => <option key={p.id} value={p.id}>{p.fullName} — {p.relationshipLabel}</option>)}
-                    </select>
-                </div>
+                {profiles.length > 0 && (
+                    <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar mt-4">
+                        {profiles.map(p => (
+                            <div
+                                key={p.id}
+                                onClick={() => handleProfileChange(p.id)}
+                                className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
+                            >
+                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
+                                    {p.fullName?.charAt(0)?.toUpperCase() || "U"}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className={`text-sm font-bold truncate ${selectedProfileId === p.id ? 'text-[#3C81C6]' : 'text-gray-900 dark:text-white'}`}>{p.fullName}</p>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{p.phone || "Chưa có SĐT"}</p>
+                                </div>
+                                {selectedProfileId === p.id && (
+                                    <span className="material-symbols-outlined text-[#3C81C6] shrink-0" style={{ fontSize: "20px" }}>check_circle</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">

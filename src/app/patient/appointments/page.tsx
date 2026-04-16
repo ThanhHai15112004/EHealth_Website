@@ -80,7 +80,7 @@ export default function AppointmentsPage() {
         const statusMap: Record<string, string> = {
             upcoming: "PENDING,CONFIRMED",
             completed: "COMPLETED",
-            cancelled: "CANCELLED",
+            cancelled: "CANCELLED,NO_SHOW",
         };
 
         try {
@@ -88,9 +88,26 @@ export default function AppointmentsPage() {
             const response = await getMyAppointments({
                 ...(selectedProfileId ? { patient_id: selectedProfileId } : {}),
                 status: statusMap[activeTab],
-                limit: 20,
+                limit: 50,
             });
-            setAppointments(response.data && response.data.length > 0 ? response.data : []);
+            
+            let data = response.data && response.data.length > 0 ? response.data : [];
+            
+            // Sort appointments
+            if (data.length > 0) {
+                data = [...data].sort((a: any, b: any) => {
+                    const dateA = new Date(a.appointment_date || a.date);
+                    const dateB = new Date(b.appointment_date || b.date);
+                    if (dateA.getTime() === dateB.getTime()) {
+                        const timeA = a.slot_start_time || a.time || "00:00";
+                        const timeB = b.slot_start_time || b.time || "00:00";
+                        return activeTab === "upcoming" ? timeA.localeCompare(timeB) : timeB.localeCompare(timeA);
+                    }
+                    return activeTab === "upcoming" ? dateA.getTime() - dateB.getTime() : dateB.getTime() - dateA.getTime();
+                });
+            }
+            
+            setAppointments(data);
         } catch {
             setAppointments([]);
         } finally {
@@ -271,20 +288,93 @@ export default function AppointmentsPage() {
                         const slotEnd = raw.slot_end_time ? raw.slot_end_time.substring(0, 5) : "";
                         const doctorName = raw.doctor_name || appointment.doctorName || "Chưa xếp bác sĩ";
                         const subtitle = raw.service_name || raw.department_name || appointment.departmentName || "Khám bệnh";
-                        const branchName = raw.branch_name || "EHealth Hospital";
+                        const facilityName = raw.facility_name || "Trụ sở Hệ thống EHealth";
+                        const branchName = raw.branch_name || "TP. Hồ Chí Minh";
                         const reason = raw.reason_for_visit || appointment.reason || appointment.notes;
+
+                        // Status normalization
+                        const rawStatus = (appointment.status || "").toUpperCase();
+                        const isUpcoming = rawStatus === "PENDING" || rawStatus === "CONFIRMED";
+
+                        // Calculate days remaining
+                        const today = new Date(); // with current time
+                        
+                        const startOfDay = new Date();
+                        startOfDay.setHours(0, 0, 0, 0);
+                        
+                        const aptDateObj = appointmentDate ? new Date(appointmentDate) : new Date();
+                        aptDateObj.setHours(0, 0, 0, 0);
+                        
+                        const diffTime = aptDateObj.getTime() - startOfDay.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                        // Calculate exact minutes if today
+                        let minutesRemaining = null;
+                        if (diffDays === 0 && slotStart !== "--:--") {
+                            const [hours, minutes] = slotStart.split(":").map(Number);
+                            const aptTimeObj = new Date(today);
+                            aptTimeObj.setHours(hours, minutes, 0, 0);
+                            const diffMs = aptTimeObj.getTime() - today.getTime();
+                            minutesRemaining = Math.floor(diffMs / (1000 * 60));
+                        }
+
+                        const isCancelledOrMissed = rawStatus === "CANCELLED" || rawStatus === "MISSED" || rawStatus === "NO_SHOW";
+                        
+                        let isVerySoon = false;
+                        let isTomorrow = false;
+                        let timeAlertText = "";
+                        
+                        if (isUpcoming && diffDays === 0 && minutesRemaining !== null && minutesRemaining >= 0 && minutesRemaining <= 240) {
+                            isVerySoon = true;
+                            const h = Math.floor(minutesRemaining / 60);
+                            const m = minutesRemaining % 60;
+                            timeAlertText = h > 0 ? `Khám trong ${h}g ${m}p nữa!` : `Khám trong ${m} phút nữa!`;
+                        } else if (isUpcoming && diffDays === 1) {
+                            isTomorrow = true;
+                            timeAlertText = "Khám ngày mai";
+                        }
+
+                        const formattedDate = aptDateObj.toLocaleDateString("vi-VN", {
+                            weekday: "long",
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric"
+                        });
+
+                        // Clean up branch display text
+                        const branchSuffix = branchName.split('-').pop()?.trim() || branchName;
+                        const displayLocation = facilityName.includes(branchSuffix) ? facilityName : `${facilityName} - ${branchSuffix}`;
 
                         return (
                             <div
                                 key={appointmentId}
-                                className="group rounded-2xl border border-gray-100 bg-white p-5 transition-all hover:border-[#3C81C6]/20 hover:shadow-md"
+                                className={`group relative rounded-2xl border p-5 transition-all hover:shadow-md 
+                                    ${isVerySoon ? 'border-amber-200 bg-gradient-to-r from-amber-50/50 to-white shadow-amber-100/50 shadow-lg' 
+                                    : isCancelledOrMissed ? 'border-red-200 bg-gradient-to-r from-red-50/50 to-white hover:border-red-300' 
+                                    : 'border-gray-100 bg-white hover:border-[#3C81C6]/30'}`}
                             >
+                                {(isVerySoon || isTomorrow) && (
+                                    <div className={`absolute top-0 right-0 rounded-bl-xl rounded-tr-xl px-3 py-1.5 text-xs font-bold text-white shadow-sm flex items-center gap-1.5 ${isVerySoon ? 'animate-pulse bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-gradient-to-r from-amber-400 to-amber-500'}`}>
+                                        <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>{isVerySoon ? 'alarm_on' : 'campaign'}</span>
+                                        {timeAlertText}
+                                    </div>
+                                )}
+
                                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
-                                    <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10">
-                                        <span className="text-lg leading-none font-bold text-[#3C81C6]">
+                                    <div className={`flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-xl 
+                                        ${isVerySoon ? 'bg-amber-100/50 shadow-inner' 
+                                        : isCancelledOrMissed ? 'bg-red-50 shadow-inner' 
+                                        : 'bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10'}`}>
+                                        <span className={`text-lg leading-none font-bold 
+                                            ${isVerySoon ? 'text-amber-600' 
+                                            : isCancelledOrMissed ? 'text-red-500' 
+                                            : 'text-[#3C81C6]'}`}>
                                             {appointmentDate?.split("-")[2] || "--"}
                                         </span>
-                                        <span className="text-[10px] font-medium text-[#3C81C6]/70">
+                                        <span className={`text-[10px] font-medium 
+                                            ${isVerySoon ? 'text-amber-600/70' 
+                                            : isCancelledOrMissed ? 'text-red-500/70' 
+                                            : 'text-[#3C81C6]/70'}`}>
                                             T{appointmentDate?.split("-")[1] || "--"}
                                         </span>
                                     </div>
@@ -294,7 +384,7 @@ export default function AppointmentsPage() {
                                             <div>
                                                 <h3 className="flex items-center gap-2 font-semibold text-gray-900 transition-colors group-hover:text-[#3C81C6]">
                                                     {doctorName}
-                                                    {appointment.status === "completed" && (
+                                                    {rawStatus === "COMPLETED" && (
                                                         <span
                                                             className="material-symbols-outlined text-xs text-green-500"
                                                             title="Đã hoàn thành khám"
@@ -305,14 +395,29 @@ export default function AppointmentsPage() {
                                                 </h3>
                                                 <p className="mt-0.5 text-sm font-medium text-[#3C81C6]">{subtitle}</p>
                                             </div>
-                                            <div className="flex flex-col items-end gap-1">
-                                                <AppointmentStatusBadge status={appointment.status} />
+                                            <div className="flex flex-col items-end gap-1 mt-6 sm:mt-0">
+                                                <AppointmentStatusBadge status={rawStatus} />
                                             </div>
                                         </div>
 
-                                        <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
-                                            <span className="inline-flex items-center gap-1 font-medium text-gray-700">
-                                                <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "14px" }}>
+                                        {isVerySoon && (
+                                            <div className="mt-3 flex items-start gap-2 rounded-lg p-2.5 text-sm font-medium border bg-orange-50/80 text-orange-800 border-orange-100/50">
+                                                <span className="material-symbols-outlined shrink-0 text-orange-500" style={{ fontSize: "18px" }}>
+                                                    info
+                                                </span>
+                                                <p>Đã sát giờ khám! Mời bạn di chuyển đến {facilityName || 'phòng khám'} để chuẩn bị khám bệnh.</p>
+                                            </div>
+                                        )}
+
+                                        <div className="mt-3.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-gray-500">
+                                            <span className="inline-flex items-center gap-1.5 font-medium text-gray-800 bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
+                                                <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "15px" }}>
+                                                    calendar_month
+                                                </span>
+                                                <span className="capitalize">{formattedDate}</span>
+                                            </span>
+                                            <span className="inline-flex items-center gap-1.5 font-medium text-gray-800 bg-gray-50 px-2 py-1 rounded-md border border-gray-100">
+                                                <span className="material-symbols-outlined text-amber-500" style={{ fontSize: "15px" }}>
                                                     schedule
                                                 </span>
                                                 {slotStart}
@@ -320,10 +425,10 @@ export default function AppointmentsPage() {
                                             </span>
                                             <span className="inline-flex items-center gap-1">
                                                 <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "14px" }}>
-                                                    location_on
+                                                    local_hospital
                                                 </span>
-                                                <span className="max-w-[200px] truncate" title={branchName}>
-                                                    {branchName}
+                                                <span className="max-w-[250px] truncate font-medium text-gray-700" title={displayLocation}>
+                                                    {displayLocation}
                                                 </span>
                                             </span>
                                             {raw.room_name && (
@@ -337,8 +442,8 @@ export default function AppointmentsPage() {
                                         </div>
 
                                         {reason && (
-                                            <div className="mt-2 rounded-lg bg-gray-50 p-2.5 text-xs text-gray-500 line-clamp-2">
-                                                <span className="mr-1 font-medium text-gray-700">Lý do khám:</span>
+                                            <div className="mt-2.5 rounded-lg bg-gray-50/80 p-2.5 text-xs text-gray-600 line-clamp-2 border border-gray-100">
+                                                <span className="mr-1 font-semibold text-gray-700">Lý do khám:</span>
                                                 {reason}
                                             </div>
                                         )}
