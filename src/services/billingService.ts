@@ -119,9 +119,17 @@ export const billingService = {
         axiosClient.post(`/api/billing/documents/${invoiceId}/send-email`, { email }),
 
     // ─── Pricing ────────────────────────────────────────────────────────────
-    /** Get pricing catalog */
+    /** Get pricing catalog (general, no prices) */
     getCatalog: (params?: Record<string, any>) =>
         axiosClient.get('/api/billing/pricing/catalog', { params }),
+
+    /** Get facility-specific pricing catalog with base_price, insurance_price, service_group */
+    getCatalogByFacility: (facilityId: string, params?: Record<string, any>) =>
+        axiosClient.get(`/api/billing/pricing/catalog/${facilityId}`, { params }),
+
+    /** Get payment gateway config (bank account, account holder, etc.) */
+    getGatewayConfig: () =>
+        axiosClient.get('/api/billing/payments/gateway/config'),
 
     /** Resolve price for a specific service */
     resolvePrice: (serviceId: string, params?: Record<string, any>) =>
