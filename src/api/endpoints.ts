@@ -567,7 +567,7 @@ export const EHR_ENDPOINTS = {
     RISK_FACTORS: (patientId: string) => `/api/ehr/patients/${patientId}/risk-factors`,
     NOTES: (patientId: string) => `/api/ehr/patients/${patientId}/notes`,
     // Aliases (POST endpoints — dùng chung path với GET)
-    ADD_HEALTH_METRIC: (patientId: string) => `/api/ehr/patients/${patientId}/vitals`,
+    ADD_HEALTH_METRIC: (patientId: string) => `/api/ehr/patients/${patientId}/health-metrics`,
     ADD_ALLERGY: (patientId: string) => `/api/ehr/patients/${patientId}/allergies`,
     ADD_MEDICAL_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/medical-histories`,
 };

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { type PatientProfile } from "@/data/patient-profiles-mock";
+import { type PatientProfile } from "@/types/patient-profile";
 import Modal from "@/components/common/Modal";
-import axiosClient from "@/api/axiosClient";
-import { PATIENT_INSURANCE_ENDPOINTS } from "@/api/endpoints";
+import { extractErrorMessage } from "@/api/response";
+import { useToast } from "@/contexts/ToastContext";
+import { patientInsuranceService } from "@/services/patientInsuranceService";
 
 interface TabProps {
     profile: PatientProfile;
 }
 
 export default function InsuranceTab({ profile }: TabProps) {
+    const { showToast } = useToast();
     const [insurances, setInsurances] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -25,15 +27,12 @@ export default function InsuranceTab({ profile }: TabProps) {
             setLoading(true);
             const patientId = profile.id;
             if (!patientId) return;
-            const res = await axiosClient.get(PATIENT_INSURANCE_ENDPOINTS.LIST, {
-                params: { patient_id: patientId }
-            });
-            const data = res.data?.data || res.data;
-            setInsurances(Array.isArray(data) ? data : []);
+            const res = await patientInsuranceService.getList({ patient_id: patientId });
+            setInsurances(Array.isArray(res?.data) ? res.data : []);
         } catch (error) {
             console.error("Error fetching insurances:", error);
-            // Don't throw unhandled if patient not found
             setInsurances([]);
+            showToast("Không thể tải danh sách bảo hiểm.", "error");
         } finally {
             setLoading(false);
         }
@@ -50,7 +49,7 @@ export default function InsuranceTab({ profile }: TabProps) {
             const patientId = profile.id;
             if (!patientId) return;
 
-            await axiosClient.post(PATIENT_INSURANCE_ENDPOINTS.LIST, {
+            await patientInsuranceService.create({
                 patient_id: patientId,
                 insurance_number: insuranceNum,
                 provider_id: provider || "INS_BHYT",
@@ -58,7 +57,7 @@ export default function InsuranceTab({ profile }: TabProps) {
                 end_date: expiry,
             });
 
-            alert("Cập nhật bảo hiểm thành công!");
+            showToast("Cập nhật bảo hiểm thành công!", "success");
             setIsModalOpen(false);
             
             // Reset form and refetch
@@ -69,7 +68,7 @@ export default function InsuranceTab({ profile }: TabProps) {
             await fetchInsurances();
         } catch (error) {
             console.error("Lỗi cập nhật bảo hiểm:", error);
-            alert("Có lỗi xảy ra, vui lòng thử lại sau.");
+            showToast(extractErrorMessage(error), "error");
         } finally {
             setSubmitting(false);
         }

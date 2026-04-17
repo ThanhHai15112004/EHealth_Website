@@ -4,9 +4,9 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { getPatientDetail } from "@/services/patientService";
+import { getPatientDetail, getPatientsByAccountId } from "@/services/patientService";
 import PatientDetail from "../PatientDetail";
-import { type PatientProfile } from "@/data/patient-profiles-mock";
+import { type PatientProfile } from "@/types/patient-profile";
 import { mapToProfile } from "@/utils/patientMapper";
 
 export default function PatientProfileDetailPage() {
@@ -23,8 +23,22 @@ export default function PatientProfileDetailPage() {
         setLoading(true);
         try {
             const res = await getPatientDetail(id);
-            if (res.success && res.data) {
-                const mapped = mapToProfile(res.data, user);
+            let mapped = res.success && res.data ? mapToProfile(res.data, user) : null;
+
+            if (user?.id && (!mapped || !mapped.id || mapped.id === id || mapped.id.startsWith("PAT_"))) {
+                const listRes = await getPatientsByAccountId(user.id);
+                const matchedPatient = listRes.data?.find((patient) =>
+                    patient.patient_id === id ||
+                    patient.patient_code === id ||
+                    patient.id === id
+                );
+
+                if (matchedPatient) {
+                    mapped = mapToProfile(matchedPatient, user);
+                }
+            }
+
+            if (mapped) {
                 if (user?.id) {
                     mapped.userId = user.id;
                 }

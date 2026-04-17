@@ -46,6 +46,17 @@ const toNumber = (value: unknown, fallback = 0) => {
     return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> => {
+    try {
+        return await Promise.race<T>([
+            promise,
+            new Promise<T>((resolve) => setTimeout(() => resolve(fallback), timeoutMs)),
+        ]);
+    } catch {
+        return fallback;
+    }
+};
+
 const formatDisplayDate = (value?: string | null) => {
     if (!value) return "—";
     const date = new Date(value);
@@ -257,6 +268,261 @@ function adaptVital(v: any): VitalSign {
         sourceType: v.sourceType ?? v.source_type ?? v.record_source ?? "CLINIC",
     };
 }
+
+const parseMetricValue = (value: unknown) => {
+    if (typeof value !== "string") return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return value;
+    }
+};
+
+const getMetricNumericValue = (metric: any) => {
+    const parsed = parseMetricValue(metric?.metric_value);
+    if (typeof parsed === "number") return parsed;
+    if (parsed && typeof parsed === "object" && "value" in parsed) {
+        return toNumber((parsed as { value?: unknown }).value, 0);
+    }
+    return toNumber(parsed, 0);
+};
+
+const applyHealthMetricsToVital = (baseVital: VitalSign | null, metrics: any[]) => {
+    const latest = baseVital ? { ...baseVital } : adaptVital({});
+    const mostRecentByCode = new Map<string, any>();
+
+    metrics.forEach((metric) => {
+        const code = String(metric?.metric_code ?? "");
+        if (!code) return;
+        const current = mostRecentByCode.get(code);
+        if (!current || new Date(metric?.measured_at ?? 0).getTime() >= new Date(current?.measured_at ?? 0).getTime()) {
+            mostRecentByCode.set(code, metric);
+        }
+    });
+
+    mostRecentByCode.forEach((metric, code) => {
+        const measuredAt = metric?.measured_at ?? latest.date;
+        latest.date = measuredAt || latest.date;
+
+        if (code === "BLOOD_PRESSURE") {
+            const parsed = parseMetricValue(metric?.metric_value) as { systolic?: unknown; diastolic?: unknown } | null;
+            latest.bloodPressureSystolic = toNumber(parsed?.systolic, latest.bloodPressureSystolic);
+            latest.bloodPressureDiastolic = toNumber(parsed?.diastolic, latest.bloodPressureDiastolic);
+            return;
+        }
+
+        const numericValue = getMetricNumericValue(metric);
+        if (code === "HEART_RATE") latest.heartRate = numericValue;
+        if (code === "TEMPERATURE") latest.temperature = numericValue;
+        if (code === "SPO2") latest.spo2 = numericValue;
+        if (code === "WEIGHT") latest.weight = numericValue;
+        if (code === "HEIGHT") latest.height = numericValue;
+        if (code === "BLOOD_SUGAR") latest.bloodSugar = numericValue;
+    });
+
+    if (latest.weight && latest.height) {
+        latest.bmi = toNumber(latest.weight / ((latest.height / 100) ** 2), latest.bmi);
+    }
+
+    return latest;
+};
+
+const buildVitalsFromHealthMetrics = (metrics: any[]) => {
+    const grouped = new Map<string, VitalSign>();
+
+    metrics.forEach((metric) => {
+        const measuredAt = String(metric?.measured_at ?? "");
+        if (!measuredAt) return;
+
+        const current = grouped.get(measuredAt) ?? {
+            id: metric?.patient_health_metrics_id ?? `metric_${measuredAt}`,
+            date: measuredAt,
+            bloodPressureSystolic: Number.NaN,
+            bloodPressureDiastolic: Number.NaN,
+            heartRate: Number.NaN,
+            temperature: Number.NaN,
+            weight: Number.NaN,
+            height: Number.NaN,
+            bmi: Number.NaN,
+            bloodSugar: Number.NaN,
+            spo2: Number.NaN,
+            respiratoryRate: Number.NaN,
+            sourceType: metric?.source_type ?? "DEVICE",
+        };
+
+        current.id = current.id || metric?.patient_health_metrics_id || `metric_${measuredAt}`;
+        current.date = measuredAt;
+        current.sourceType = metric?.source_type ?? current.sourceType;
+
+        const parsed = parseMetricValue(metric?.metric_value);
+        const numericValue = getMetricNumericValue(metric);
+        const code = String(metric?.metric_code ?? "").toUpperCase();
+
+        if (code === "BLOOD_PRESSURE") {
+            const bloodPressure = parsed as { systolic?: unknown; diastolic?: unknown } | null;
+            current.bloodPressureSystolic = toNumber(bloodPressure?.systolic, current.bloodPressureSystolic);
+            current.bloodPressureDiastolic = toNumber(bloodPressure?.diastolic, current.bloodPressureDiastolic);
+        }
+        if (code === "HEART_RATE") current.heartRate = numericValue;
+        if (code === "TEMPERATURE") current.temperature = numericValue;
+        if (code === "SPO2") current.spo2 = numericValue;
+        if (code === "WEIGHT") current.weight = numericValue;
+        if (code === "HEIGHT") current.height = numericValue;
+        if (code === "BLOOD_SUGAR") current.bloodSugar = numericValue;
+
+        if (current.weight && current.height) {
+            current.bmi = toNumber(current.weight / ((current.height / 100) ** 2), current.bmi);
+        }
+
+        grouped.set(measuredAt, current);
+    });
+
+    return Array.from(grouped.values());
+};
+
+const mergeVitalsWithHealthMetrics = (rawVitals: any[], metrics: any[]) => {
+    const mappedHistory = rawVitals.map(adaptVital);
+    const metricHistory = buildVitalsFromHealthMetrics(metrics);
+    const mergedByTimestamp = new Map<string, VitalSign>();
+
+    [...mappedHistory, ...metricHistory].forEach((item, index) => {
+        const timestampKey = item.date || `${item.id}_${index}`;
+        const existing = mergedByTimestamp.get(timestampKey);
+
+        if (!existing) {
+            mergedByTimestamp.set(timestampKey, { ...item });
+            return;
+        }
+
+        mergedByTimestamp.set(timestampKey, {
+            ...existing,
+            ...item,
+            bloodPressureSystolic: item.bloodPressureSystolic || existing.bloodPressureSystolic,
+            bloodPressureDiastolic: item.bloodPressureDiastolic || existing.bloodPressureDiastolic,
+            heartRate: item.heartRate || existing.heartRate,
+            temperature: item.temperature || existing.temperature,
+            spo2: item.spo2 || existing.spo2,
+            weight: item.weight || existing.weight,
+            height: item.height || existing.height,
+            bmi: item.bmi || existing.bmi,
+            bloodSugar: item.bloodSugar || existing.bloodSugar,
+        });
+    });
+
+    const sortedAsc = Array.from(mergedByTimestamp.values())
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const carryForwarded = sortedAsc.map((item, index) => {
+        if (index === 0) return { ...item };
+
+        const previous = sortedAsc[index - 1];
+        const merged = { ...item };
+
+        if (!Number.isFinite(merged.bloodPressureSystolic) || merged.bloodPressureSystolic <= 0) merged.bloodPressureSystolic = previous.bloodPressureSystolic;
+        if (!Number.isFinite(merged.bloodPressureDiastolic) || merged.bloodPressureDiastolic <= 0) merged.bloodPressureDiastolic = previous.bloodPressureDiastolic;
+        if (!Number.isFinite(merged.heartRate) || merged.heartRate <= 0) merged.heartRate = previous.heartRate;
+        if (!Number.isFinite(merged.temperature) || merged.temperature <= 0) merged.temperature = previous.temperature;
+        if (!Number.isFinite(merged.weight) || merged.weight <= 0) merged.weight = previous.weight;
+        if (!Number.isFinite(merged.height) || merged.height <= 0) merged.height = previous.height;
+        if (!Number.isFinite(merged.bmi) || merged.bmi <= 0) merged.bmi = previous.bmi;
+        if (!Number.isFinite(merged.bloodSugar ?? Number.NaN) || (merged.bloodSugar ?? 0) <= 0) merged.bloodSugar = previous.bloodSugar;
+        if (!Number.isFinite(merged.spo2 ?? Number.NaN) || (merged.spo2 ?? 0) <= 0) merged.spo2 = previous.spo2;
+        if (!Number.isFinite(merged.respiratoryRate ?? Number.NaN) || (merged.respiratoryRate ?? 0) <= 0) merged.respiratoryRate = previous.respiratoryRate;
+
+        if ((!Number.isFinite(merged.bmi) || merged.bmi <= 0) && merged.weight > 0 && merged.height > 0) {
+            merged.bmi = toNumber(merged.weight / ((merged.height / 100) ** 2), previous.bmi);
+        }
+
+        sortedAsc[index] = merged;
+        return merged;
+    });
+
+    return carryForwarded
+        .slice()
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+};
+
+const getBmiClassification = (bmi: number) => {
+    if (!Number.isFinite(bmi) || bmi <= 0) return "Chưa phân loại";
+    if (bmi < 18.5) return "Thiếu cân";
+    if (bmi < 25) return "Bình thường";
+    if (bmi < 30) return "Thừa cân";
+    return "Béo phì";
+};
+
+const getWeightTrendValue = (vitals: VitalSign[]) => {
+    const weights = vitals.filter((item) => item.weight > 0).slice().sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    if (weights.length < 2) return "UNKNOWN";
+    const diff = weights[weights.length - 1].weight - weights[0].weight;
+    if (Math.abs(diff) < 0.5) return "STABLE";
+    return diff > 0 ? "INCREASING" : "DECREASING";
+};
+
+const buildVitalsSummaryFromHistory = (vitals: VitalSign[]) => {
+    if (vitals.length === 0) return null;
+    const sorted = vitals.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const latest = sorted.find((item) => Number.isFinite(item.bmi) && item.bmi > 0) ?? sorted[0];
+    const latestWeightMeasurement = sorted.find((item) => Number.isFinite(item.weight) && item.weight > 0) ?? sorted[0];
+    const bpItems = vitals.filter((item) => item.bloodPressureSystolic > 0 && item.bloodPressureDiastolic > 0);
+    const avgSystolic = bpItems.length
+        ? Math.round(bpItems.reduce((sum, item) => sum + item.bloodPressureSystolic, 0) / bpItems.length)
+        : null;
+    const avgDiastolic = bpItems.length
+        ? Math.round(bpItems.reduce((sum, item) => sum + item.bloodPressureDiastolic, 0) / bpItems.length)
+        : null;
+
+    return {
+        current_bmi: latest.bmi ?? 0,
+        bmi_classification: getBmiClassification(toNumber(latest.bmi, 0)),
+        avg_bp_systolic: avgSystolic,
+        avg_bp_diastolic: avgDiastolic,
+        total_measurements: vitals.length,
+        weight_trend: getWeightTrendValue(vitals),
+        latest_measurement_at: latestWeightMeasurement.date,
+    };
+};
+
+const buildAbnormalVitals = (vitals: VitalSign[]) => {
+    if (vitals.length === 0) return [];
+    const latest = vitals.slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+    const items: Array<{ metric_label: string; message: string; value: number; unit: string }> = [];
+    const latestSpo2 = toNumber(latest.spo2, 0);
+
+    if (latest.bloodPressureSystolic >= 140 || latest.bloodPressureDiastolic >= 90) {
+        items.push({
+            metric_label: "Huyết áp",
+            message: `${latest.bloodPressureSystolic}/${latest.bloodPressureDiastolic} mmHg`,
+            value: latest.bloodPressureSystolic,
+            unit: "mmHg",
+        });
+    }
+    if (latest.heartRate > 100 || (latest.heartRate > 0 && latest.heartRate < 60)) {
+        items.push({
+            metric_label: "Nhịp tim",
+            message: `${latest.heartRate} bpm`,
+            value: latest.heartRate,
+            unit: "bpm",
+        });
+    }
+    if (latest.temperature >= 37.5 || (latest.temperature > 0 && latest.temperature < 35.5)) {
+        items.push({
+            metric_label: "Nhiệt độ",
+            message: `${latest.temperature} °C`,
+            value: latest.temperature,
+            unit: "°C",
+        });
+    }
+    if (latestSpo2 > 0 && latestSpo2 < 95) {
+        items.push({
+            metric_label: "SpO2",
+            message: `${latestSpo2}%`,
+            value: latestSpo2,
+            unit: "%",
+        });
+    }
+
+    return items;
+};
 
 function adaptTimeline(t: any): HealthTimelineItem {
     const typeMap: Record<string, HealthTimelineItem["type"]> = {
@@ -613,22 +879,41 @@ export default function HealthRecordsPage() {
         if (fetched[`vitals_${selectedProfileId}`]) return;
         setLoadingVitals(true);
         try {
-            const [latestRes, historyRes, summaryRes, abnormalRes] = await Promise.allSettled([
-                ehrService.getVitalLatest(patientId),
-                ehrService.getVitalHistoryByProfile(patientId),
-                ehrService.getVitalSummary(patientId),
-                ehrService.getVitalAbnormal(patientId),
+            const [latestResult, historyResult, summaryResult, abnormalResult, metricsResult] = await Promise.all([
+                withTimeout(ehrService.getVitalLatest(patientId), 8000, null),
+                withTimeout(ehrService.getVitalHistoryByProfile(patientId), 8000, { data: [] } as { data: any[] }),
+                withTimeout(ehrService.getVitalSummary(patientId), 5000, null),
+                withTimeout(ehrService.getVitalAbnormal(patientId), 5000, { data: [] } as { data: any[] }),
+                withTimeout(ehrService.getHealthMetrics(patientId, { limit: 50 }), 8000, { data: [] } as { data: any[] }),
             ]);
 
-            if (latestRes.status === "fulfilled" && latestRes.value) {
-                setLatestVital(adaptVital(latestRes.value));
+            const latestFromApi = latestResult ? adaptVital(latestResult) : null;
+            const historyItems = historyResult?.data ?? [];
+            const healthMetrics = metricsResult?.data ?? [];
+            const mergedVitals = mergeVitalsWithHealthMetrics(historyItems, healthMetrics);
+            const mergedLatest = applyHealthMetricsToVital(latestFromApi, healthMetrics);
+            const effectiveVitals = mergedVitals.length > 0
+                ? mergedVitals
+                : (mergedLatest?.date ? [mergedLatest] : []);
+            const derivedSummary = buildVitalsSummaryFromHistory(effectiveVitals);
+            const derivedAbnormal = buildAbnormalVitals(effectiveVitals);
+
+            if (effectiveVitals[0]) {
+                setLatestVital(effectiveVitals[0]);
+            } else if (mergedLatest?.date) {
+                setLatestVital(mergedLatest);
             }
-            if (historyRes.status === "fulfilled" && historyRes.value.data?.length) {
-                setVitals(historyRes.value.data.map(adaptVital));
-            }
+            setVitals(effectiveVitals);
             setVitalsState({
-                summary: summaryRes.status === "fulfilled" ? summaryRes.value : null,
-                abnormal: abnormalRes.status === "fulfilled" ? abnormalRes.value.data : [],
+                summary: derivedSummary
+                    ? {
+                        ...derivedSummary,
+                        weight_trend: derivedSummary.weight_trend === "UNKNOWN" ? "Chưa xác định" : derivedSummary.weight_trend,
+                    }
+                    : summaryResult,
+                abnormal: effectiveVitals.length > 0
+                    ? derivedAbnormal
+                    : (abnormalResult?.data ?? []),
             });
             setFetched(prev => ({ ...prev, [`vitals_${selectedProfileId}`]: true }));
         } catch {
@@ -643,25 +928,21 @@ export default function HealthRecordsPage() {
         if (fetched[`history_${selectedProfileId}`]) return;
         setLoadingHistory(true);
         try {
-            const [historyRes, allergyRes, riskRes, specialRes] = await Promise.allSettled([
-                ehrService.getMedicalHistoryByProfile(patientId),
-                ehrService.getAllergies(patientId),
-                ehrService.getRiskFactors(patientId),
-                ehrService.getSpecialConditions(patientId),
-            ]);
+            const profile = await withTimeout(ehrService.getHealthProfile(patientId), 8000, null);
 
-            if (historyRes.status === "fulfilled") {
-                setMedHistory((historyRes.value.data ?? []).map(adaptMedHistory));
+            if (profile) {
+                const activeConditions = Array.isArray(profile?.active_conditions) ? profile.active_conditions : [];
+                const allergyItems = Array.isArray(profile?.allergies) ? profile.allergies : [];
+
+                setMedHistory(activeConditions.map(adaptMedHistory));
+                setAllergies(allergyItems.map((item: any) => adaptMedHistory({ ...item, type: "allergy" })));
+            } else {
+                setMedHistory([]);
+                setAllergies([]);
             }
-            if (allergyRes.status === "fulfilled") {
-                setAllergies((allergyRes.value.data ?? []).map((item: any) => adaptMedHistory({ ...item, type: "allergy" })));
-            }
-            if (riskRes.status === "fulfilled") {
-                setRiskFactors((riskRes.value.data ?? []).map((item: any) => adaptMedHistory({ ...item, type: "risk_factor" })));
-            }
-            if (specialRes.status === "fulfilled") {
-                setSpecialConditions((specialRes.value.data ?? []).map((item: any) => adaptMedHistory({ ...item, type: "special_condition" })));
-            }
+
+            setRiskFactors([]);
+            setSpecialConditions([]);
             setFetched(prev => ({ ...prev, [`history_${selectedProfileId}`]: true }));
         } catch {
             // giữ fallback mock
@@ -835,12 +1116,13 @@ export default function HealthRecordsPage() {
                 <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Hồ sơ sức khỏe điện tử</h1>
                 <p className="text-sm text-[#687582] mt-0.5">Theo dõi toàn diện sức khỏe của bạn qua thời gian</p>
                 {profiles.length > 0 && (
-                    <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 snap-x hide-scrollbar mt-4">
+                    <div className="mt-4 -mx-2 overflow-x-auto px-2 pb-2 hide-scrollbar">
+                        <div className="flex min-w-max gap-3 pr-4 snap-x">
                         {profiles.map(p => (
                             <div
                                 key={p.id}
                                 onClick={() => handleProfileChange(p.id)}
-                                className={`flex items-center gap-3 p-3 rounded-2xl border min-w-[240px] cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
+                                className={`flex min-w-[240px] items-center gap-3 p-3 rounded-2xl border cursor-pointer transition-all snap-start ${selectedProfileId === p.id ? 'border-[#3C81C6] bg-blue-50/50 dark:bg-blue-900/20 shadow-sm' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-[#1e242b] hover:border-blue-300 dark:hover:border-blue-800'}`}
                             >
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] flex items-center justify-center text-white text-sm font-bold shadow-md shadow-[#3C81C6]/20 shrink-0">
                                     {p.fullName?.charAt(0)?.toUpperCase() || "U"}
@@ -854,19 +1136,22 @@ export default function HealthRecordsPage() {
                                 )}
                             </div>
                         ))}
+                        </div>
                     </div>
                 )}
             </div>
 
-            <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
-                {TABS.map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id)}
-                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all
+            <div className="-mx-1 overflow-x-auto px-1 pb-1 scrollbar-hide">
+                <div className="flex min-w-max gap-1.5 pr-4">
+                    {TABS.map(tab => (
+                        <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                            className={`flex shrink-0 items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all
                         ${activeTab === tab.id ? "bg-[#3C81C6] text-white shadow-sm shadow-[#3C81C6]/20" : "bg-white dark:bg-[#1e242b] text-[#687582] hover:bg-gray-50 dark:hover:bg-[#252d36] border border-[#e5e7eb] dark:border-[#2d353e]"}`}>
-                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{tab.icon}</span>
-                        {tab.label}
-                    </button>
-                ))}
+                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{tab.icon}</span>
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             <div>
@@ -1456,8 +1741,9 @@ function VitalsTab({ vitals, summary, abnormal }: { vitals: VitalSign[]; summary
     if (vitals.length === 0) return <EmptyState icon="monitor_heart" message="Chưa có dữ liệu sinh hiệu" />;
     const sortedVitals = vitals
         .slice()
+        .filter((item) => Number.isFinite(item.bloodPressureSystolic) && item.bloodPressureSystolic > 0 && Number.isFinite(item.bloodPressureDiastolic) && item.bloodPressureDiastolic > 0)
         .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-        .slice(-8);
+        .slice(-5);
     const maxPressure = Math.max(
         160,
         ...sortedVitals.flatMap((v) => [v.bloodPressureSystolic || 0, v.bloodPressureDiastolic || 0]),
@@ -1483,7 +1769,7 @@ function VitalsTab({ vitals, summary, abnormal }: { vitals: VitalSign[]; summary
                     </div>
                     <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
                         <p className="text-xs text-[#687582] uppercase">Xu hướng cân nặng</p>
-                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{translateWeightTrend(summary?.weight_trend) || "—"}</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{summary?.weight_trend === "UNKNOWN" ? "Chưa xác định" : (translateWeightTrend(summary?.weight_trend) || "—")}</p>
                         <p className="text-xs text-[#687582] mt-1">Cập nhật {formatDisplayDate(summary?.latest_measurement_at)}</p>
                     </div>
                     <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
@@ -1551,11 +1837,11 @@ function VitalsTab({ vitals, summary, abnormal }: { vitals: VitalSign[]; summary
                         <tbody>{vitals.map(v => (
                             <tr key={v.id} className="border-b border-[#e5e7eb]/50 dark:border-[#2d353e]/50 hover:bg-[#f6f7f8] dark:hover:bg-[#13191f]">
                                 <td className="py-3 font-medium text-[#121417] dark:text-white">{formatDisplayDateTime(v.date)}</td>
-                                <td className={`py-3 text-center ${v.bloodPressureSystolic > 130 ? "text-red-600 font-bold" : "text-[#121417] dark:text-white"}`}>{v.bloodPressureSystolic}/{v.bloodPressureDiastolic}</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.heartRate}</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.spo2 ?? "—"}%</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.weight ? `${v.weight}kg` : "—"}</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.bmi ? toNumber(v.bmi).toFixed(1) : "—"}</td>
+                                <td className={`py-3 text-center ${v.bloodPressureSystolic > 130 ? "text-red-600 font-bold" : "text-[#121417] dark:text-white"}`}>{Number.isFinite(v.bloodPressureSystolic) && v.bloodPressureSystolic > 0 && Number.isFinite(v.bloodPressureDiastolic) && v.bloodPressureDiastolic > 0 ? `${v.bloodPressureSystolic}/${v.bloodPressureDiastolic}` : "—"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{Number.isFinite(v.heartRate) && v.heartRate > 0 ? v.heartRate : "—"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{Number.isFinite(v.spo2 ?? Number.NaN) && (v.spo2 ?? 0) > 0 ? `${v.spo2}%` : "—"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{Number.isFinite(v.weight) && v.weight > 0 ? `${v.weight}kg` : "—"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{Number.isFinite(v.bmi) && v.bmi > 0 ? toNumber(v.bmi).toFixed(1) : "—"}</td>
                             </tr>
                         ))}</tbody>
                     </table>

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { type PatientProfile } from "@/data/patient-profiles-mock";
+import { type PatientProfile } from "@/types/patient-profile";
 import axiosClient from "@/api/axiosClient";
 import { DOCUMENT_ENDPOINTS, DOCUMENT_TYPE_ENDPOINTS } from "@/api/endpoints";
 import Modal from "@/components/common/Modal";

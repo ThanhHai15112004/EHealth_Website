@@ -1,5 +1,5 @@
 import axiosClient from "@/api/axiosClient";
-import { PATIENT_INSURANCE_ENDPOINTS } from "@/api/endpoints";
+import { PATIENT_INSURANCE_ENDPOINTS, PATIENT_INSURANCE_EXT_ENDPOINTS } from "@/api/endpoints";
 import { unwrap, unwrapList } from "@/api/response";
 
 export const patientInsuranceService = {
@@ -21,5 +21,10 @@ export const patientInsuranceService = {
   getHistory: async (id: string, params?: any) => {
     const res = await axiosClient.get(PATIENT_INSURANCE_ENDPOINTS.HISTORY(id), { params });
     return unwrapList(res);
+  },
+
+  create: async (payload: any) => {
+    const res = await axiosClient.post(PATIENT_INSURANCE_EXT_ENDPOINTS.CREATE, payload);
+    return unwrap(res);
   },
 };

@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from "react";
-import { type PatientProfile } from "@/data/patient-profiles-mock";
+import { type PatientProfile } from "@/types/patient-profile";
 import axiosClient from "@/api/axiosClient";
 import { EHR_ENDPOINTS } from "@/api/endpoints";
+import { extractErrorMessage } from "@/api/response";
 import Modal from "@/components/common/Modal";
+import { useToast } from "@/contexts/ToastContext";
 
 interface TabProps {
     profile: PatientProfile;
 }
 
 export default function MedicalHistoryTab({ profile }: TabProps) {
+    const { showToast } = useToast();
     const [allergies, setAllergies] = useState<string[]>([]);
     const [medicalHistory, setMedicalHistory] = useState<any>("");
     const [loading, setLoading] = useState(true);
@@ -86,7 +89,7 @@ export default function MedicalHistoryTab({ profile }: TabProps) {
                     severity: severity
                 };
                 await axiosClient.post(EHR_ENDPOINTS.ADD_ALLERGY(patientId), payload);
-                alert("Thêm dị ứng thành công!");
+                showToast("Thêm dị ứng thành công!", "success");
                 setAllergenName("");
                 setReaction("");
                 setSeverity("MILD");
@@ -98,7 +101,7 @@ export default function MedicalHistoryTab({ profile }: TabProps) {
                     status: historyStatus
                 };
                 await axiosClient.post(EHR_ENDPOINTS.ADD_MEDICAL_HISTORY(patientId), payload);
-                alert("Thêm lịch sử bệnh thành công!");
+                showToast("Thêm lịch sử bệnh thành công!", "success");
                 setConditionName("");
                 setDiagnosisYear("");
                 setHistoryStatus("ACTIVE");
@@ -108,7 +111,7 @@ export default function MedicalHistoryTab({ profile }: TabProps) {
             await fetchHistory();
         } catch (error) {
             console.error("Lỗi khi thêm thông tin:", error);
-            alert("Có lỗi xảy ra, vui lòng thử lại sau.");
+            showToast(extractErrorMessage(error), "error");
         } finally {
             setSubmitting(false);
         }

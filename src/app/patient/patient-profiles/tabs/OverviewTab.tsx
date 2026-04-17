@@ -1,5 +1,5 @@
 import React from "react";
-import { type PatientProfile } from "@/data/patient-profiles-mock";
+import { type PatientProfile } from "@/types/patient-profile";
 
 interface TabProps {
     profile: PatientProfile;

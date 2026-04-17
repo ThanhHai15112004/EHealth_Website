@@ -95,6 +95,11 @@ export const ehrService = {
         return unwrapList<any>(res);
     },
 
+    getHealthMetrics: async (patientId: string, params?: Record<string, any>) => {
+        const res = await axiosClient.get(VITAL_SIGNS_ENDPOINTS.HEALTH_METRICS(patientId), { params });
+        return unwrapList<any>(res);
+    },
+
     getVitalTrends: async (patientId: string, metricType: string) => {
         const res = await axiosClient.get(VITAL_SIGNS_ENDPOINTS.TRENDS(patientId), { params: { metric_type: metricType } });
         return unwrap<any>(res);

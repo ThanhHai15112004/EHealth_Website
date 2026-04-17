@@ -39,7 +39,7 @@ export const mapToProfile = (p: Patient, userParam?: any): PatientProfile => {
         if (p.account_email && p.email === p.account_email) isSelf = true;
     }
 
-    const patientKey = p.id || p.patient_id;
+    const patientKey = p.patient_id || p.id;
     const localRels = getLocalRelations();
     if (patientKey && localRels[patientKey]) {
         relationshipVal = localRels[patientKey].relationship as PatientProfile["relationship"];
@@ -51,7 +51,7 @@ export const mapToProfile = (p: Patient, userParam?: any): PatientProfile => {
     }
 
     return {
-        id: p.id || p.patient_id || "",
+        id: p.patient_id || p.id || "",
         userId: userParam?.id || "",
         fullName: p.full_name,
         dob: p.date_of_birth ? p.date_of_birth.split("T")[0] : "",

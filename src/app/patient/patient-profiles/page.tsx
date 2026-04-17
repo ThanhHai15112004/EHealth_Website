@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { RELATIONSHIP_OPTIONS, type PatientProfile } from "@/data/patient-profiles-mock";
+import { RELATIONSHIP_OPTIONS, type PatientProfile } from "@/types/patient-profile";
 import { validateName, validatePhone, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
-import { getPatientsByAccountId, createPatient, updatePatient, linkAccount, updatePatientStatus, Patient, updateContact } from "@/services/patientService";
+import { getPatientsByAccountId, createPatient, updatePatient, linkAccount, updatePatientStatus, updateContact } from "@/services/patientService";
 import { mapToProfile, saveLocalRelation } from "@/utils/patientMapper";
 
 // ============================================
@@ -179,12 +179,13 @@ export default function PatientProfilesPage() {
                     }
                 });
 
-                if (createRes.success && createRes.data?.id) {
+                const createdPatientId = createRes.data?.id || createRes.data?.patient_id;
+                if (createRes.success && createdPatientId) {
                     // Link to account regardless of relationship so it appears in the user's patient list
                     if (user?.id) {
-                        await linkAccount(createRes.data.id, user.id);
+                        await linkAccount(createdPatientId, user.id);
                     }
-                    saveLocalRelation(createRes.data.id, formData.relationship || 'other', formData.relationshipLabel || 'Khác');
+                    saveLocalRelation(createdPatientId, formData.relationship || 'other', formData.relationshipLabel || 'Khác');
                     showToast("Tạo hồ sơ mới thành công!", "success");
                     loadData();
                 } else {

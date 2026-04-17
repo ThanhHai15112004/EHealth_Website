@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { type PatientProfile } from "@/data/patient-profiles-mock";
+import { type PatientProfile } from "@/types/patient-profile";
 import axiosClient from "@/api/axiosClient";
-import { EHR_ENDPOINTS } from "@/api/endpoints";
+import { EHR_ENDPOINTS, VITAL_SIGNS_ENDPOINTS } from "@/api/endpoints";
+import { extractErrorMessage } from "@/api/response";
 import Modal from "@/components/common/Modal";
+import { useToast } from "@/contexts/ToastContext";
 
 interface TabProps {
     profile: PatientProfile;
@@ -19,6 +21,7 @@ const METRICS_OPTIONS = [
 ];
 
 export default function VitalsTab({ profile }: TabProps) {
+    const { showToast } = useToast();
     const [vitals, setVitals] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -46,7 +49,7 @@ export default function VitalsTab({ profile }: TabProps) {
             
             const [vitalsRes, metricsRes] = await Promise.all([
                 axiosClient.get(EHR_ENDPOINTS.VITALS_LATEST(patientId.toString())).catch(() => ({ data: null })),
-                axiosClient.get(EHR_ENDPOINTS.ADD_HEALTH_METRIC(patientId.toString()) + '?limit=50').catch(() => ({ data: null }))
+                axiosClient.get(VITAL_SIGNS_ENDPOINTS.HEALTH_METRICS(patientId.toString()) + '?limit=50').catch(() => ({ data: null }))
             ]);
 
             let mergedVitals = { ...(vitalsRes.data?.data || vitalsRes.data || {}) };
@@ -141,10 +144,10 @@ export default function VitalsTab({ profile }: TabProps) {
             setMetricValue2('');
             setDeviceInfo('');
             
-            alert("Thêm chỉ số sinh tồn thành công!");
+            showToast("Thêm chỉ số sinh tồn thành công!", "success");
         } catch (error) {
             console.error("Failed to add metric:", error);
-            alert("Đã xảy ra lỗi khi lưu thông tin");
+            showToast(extractErrorMessage(error), "error");
         } finally {
             setSubmitting(false);
         }
@@ -333,4 +336,3 @@ const VitalCard = ({ icon, title, value, unit }: any) => {
         </div>
     );
 }
-

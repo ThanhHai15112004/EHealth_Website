@@ -194,8 +194,7 @@ export const getPatients = async (params?: {
 export const getPatientDetail = async (patientId: string): Promise<{ success: boolean; data?: Patient; message?: string }> => {
     try {
         const response = await axiosClient.get(PATIENT_ENDPOINTS.DETAIL(patientId));
-        const raw = response.data;
-        const data = raw?.data ?? raw;
+        const data = unwrap<Patient>(response);
         return { success: true, data };
     } catch (error: any) {
         return {
@@ -211,8 +210,7 @@ export const getPatientDetail = async (patientId: string): Promise<{ success: bo
 export const createPatient = async (data: CreatePatientRequest): Promise<{ success: boolean; data?: Patient; message?: string }> => {
     try {
         const response = await axiosClient.post(PATIENT_ENDPOINTS.CREATE, data);
-        const raw = response.data;
-        const patient = raw?.data ?? raw;
+        const patient = unwrap<Patient>(response);
         return { success: true, data: patient };
     } catch (error: any) {
         return {
@@ -228,8 +226,7 @@ export const createPatient = async (data: CreatePatientRequest): Promise<{ succe
 export const updatePatient = async (patientId: string, data: UpdatePatientRequest): Promise<{ success: boolean; data?: Patient; message?: string }> => {
     try {
         const response = await axiosClient.put(PATIENT_ENDPOINTS.UPDATE(patientId), data);
-        const raw = response.data;
-        const patient = raw?.data ?? raw;
+        const patient = unwrap<Patient>(response);
         return { success: true, data: patient };
     } catch (error: any) {
         return {
@@ -285,7 +282,13 @@ export const linkPatient = async (patientCode: string, identityNumber: string): 
 export const getPatientsByAccountId = async (accountId: string): Promise<{ success: boolean; data?: Patient[]; message?: string }> => {
     try {
         const response = await axiosClient.get(PATIENT_ENDPOINTS.BY_ACCOUNT(accountId));
-        return response.data;
+        const raw = unwrap<any>(response);
+        const data = Array.isArray(raw)
+            ? raw
+            : Array.isArray(raw?.items)
+                ? raw.items
+                : [];
+        return { success: true, data };
     } catch (error: any) {
         return {
             success: false,
