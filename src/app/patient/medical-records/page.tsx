@@ -28,6 +28,7 @@ const EXAM_ONLY_KEYWORDS = [
     "can lam sang",
     "chan doan hinh anh",
     "diagnostic imaging",
+    
     "laboratory",
     "laboratory medicine",
     "lab",

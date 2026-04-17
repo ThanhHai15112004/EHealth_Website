@@ -11,6 +11,215 @@ import { ehrService } from "@/services/ehrService";
 import { medicalRecordService } from "@/services/medicalRecordService";
 import { adaptPatientClinicalResult, adaptPatientRecordTimelineItem } from "@/utils/patientMedicalRecordAdapters";
 
+type OverviewState = {
+    summary: any | null;
+    alerts: any[];
+    tags: string[];
+    diagnoses: any[];
+    activeConditions: any[];
+    insurance: any | null;
+    notes: any[];
+};
+
+type VitalsState = {
+    summary: any | null;
+    abnormal: any[];
+};
+
+type LabState = {
+    summary: any | null;
+    abnormalIds: string[];
+};
+
+type MedicationState = {
+    interactions: any[];
+    timeline: any[];
+};
+
+type TimelineState = {
+    summary: any | null;
+};
+
+const toNumber = (value: unknown, fallback = 0) => {
+    if (value === null || value === undefined || value === "") return fallback;
+    const parsed = typeof value === "number" ? value : Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+};
+
+const formatDisplayDate = (value?: string | null) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+    }).format(date);
+};
+
+const formatDisplayDateTime = (value?: string | null) => {
+    if (!value) return "—";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+    }).format(date);
+};
+
+const translateRiskLevel = (value?: string | null) => {
+    const normalized = String(value ?? "").toUpperCase();
+    if (normalized === "LOW") return "Thấp";
+    if (normalized === "MODERATE") return "Trung bình";
+    if (normalized === "HIGH") return "Cao";
+    if (normalized === "CRITICAL") return "Rất cao";
+    return value || "—";
+};
+
+const translateHistoryStatus = (value?: string | null) => {
+    const normalized = String(value ?? "").toUpperCase();
+    if (normalized === "ACTIVE") return "Đang theo dõi";
+    if (normalized === "RESOLVED") return "Đã ổn định";
+    if (normalized === "MONITORING") return "Theo dõi thêm";
+    if (normalized === "INACTIVE") return "Không hoạt động";
+    return value || "Đang theo dõi";
+};
+
+const translateTimelineType = (value?: string | null) => {
+    const normalized = String(value ?? "").toUpperCase();
+    if (normalized === "ENCOUNTER_START" || normalized === "ENCOUNTER_END" || normalized === "ENCOUNTER") return "Khám bệnh";
+    if (normalized === "LAB_RESULT" || normalized === "LAB_ORDER") return "Xét nghiệm";
+    if (normalized === "PRESCRIPTION" || normalized === "DISPENSED") return "Thuốc";
+    if (normalized === "DIAGNOSIS") return "Chẩn đoán";
+    if (normalized === "VITALS_RECORDED") return "Sinh hiệu";
+    if (normalized === "TREATMENT_PLAN") return "Kế hoạch điều trị";
+    if (normalized === "TREATMENT_NOTE") return "Diễn tiến điều trị";
+    if (normalized === "EMR_SIGNED" || normalized === "EMR_FINALIZED") return "Hồ sơ bệnh án";
+    return value || "Sự kiện";
+};
+
+const cleanAlertTitle = (value?: string | null) => {
+    if (!value) return "Cảnh báo y tế";
+    if (/bảo hiểm/i.test(value)) {
+        return value.split(":")[0].trim();
+    }
+    return value;
+};
+
+const cleanAlertDescription = (value?: string | null) => {
+    if (!value) return "Theo dõi thêm theo dữ liệu hồ sơ.";
+    const withoutCodes = value
+        .replace(/Mã\s*[A-ZÀ-Ỹa-zà-ỹ]*\s*:\s*[A-Z0-9-]+/g, "")
+        .replace(/PRI-[A-Z0-9-]+/g, "")
+        .trim();
+
+    const jsDateMatch = withoutCodes.match(/\b(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)\s(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{2}\s\d{4}[^,]*/);
+    if (jsDateMatch) {
+        const formattedDate = formatDisplayDate(jsDateMatch[0]);
+        return withoutCodes.replace(jsDateMatch[0], formattedDate);
+    }
+
+    return withoutCodes || "Theo dõi thêm theo dữ liệu hồ sơ.";
+};
+
+const translateDynamicText = (value?: string | null) => {
+    if (!value) return "";
+
+    return value
+        .replace(/\bFIRST_VISIT\b/gi, "khám lần đầu")
+        .replace(/\bFOLLOW_UP\b/gi, "tái khám")
+        .replace(/\bFIRST-VISIT\b/gi, "khám lần đầu")
+        .replace(/\bFOLLOW-UP\b/gi, "tái khám")
+        .replace(/\bfirst visit\b/gi, "lần khám đầu tiên")
+        .replace(/\bfollow-up visit\b/gi, "lần khám tái khám")
+        .replace(/\bvisit\b/gi, "khám")
+        .replace(/\bdrug\b/gi, "thuốc")
+        .replace(/\bdrugs\b/gi, "thuốc")
+        .replace(/\bdispensed\b/gi, "đã phát thuốc")
+        .replace(/\bprescription\b/gi, "đơn thuốc")
+        .replace(/\bactive\b/gi, "đang theo dõi")
+        .replace(/\bresolved\b/gi, "đã ổn định")
+        .replace(/\bmonitoring\b/gi, "theo dõi thêm")
+        .replace(/\bcompleted\b/gi, "hoàn thành")
+        .replace(/\bin progress\b/gi, "đang thực hiện")
+        .replace(/\bpending\b/gi, "đang chờ");
+};
+
+const translateLabCategory = (value?: string | null) => {
+    const normalized = String(value ?? "").toUpperCase();
+    if (normalized === "LABORATORY") return "Xét nghiệm";
+    if (normalized === "IMAGING") return "Chẩn đoán hình ảnh";
+    if (normalized === "PROCEDURE") return "Thủ thuật";
+    if (normalized === "CẬN LÂM SÀNG" || normalized === "CÁº¬N LÃ‚M SÃ€NG") return "Cận lâm sàng";
+    return translateDynamicText(value) || "Cận lâm sàng";
+};
+
+const translateAllergenType = (value?: string | null) => {
+    const normalized = String(value ?? "").toUpperCase();
+    if (normalized === "FOOD") return "Thực phẩm";
+    if (normalized === "DRUG") return "Thuốc";
+    if (normalized === "ENVIRONMENT") return "Môi trường";
+    return translateDynamicText(value) || "Dị nguyên";
+};
+
+const translateSeverity = (value?: string | null) => {
+    const normalized = String(value ?? "").toUpperCase();
+    if (normalized === "MILD") return "Nhẹ";
+    if (normalized === "MODERATE") return "Trung bình";
+    if (normalized === "SEVERE") return "Nặng";
+    if (normalized === "CRITICAL") return "Nguy kịch";
+    return translateDynamicText(value) || "Cần theo dõi";
+};
+
+const translateWeightTrend = (value?: string | null) => {
+    const normalized = String(value ?? "").toUpperCase();
+    if (normalized === "INCREASING") return "Tăng";
+    if (normalized === "DECREASING") return "Giảm";
+    if (normalized === "STABLE") return "Ổn định";
+    return translateDynamicText(value) || "Chưa xác định";
+};
+
+const getMedicationTimelinePresentation = (item: any) => {
+    const eventType = String(item?.event_type ?? "").toUpperCase();
+    const rawTitle = translateDynamicText(item?.title ?? "");
+    const rawDescription = translateDynamicText(item?.description ?? "");
+    const prescriptionCodeMatch = rawTitle.match(/RX-[A-Z0-9-]+/i);
+    const prescriptionCode = prescriptionCodeMatch?.[0] ?? null;
+
+    if (eventType === "DISPENSED") {
+        return {
+            title: "Đã phát thuốc",
+            subtitle: rawDescription || "Thuốc đã được cấp phát cho bệnh nhân.",
+            code: prescriptionCode,
+        };
+    }
+
+    if (eventType === "PRESCRIPTION") {
+        return {
+            title: "Đã kê đơn thuốc",
+            subtitle: rawDescription || "Bác sĩ đã kê đơn điều trị.",
+            code: prescriptionCode,
+        };
+    }
+
+    if (eventType === "TREATMENT_PLAN") {
+        return {
+            title: rawTitle || "Kế hoạch điều trị",
+            subtitle: rawDescription || "Kế hoạch điều trị đang được theo dõi.",
+            code: null,
+        };
+    }
+
+    return {
+        title: rawTitle || translateTimelineType(eventType),
+        subtitle: rawDescription || translateTimelineType(eventType),
+        code: prescriptionCode,
+    };
+};
+
 const TABS = [
     { id: "overview", label: "Tổng quan", icon: "dashboard" },
     { id: "vitals", label: "Chỉ số sinh hiệu", icon: "monitor_heart" },
@@ -23,12 +232,6 @@ const TABS = [
 // ─── Adapter: chuyển dữ liệu API sang format UI ──────────────────────────────
 
 function adaptVital(v: any): VitalSign {
-    const toNumber = (value: unknown, fallback = 0) => {
-        if (value === null || value === undefined || value === "") return fallback;
-        const parsed = typeof value === "number" ? value : Number(value);
-        return Number.isFinite(parsed) ? parsed : fallback;
-    };
-
     const weight = toNumber(v.weight ?? v.bodyWeight ?? v.mass, 0);
     const height = toNumber(v.height ?? v.bodyHeight ?? v.stature, 0);
     const bmi = toNumber(
@@ -48,6 +251,10 @@ function adaptVital(v: any): VitalSign {
         bmi,
         bloodSugar: toNumber(v.bloodSugar ?? v.blood_sugar ?? v.blood_glucose ?? v.glucose, 0),
         spo2: toNumber(v.spo2 ?? v.oxygenSaturation ?? v.oxygen_saturation, 0),
+        respiratoryRate: toNumber(v.respiratoryRate ?? v.respiratory_rate ?? v.resp_rate, 0),
+        recordedBy: v.recordedBy ?? v.recorded_by ?? v.doctor_name ?? v.staff_name ?? "",
+        encounterDate: v.encounterDate ?? v.encounter_date ?? v.encounter_start ?? v.date ?? "",
+        sourceType: v.sourceType ?? v.source_type ?? v.record_source ?? "CLINIC",
     };
 }
 
@@ -77,6 +284,8 @@ function adaptMedHistory(m: any): MedicalHistoryItem {
         family: "family", risk_factor: "risk_factor",
         chronic_disease: "chronic", allergic: "allergy",
         PERSONAL: "chronic", FAMILY: "family", SURGICAL: "surgery",
+        SPECIAL_CONDITION: "special_condition",
+        special_condition: "special_condition",
     };
     const statusMap: Record<string, MedicalHistoryItem["status"]> = {
         ACTIVE: "active",
@@ -91,6 +300,11 @@ function adaptMedHistory(m: any): MedicalHistoryItem {
         details: m.details ?? m.reaction ?? m.description ?? m.notes ?? "",
         diagnosedDate: m.diagnosedDate ?? m.diagnosis_date ?? m.diagnosed_date ?? m.onset_date ?? m.created_at,
         status: statusMap[m.status] ?? m.status ?? "active",
+        severity: m.severity ?? m.reaction_severity ?? null,
+        allergenType: m.allergen_type ?? m.type_of_allergen ?? null,
+        conditionCode: m.condition_code ?? m.icd10_code ?? null,
+        relationship: m.relationship ?? m.family_relationship ?? null,
+        isActive: m.is_active ?? m.active ?? m.status === "ACTIVE",
     };
 }
 
@@ -159,6 +373,12 @@ function adaptClinicalResultToLabResult(result: any): LabResult {
         category: result?.orderType || "Cận lâm sàng",
         doctorName: result?.doctorName || result?.ordererName || result?.performerName || "",
         status: result?.status === "pending" ? "pending" : "completed",
+        orderId: result?.orderId,
+        serviceCode: result?.serviceCode ?? result?.service_code,
+        attachments: Array.isArray(result?.attachmentUrls) ? result.attachmentUrls : [],
+        isAbnormal: Boolean(result?.isAbnormal),
+        performedBy: result?.performerName ?? result?.doctorName ?? "",
+        summary: summary || null,
         results: detailItems.length > 0
             ? detailItems.map((item: any) => ({
                 name: item?.name ?? item?.label ?? item?.parameter ?? "Chỉ số",
@@ -208,6 +428,10 @@ function adaptRecordTimelineToHealthTimeline(item: any): HealthTimelineItem {
         status: adapted.status,
         icon: adapted.icon,
         color: adapted.color,
+        eventType: item?.event_type ?? adapted.type,
+        encounterId: item?.encounter_id ?? item?.encounters_id ?? null,
+        metadata: item?.metadata ?? null,
+        source: item?.source ?? "EHR",
     };
 }
 
@@ -229,6 +453,11 @@ function adaptMedication(m: any): Medication {
                 ? "completed"
                 : "active",
         notes: m.notes ?? m.usage_instruction ?? m.instructions ?? m.active_ingredients,
+        prescriptionCode: m.prescription_code ?? "",
+        route: m.route_of_administration ?? m.route ?? "",
+        dispensingUnit: m.dispensing_unit ?? "",
+        estimatedEndDate: m.estimated_end_date ?? "",
+        activeIngredients: m.active_ingredients ?? "",
     };
 }
 
@@ -298,6 +527,22 @@ export default function HealthRecordsPage() {
     const [labResults, setLabResults] = useState<LabResult[]>([]);
     const [medications, setMedications] = useState<Medication[]>([]);
     const [allergies, setAllergies] = useState<MedicalHistoryItem[]>([]);
+    const [overviewState, setOverviewState] = useState<OverviewState>({
+        summary: null,
+        alerts: [],
+        tags: [],
+        diagnoses: [],
+        activeConditions: [],
+        insurance: null,
+        notes: [],
+    });
+    const [vitalsState, setVitalsState] = useState<VitalsState>({ summary: null, abnormal: [] });
+    const [riskFactors, setRiskFactors] = useState<MedicalHistoryItem[]>([]);
+    const [specialConditions, setSpecialConditions] = useState<MedicalHistoryItem[]>([]);
+    const [labState, setLabState] = useState<LabState>({ summary: null, abnormalIds: [] });
+    const [medicationState, setMedicationState] = useState<MedicationState>({ interactions: [], timeline: [] });
+    const [timelineState, setTimelineState] = useState<TimelineState>({ summary: null });
+    const [timelineFilter, setTimelineFilter] = useState("ALL");
 
     // ── Loading states per tab ─────────────────────────────────────────
     const [loadingVitals, setLoadingVitals] = useState(false);
@@ -316,18 +561,35 @@ export default function HealthRecordsPage() {
         if (fetched[`overview_${selectedProfileId}`]) return;
         setLoadingOverview(true);
         try {
-            const [profileRes, medsRes, allergiesRes, timelineRes] = await Promise.allSettled([
+            const [profileRes, summaryRes, activeConditionsRes, diagnosisRes, insuranceRes, medsRes, allergiesRes, timelineRes] = await Promise.allSettled([
                 ehrService.getHealthProfile(patientId),
+                ehrService.getHealthSummary(patientId),
+                ehrService.getActiveConditions(patientId),
+                ehrService.getDiagnosisHistory(patientId, { limit: 5 }),
+                ehrService.getInsuranceStatus(patientId),
                 ehrService.getCurrentMedications(patientId),
                 ehrService.getAllergies(patientId),
-                medicalRecordService.getTimeline(patientId),
+                ehrService.getHealthTimeline(patientId, { limit: 6 }),
             ]);
 
             if (profileRes.status === "fulfilled") {
-                const latest = profileRes.value?.latest_vitals ?? profileRes.value?.latestVital ?? null;
+                const profile = profileRes.value ?? {};
+                const latest = profile?.latest_vitals ?? profile?.latestVital ?? null;
                 if (latest) {
                     setLatestVital(adaptVital(latest));
                 }
+                if (Array.isArray(profile?.current_medications) && profile.current_medications.length > 0) {
+                    setMedications(profile.current_medications.map(adaptMedication));
+                }
+                setOverviewState({
+                    summary: profile?.health_summary ?? (summaryRes.status === "fulfilled" ? summaryRes.value : null),
+                    alerts: profile?.alerts ?? [],
+                    tags: Array.isArray(profile?.tags) ? profile.tags : [],
+                    diagnoses: profile?.recent_diagnoses ?? (diagnosisRes.status === "fulfilled" ? diagnosisRes.value.data : []),
+                    activeConditions: profile?.active_conditions ?? (activeConditionsRes.status === "fulfilled" ? activeConditionsRes.value.data : []),
+                    insurance: profile?.insurance_info ?? (insuranceRes.status === "fulfilled" ? insuranceRes.value?.data?.[0] ?? null : null),
+                    notes: Array.isArray(profile?.ehr_notes) ? profile.ehr_notes : [],
+                });
             }
             if (medsRes.status === "fulfilled" && medsRes.value.data?.length) {
                 setMedications(medsRes.value.data.map(adaptMedication));
@@ -336,7 +598,7 @@ export default function HealthRecordsPage() {
                 setAllergies(allergiesRes.value.data.map((a: any) => adaptMedHistory({ ...a, type: "allergy" })));
             }
             if (timelineRes.status === "fulfilled") {
-                setTimeline(unwrapList<any>(timelineRes.value).data.map(adaptRecordTimelineToHealthTimeline));
+                setTimeline(timelineRes.value.data.map(adaptRecordTimelineToHealthTimeline));
             }
             setFetched(prev => ({ ...prev, [`overview_${selectedProfileId}`]: true }));
         } catch {
@@ -351,9 +613,11 @@ export default function HealthRecordsPage() {
         if (fetched[`vitals_${selectedProfileId}`]) return;
         setLoadingVitals(true);
         try {
-            const [latestRes, historyRes] = await Promise.allSettled([
+            const [latestRes, historyRes, summaryRes, abnormalRes] = await Promise.allSettled([
                 ehrService.getVitalLatest(patientId),
                 ehrService.getVitalHistoryByProfile(patientId),
+                ehrService.getVitalSummary(patientId),
+                ehrService.getVitalAbnormal(patientId),
             ]);
 
             if (latestRes.status === "fulfilled" && latestRes.value) {
@@ -362,6 +626,10 @@ export default function HealthRecordsPage() {
             if (historyRes.status === "fulfilled" && historyRes.value.data?.length) {
                 setVitals(historyRes.value.data.map(adaptVital));
             }
+            setVitalsState({
+                summary: summaryRes.status === "fulfilled" ? summaryRes.value : null,
+                abnormal: abnormalRes.status === "fulfilled" ? abnormalRes.value.data : [],
+            });
             setFetched(prev => ({ ...prev, [`vitals_${selectedProfileId}`]: true }));
         } catch {
             // giữ fallback mock
@@ -375,9 +643,11 @@ export default function HealthRecordsPage() {
         if (fetched[`history_${selectedProfileId}`]) return;
         setLoadingHistory(true);
         try {
-            const [historyRes, allergyRes] = await Promise.allSettled([
+            const [historyRes, allergyRes, riskRes, specialRes] = await Promise.allSettled([
                 ehrService.getMedicalHistoryByProfile(patientId),
                 ehrService.getAllergies(patientId),
+                ehrService.getRiskFactors(patientId),
+                ehrService.getSpecialConditions(patientId),
             ]);
 
             if (historyRes.status === "fulfilled") {
@@ -385,6 +655,12 @@ export default function HealthRecordsPage() {
             }
             if (allergyRes.status === "fulfilled") {
                 setAllergies((allergyRes.value.data ?? []).map((item: any) => adaptMedHistory({ ...item, type: "allergy" })));
+            }
+            if (riskRes.status === "fulfilled") {
+                setRiskFactors((riskRes.value.data ?? []).map((item: any) => adaptMedHistory({ ...item, type: "risk_factor" })));
+            }
+            if (specialRes.status === "fulfilled") {
+                setSpecialConditions((specialRes.value.data ?? []).map((item: any) => adaptMedHistory({ ...item, type: "special_condition" })));
             }
             setFetched(prev => ({ ...prev, [`history_${selectedProfileId}`]: true }));
         } catch {
@@ -399,7 +675,7 @@ export default function HealthRecordsPage() {
         if (fetched[`lab_${selectedProfileId}`]) return;
         setLoadingLab(true);
         try {
-            const [patientResultsRes, encounterResultsRes] = await Promise.allSettled([
+            const [patientResultsRes, encounterResultsRes, labSummaryRes, abnormalRes, attachmentRes] = await Promise.allSettled([
                 clinicalResultsService.getByPatient(patientId, { page: 1, limit: 100 }),
                 (async () => {
                     const encountersRes = await medicalRecordService.getByPatient(patientId);
@@ -417,22 +693,44 @@ export default function HealthRecordsPage() {
                             : [],
                     );
                 })(),
+                clinicalResultsService.getSummary(patientId),
+                clinicalResultsService.getAbnormal(patientId),
+                clinicalResultsService.getAttachments(patientId),
             ]);
 
             const patientResults = patientResultsRes.status === "fulfilled" ? patientResultsRes.value.data : [];
             const encounterResults = encounterResultsRes.status === "fulfilled" ? encounterResultsRes.value : [];
+            const abnormalIds = abnormalRes.status === "fulfilled"
+                ? abnormalRes.value.data
+                    .map((item) => item.orderId ?? item.medical_orders_id ?? `${item.service_code ?? item.type}_${item.resultedAt ?? item.performed_at ?? ""}`)
+                    .filter(Boolean)
+                : [];
+            const attachmentMap = new Map(
+                (attachmentRes.status === "fulfilled" ? attachmentRes.value.data : []).map((item) => [
+                    item.medical_orders_id,
+                    item.attachment_urls ?? [],
+                ]),
+            );
             const deduped = Array.from(
                 new Map(
                     [...patientResults, ...encounterResults]
                         .map(adaptPatientClinicalResult)
                         .map((item) => [
                             item.orderId ?? `${item.serviceName}_${item.performedAt}`,
-                            item,
+                            {
+                                ...item,
+                                attachmentUrls: attachmentMap.get(item.orderId ?? "") ?? item.attachmentUrls ?? [],
+                                isAbnormal: item.isAbnormal || abnormalIds.includes(item.orderId ?? `${item.serviceCode ?? item.serviceName}_${item.performedAt ?? ""}`),
+                            },
                         ]),
                 ).values(),
             );
 
             setLabResults(deduped.map(adaptClinicalResultToLabResult));
+            setLabState({
+                summary: labSummaryRes.status === "fulfilled" ? labSummaryRes.value : null,
+                abnormalIds,
+            });
             setFetched(prev => ({ ...prev, [`lab_${selectedProfileId}`]: true }));
         } catch {
             // giữ fallback mock
@@ -446,8 +744,20 @@ export default function HealthRecordsPage() {
         if (fetched[`meds_${selectedProfileId}`]) return;
         setLoadingMeds(true);
         try {
-            const res = await ehrService.getCurrentMedications(patientId);
-            if (res.data?.length) setMedications(res.data.map(adaptMedication));
+            const [medsRes, interactionRes, timelineRes] = await Promise.allSettled([
+                ehrService.getCurrentMedications(patientId),
+                ehrService.getMedicationInteractionCheck(patientId),
+                ehrService.getMedicationTimeline(patientId),
+            ]);
+            if (medsRes.status === "fulfilled" && medsRes.value.data?.length) {
+                setMedications(medsRes.value.data.map(adaptMedication));
+            }
+            setMedicationState({
+                interactions: interactionRes.status === "fulfilled"
+                    ? interactionRes.value?.interactions ?? interactionRes.value?.warnings ?? []
+                    : [],
+                timeline: timelineRes.status === "fulfilled" ? timelineRes.value.data : [],
+            });
             setFetched(prev => ({ ...prev, [`meds_${selectedProfileId}`]: true }));
         } catch {
             // giữ fallback mock
@@ -458,19 +768,29 @@ export default function HealthRecordsPage() {
 
     const fetchTimeline = useCallback(async () => {
         if (!patientId || !selectedProfileId) return;
-        if (fetched[`timeline_${selectedProfileId}`]) return;
+        const timelineKey = `timeline_${selectedProfileId}_${timelineFilter}`;
+        if (fetched[timelineKey]) return;
         setLoadingTimeline(true);
         try {
-            const res = await medicalRecordService.getTimeline(patientId);
-            const items = unwrapList<any>(res).data.map(adaptRecordTimelineToHealthTimeline);
+            const params = timelineFilter === "ALL" ? { limit: 50 } : { limit: 50, event_type: timelineFilter };
+            const [timelineRes, summaryRes] = await Promise.allSettled([
+                ehrService.getHealthTimeline(patientId, params),
+                ehrService.getHealthTimelineSummary(patientId),
+            ]);
+            const items = timelineRes.status === "fulfilled"
+                ? timelineRes.value.data.map(adaptRecordTimelineToHealthTimeline)
+                : [];
             if (items.length) setTimeline(items);
-            setFetched(prev => ({ ...prev, [`timeline_${selectedProfileId}`]: true }));
+            if (summaryRes.status === "fulfilled") {
+                setTimelineState({ summary: summaryRes.value });
+            }
+            setFetched(prev => ({ ...prev, [timelineKey]: true }));
         } catch {
             // giữ fallback mock
         } finally {
             setLoadingTimeline(false);
         }
-    }, [patientId, selectedProfileId, fetched]);
+    }, [patientId, selectedProfileId, fetched, timelineFilter]);
 
     // Lazy load khi chuyển tab
     useEffect(() => {
@@ -483,7 +803,7 @@ export default function HealthRecordsPage() {
             case "medications": fetchMedications(); break;
             case "timeline": fetchTimeline(); break;
         }
-    }, [activeTab, selectedProfileId, fetchHistory, fetchLab, fetchMedications, fetchOverview, fetchTimeline, fetchVitals]);
+    }, [activeTab, selectedProfileId, timelineFilter, fetchHistory, fetchLab, fetchMedications, fetchOverview, fetchTimeline, fetchVitals]);
 
     // Reset fetched khi đổi profile
     const handleProfileChange = (profileId: string) => {
@@ -499,6 +819,14 @@ export default function HealthRecordsPage() {
         setLabResults([]);
         setMedications([]);
         setAllergies([]);
+        setOverviewState({ summary: null, alerts: [], tags: [], diagnoses: [], activeConditions: [], insurance: null, notes: [] });
+        setVitalsState({ summary: null, abnormal: [] });
+        setRiskFactors([]);
+        setSpecialConditions([]);
+        setLabState({ summary: null, abnormalIds: [] });
+        setMedicationState({ interactions: [], timeline: [] });
+        setTimelineState({ summary: null });
+        setTimelineFilter("ALL");
     };
 
     return (
@@ -542,12 +870,12 @@ export default function HealthRecordsPage() {
             </div>
 
             <div>
-                {activeTab === "overview" && (loadingOverview ? <Skeleton rows={2} /> : <OverviewTab vital={latestVital} allergies={allergies} medications={medications} recentTimeline={timeline} />)}
-                {activeTab === "vitals" && (loadingVitals ? <Skeleton rows={2} /> : <VitalsTab vitals={vitals} />)}
-                {activeTab === "history" && (loadingHistory ? <Skeleton /> : <MedicalHistoryTab items={medHistory} allergies={allergies} />)}
-                {activeTab === "lab" && (loadingLab ? <Skeleton /> : <LabResultsTab results={labResults} />)}
-                {activeTab === "medications" && (loadingMeds ? <Skeleton /> : <MedicationsTab medications={medications} />)}
-                {activeTab === "timeline" && (loadingTimeline ? <Skeleton /> : <TimelineTab items={timeline} />)}
+                {activeTab === "overview" && (loadingOverview ? <Skeleton rows={2} /> : <OverviewTab vital={latestVital} allergies={allergies} medications={medications} recentTimeline={timeline} overview={overviewState} />)}
+                {activeTab === "vitals" && (loadingVitals ? <Skeleton rows={2} /> : <VitalsTab vitals={vitals} summary={vitalsState.summary} abnormal={vitalsState.abnormal} />)}
+                {activeTab === "history" && (loadingHistory ? <Skeleton /> : <MedicalHistoryTab items={medHistory} allergies={allergies} riskFactors={riskFactors} specialConditions={specialConditions} />)}
+                {activeTab === "lab" && (loadingLab ? <Skeleton /> : <LabResultsTab results={labResults} summary={labState.summary} abnormalIds={labState.abnormalIds} />)}
+                {activeTab === "medications" && (loadingMeds ? <Skeleton /> : <MedicationsTab medications={medications} interactions={medicationState.interactions} timeline={medicationState.timeline} />)}
+                {activeTab === "timeline" && (loadingTimeline ? <Skeleton /> : <TimelineTab items={timeline} summary={timelineState.summary} filter={timelineFilter} onFilterChange={setTimelineFilter} />)}
             </div>
         </div>
     );
@@ -556,25 +884,27 @@ export default function HealthRecordsPage() {
 // ─── Tab Components ───────────────────────────────────────────────────────────
 
 function OverviewTab({
-    vital, allergies, medications, recentTimeline
+    vital, allergies, medications, recentTimeline, overview
 }: {
     vital: VitalSign | null;
     allergies: MedicalHistoryItem[];
     medications: Medication[];
     recentTimeline: HealthTimelineItem[];
+    overview: OverviewState;
 }) {
-    const safeFixed = (value: unknown, digits = 1) => {
-        const parsed = typeof value === "number" ? value : Number(value);
-        return Number.isFinite(parsed) ? parsed.toFixed(digits) : "—";
-    };
-
     const healthCards = [
         { label: "Huyết áp", value: vital ? `${vital.bloodPressureSystolic}/${vital.bloodPressureDiastolic}` : "—", unit: "mmHg", icon: "bloodtype", color: "from-red-500 to-rose-600", ok: !vital || vital.bloodPressureSystolic <= 130 },
         { label: "Nhịp tim", value: vital ? `${vital.heartRate}` : "—", unit: "bpm", icon: "cardiology", color: "from-pink-500 to-red-500", ok: true },
-        { label: "BMI", value: vital ? vital.bmi.toFixed(1) : "—", unit: "", icon: "monitor_weight", color: "from-blue-500 to-indigo-600", ok: !vital || (vital.bmi >= 18.5 && vital.bmi <= 25) },
+        { label: "BMI", value: vital ? toNumber(vital.bmi).toFixed(1) : "—", unit: "", icon: "monitor_weight", color: "from-blue-500 to-indigo-600", ok: !vital || (toNumber(vital.bmi) >= 18.5 && toNumber(vital.bmi) <= 25) },
         { label: "SpO2", value: vital ? `${vital.spo2 || "—"}` : "—", unit: "%", icon: "pulmonology", color: "from-cyan-500 to-teal-600", ok: true },
         { label: "Đường huyết", value: vital ? `${vital.bloodSugar || "—"}` : "—", unit: "mg/dL", icon: "water_drop", color: "from-amber-500 to-orange-500", ok: true },
-        { label: "Nhiệt độ", value: vital ? vital.temperature.toFixed(1) : "—", unit: "°C", icon: "thermostat", color: "from-green-500 to-emerald-600", ok: true },
+        { label: "Nhiệt độ", value: vital ? toNumber(vital.temperature, 36.5).toFixed(1) : "—", unit: "°C", icon: "thermostat", color: "from-green-500 to-emerald-600", ok: true },
+    ];
+    const summaryCards = [
+        { label: "Mức nguy cơ", value: translateRiskLevel(overview.summary?.risk_level), icon: "monitoring", tone: "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300" },
+        { label: "Lượt khám", value: overview.summary?.total_encounters ?? "—", icon: "stethoscope", tone: "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300" },
+        { label: "Bệnh đang theo dõi", value: overview.summary?.active_conditions_count ?? overview.activeConditions.length ?? 0, icon: "clinical_notes", tone: "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300" },
+        { label: "Thuốc đang dùng", value: overview.summary?.active_medications_count ?? medications.filter((item) => item.status === "active").length, icon: "medication", tone: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" },
     ];
 
     return (
@@ -594,11 +924,93 @@ function OverviewTab({
                         </div>
                         <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${c.ok ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400"}`}>
                             <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>{c.ok ? "check_circle" : "warning"}</span>
-                            {c.ok ? "Bình thường" : "Cao nhẹ"}
+                            {c.ok ? "Bình thường" : "Cần theo dõi"}
                         </div>
                     </div>
                 ))}
             </div>
+
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                {summaryCards.map((card) => (
+                    <div key={card.label} className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${card.tone}`}>
+                                <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>{card.icon}</span>
+                            </div>
+                            <div>
+                                <p className="text-xs uppercase tracking-wide text-[#687582]">{card.label}</p>
+                                <p className="text-lg font-bold text-[#121417] dark:text-white">{card.value}</p>
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {(overview.tags.length > 0 || overview.alerts.length > 0 || overview.insurance) && (
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                    <div className="xl:col-span-2 bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
+                        <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
+                            <span className="material-symbols-outlined text-amber-500" style={{ fontSize: "20px" }}>notifications_active</span>Thẻ và cảnh báo hồ sơ
+                        </h3>
+                        {overview.tags.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mb-4">
+                                {overview.tags.map((tag, index) => {
+                                    const tagObject = typeof tag === "object" && tag !== null ? tag as Record<string, any> : null;
+                                    const label = typeof tag === "string"
+                                        ? tag
+                                        : tagObject?.name ?? tagObject?.code ?? `Tag ${index + 1}`;
+                                    const key = typeof tag === "string"
+                                        ? `${tag}_${index}`
+                                        : tagObject?.tag_id ?? tagObject?.code ?? `${label}_${index}`;
+                                    const tagColor = tagObject?.color_hex as string | undefined;
+
+                                    return (
+                                        <span
+                                            key={key}
+                                            className="px-3 py-1.5 rounded-full text-xs font-semibold border dark:bg-blue-500/10 dark:text-blue-300"
+                                            style={tagColor
+                                                ? {
+                                                    color: tagColor,
+                                                    borderColor: `${tagColor}33`,
+                                                    backgroundColor: `${tagColor}14`,
+                                                }
+                                                : undefined}
+                                        >
+                                            {label}
+                                        </span>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {overview.alerts.length === 0 ? (
+                            <p className="text-sm text-[#687582]">Hiện chưa có cảnh báo nổi bật từ hồ sơ EHR.</p>
+                        ) : (
+                            <div className="space-y-3">
+                                {overview.alerts.slice(0, 4).map((alert, index) => (
+                                    <div key={`${alert?.title ?? "alert"}_${index}`} className="rounded-2xl border border-amber-200 dark:border-amber-500/20 bg-amber-50/70 dark:bg-amber-500/5 p-4">
+                                        <p className="text-sm font-semibold text-[#121417] dark:text-white">{cleanAlertTitle(alert?.title ?? alert?.name ?? alert?.risk_factor_name)}</p>
+                                        <p className="text-xs text-[#687582] mt-1.5">{cleanAlertDescription(alert?.message ?? alert?.notes ?? alert?.description)}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
+                        <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
+                            <span className="material-symbols-outlined text-green-500" style={{ fontSize: "20px" }}>shield</span>Bảo hiểm
+                        </h3>
+                        <div className="space-y-2 text-sm">
+                            <p className="text-[#121417] dark:text-white font-semibold">
+                                {overview.insurance?.provider_name ?? overview.insurance?.insurance_provider ?? "Chưa có dữ liệu"}
+                            </p>
+                            <p className="text-[#687582]">Hiệu lực: {overview.summary?.has_active_insurance ? "Còn hiệu lực" : "Cần kiểm tra lại"}</p>
+                            {overview.insurance?.end_date && (
+                                <p className="text-[#687582]">Hạn sử dụng: {formatDisplayDate(overview.insurance?.end_date)}</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
@@ -626,13 +1038,17 @@ function OverviewTab({
                             {medications.filter(m => m.status === "active").map(m => (
                                 <div key={m.id} className="flex items-center gap-2 p-2 bg-[#f6f7f8] dark:bg-[#13191f] rounded-lg">
                                     <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "16px" }}>pill</span>
-                                    <div><p className="text-sm font-semibold text-[#121417] dark:text-white">{m.name}</p><p className="text-xs text-[#687582]">{m.frequency}</p></div>
+                                    <div>
+                                        <p className="text-sm font-semibold text-[#121417] dark:text-white">{m.name}</p>
+                                        <p className="text-xs text-[#687582]">{m.frequency}{m.route ? ` • ${m.route}` : ""}</p>
+                                    </div>
                                 </div>
                             ))}
                         </div>
                     )}
                 </div>
             </div>
+
 
             <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
                 <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
@@ -648,10 +1064,10 @@ function OverviewTab({
                                     <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{item.icon}</span>
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-semibold text-[#121417] dark:text-white truncate">{item.title}</p>
-                                    <p className="text-xs text-[#687582] truncate">{item.description}</p>
+                                    <p className="text-sm font-semibold text-[#121417] dark:text-white truncate">{translateDynamicText(item.title)}</p>
+                                    <p className="text-xs text-[#687582] truncate">{translateDynamicText(item.description)}</p>
                                 </div>
-                                <span className="text-xs text-[#687582] whitespace-nowrap">{item.date}</span>
+                                <span className="text-xs text-[#687582] whitespace-nowrap">{formatDisplayDate(item.date)}</span>
                             </div>
                         ))}
                     </div>
@@ -661,47 +1077,101 @@ function OverviewTab({
     );
 }
 
-function TimelineTab({ items }: { items: HealthTimelineItem[] }) {
+function TimelineTab({ items, summary, filter, onFilterChange }: { items: HealthTimelineItem[]; summary: any | null; filter: string; onFilterChange: (value: string) => void }) {
+    const filterOptions = [
+        { label: "Tất cả", value: "ALL" },
+        { label: "Khám", value: "ENCOUNTER" },
+        { label: "Xét nghiệm", value: "LAB_RESULT" },
+        { label: "Đơn thuốc", value: "PRESCRIPTION" },
+        { label: "Chẩn đoán", value: "DIAGNOSIS" },
+    ];
     if (items.length === 0) return <EmptyState icon="timeline" message="Chưa có dữ liệu dòng thời gian" />;
     return (
-        <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
-            <h3 className="text-lg font-bold text-[#121417] dark:text-white mb-6">Dòng thời gian sức khỏe</h3>
-            <div className="relative">
-                <div className="absolute left-[18px] top-0 bottom-0 w-0.5 bg-[#e5e7eb] dark:bg-[#2d353e]" />
-                <div className="space-y-6">
-                    {items.map(item => (
-                        <div key={item.id} className="relative flex gap-4">
-                            <div className={`relative z-10 w-9 h-9 rounded-full ${item.color} flex items-center justify-center flex-shrink-0 ring-4 ring-white dark:ring-[#1e242b]`}>
-                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{item.icon}</span>
-                            </div>
-                            <div className="flex-1 pb-6">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div>
-                                        <h4 className="text-sm font-bold text-[#121417] dark:text-white">{item.title}</h4>
-                                        <p className="text-xs text-[#687582] mt-0.5">{item.description}</p>
-                                        {item.doctorName && <p className="text-xs text-[#687582] mt-1">BS. {item.doctorName}{item.department && ` • ${item.department}`}</p>}
+        <div className="space-y-4">
+            {summary && (
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Tổng sự kiện</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{summary?.total_events ?? "—"}</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Lần gần nhất</p>
+                        <p className="text-base font-bold text-[#121417] dark:text-white">{formatDisplayDate(summary?.last_event_date)}</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Xét nghiệm</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{summary?.events_by_type?.LAB_RESULT ?? summary?.events_by_type?.LAB_ORDER ?? 0}</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Đơn thuốc</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{summary?.events_by_type?.PRESCRIPTION ?? 0}</p>
+                    </div>
+                </div>
+            )}
+
+            <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
+                <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 mb-6">
+                    <h3 className="text-lg font-bold text-[#121417] dark:text-white">Dòng thời gian sức khỏe</h3>
+                    <div className="flex gap-2 overflow-x-auto">
+                        {filterOptions.map((option) => (
+                            <button
+                                key={option.value}
+                                onClick={() => onFilterChange(option.value)}
+                                className={`px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap border transition-colors ${
+                                    filter === option.value
+                                        ? "bg-[#3C81C6] text-white border-[#3C81C6]"
+                                        : "bg-[#f6f7f8] dark:bg-[#13191f] text-[#687582] border-[#e5e7eb] dark:border-[#2d353e]"
+                                }`}
+                            >
+                                {option.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="relative">
+                    <div className="absolute left-[18px] top-0 bottom-0 w-0.5 bg-[#e5e7eb] dark:bg-[#2d353e]" />
+                    <div className="space-y-6">
+                        {items.map(item => (
+                            <div key={item.id} className="relative flex gap-4">
+                                <div className={`relative z-10 w-9 h-9 rounded-full ${item.color} flex items-center justify-center flex-shrink-0 ring-4 ring-white dark:ring-[#1e242b]`}>
+                                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{item.icon}</span>
+                                </div>
+                                <div className="flex-1 pb-6">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <h4 className="text-sm font-bold text-[#121417] dark:text-white">{translateDynamicText(item.title)}</h4>
+                                            <p className="text-xs text-[#687582] mt-0.5">{translateDynamicText(item.description)}</p>
+                                            <div className="flex flex-wrap items-center gap-2 mt-2">
+                                                {item.eventType && <span className="px-2 py-1 rounded-full bg-[#f6f7f8] dark:bg-[#13191f] text-[10px] font-bold text-[#687582]">{translateTimelineType(item.eventType)}</span>}
+                                                {item.encounterId && <span className="px-2 py-1 rounded-full bg-blue-50 dark:bg-blue-500/10 text-[10px] font-bold text-blue-700 dark:text-blue-300">Có liên kết lần khám</span>}
+                                            </div>
+                                            {item.doctorName && <p className="text-xs text-[#687582] mt-1">BS. {item.doctorName}{item.department && ` • ${item.department}`}</p>}
+                                        </div>
+                                        <span className="text-xs text-[#687582] whitespace-nowrap bg-[#f6f7f8] dark:bg-[#13191f] px-2 py-1 rounded-md">{formatDisplayDateTime(item.date)}</span>
                                     </div>
-                                    <span className="text-xs text-[#687582] whitespace-nowrap bg-[#f6f7f8] dark:bg-[#13191f] px-2 py-1 rounded-md">{item.date}</span>
                                 </div>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
             </div>
         </div>
     );
 }
 
-function MedicalHistoryTab({ items, allergies }: { items: MedicalHistoryItem[]; allergies: MedicalHistoryItem[] }) {
-    if (items.length === 0 && allergies.length === 0) return <EmptyState icon="history_edu" message="Chưa có tiền sử bệnh" />;
+function MedicalHistoryTab({ items, allergies, riskFactors, specialConditions }: { items: MedicalHistoryItem[]; allergies: MedicalHistoryItem[]; riskFactors: MedicalHistoryItem[]; specialConditions: MedicalHistoryItem[] }) {
+    if (items.length === 0 && allergies.length === 0 && riskFactors.length === 0 && specialConditions.length === 0) return <EmptyState icon="history_edu" message="Chưa có tiền sử bệnh" />;
     const cfg: Record<string, { label: string; icon: string; color: string }> = {
         chronic: { label: "Bệnh mãn tính", icon: "medical_information", color: "text-red-500 bg-red-50 dark:bg-red-500/10" },
         allergy: { label: "Dị ứng", icon: "warning", color: "text-amber-500 bg-amber-50 dark:bg-amber-500/10" },
         surgery: { label: "Phẫu thuật", icon: "surgical", color: "text-blue-500 bg-blue-50 dark:bg-blue-500/10" },
         family: { label: "Tiền sử gia đình", icon: "group", color: "text-purple-500 bg-purple-50 dark:bg-purple-500/10" },
         risk_factor: { label: "Yếu tố nguy cơ", icon: "report", color: "text-orange-500 bg-orange-50 dark:bg-orange-500/10" },
+        special_condition: { label: "Tình trạng đặc biệt", icon: "neurology", color: "text-cyan-500 bg-cyan-50 dark:bg-cyan-500/10" },
     };
     const grouped = items.reduce((acc, item) => { (acc[item.type] ||= []).push(item); return acc; }, {} as Record<string, MedicalHistoryItem[]>);
+    if (riskFactors.length > 0) grouped.risk_factor = [...(grouped.risk_factor ?? []), ...riskFactors];
+    if (specialConditions.length > 0) grouped.special_condition = [...(grouped.special_condition ?? []), ...specialConditions];
 
     return (
         <div className="space-y-4">
@@ -721,12 +1191,16 @@ function MedicalHistoryTab({ items, allergies }: { items: MedicalHistoryItem[]; 
                                     <div>
                                         <p className="text-sm font-bold text-[#121417] dark:text-white">{item.name}</p>
                                         {item.details && <p className="text-xs text-[#687582] mt-1.5">{item.details}</p>}
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {item.allergenType && <span className="px-2 py-1 rounded-full bg-white/70 dark:bg-[#13191f] text-[10px] font-bold text-[#687582]">{translateAllergenType(item.allergenType)}</span>}
+                                            {item.severity && <span className="px-2 py-1 rounded-full bg-red-100 dark:bg-red-500/10 text-[10px] font-bold text-red-700 dark:text-red-300">{translateSeverity(item.severity)}</span>}
+                                        </div>
                                     </div>
                                     <span className="px-2 py-1 text-[10px] font-bold rounded-full uppercase bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400">
                                         Cảnh báo
                                     </span>
                                 </div>
-                                {item.diagnosedDate && <p className="text-xs text-[#687582]/80 mt-3">Ghi nhận: {item.diagnosedDate}</p>}
+                                {item.diagnosedDate && <p className="text-xs text-[#687582]/80 mt-3">Ghi nhận: {formatDisplayDateTime(item.diagnosedDate)}</p>}
                             </div>
                         ))}
                     </div>
@@ -750,14 +1224,19 @@ function MedicalHistoryTab({ items, allergies }: { items: MedicalHistoryItem[]; 
                                         <div>
                                             <p className="text-sm font-semibold text-[#121417] dark:text-white">{item.name}</p>
                                             {item.details && <p className="text-xs text-[#687582] mt-1.5 leading-5">{item.details}</p>}
+                                            <div className="flex flex-wrap gap-2 mt-2">
+                                                {item.conditionCode && <span className="px-2 py-1 rounded-full bg-white dark:bg-[#1e242b] text-[10px] font-bold text-[#687582] border border-[#e5e7eb] dark:border-[#2d353e]">{item.conditionCode}</span>}
+                                                {item.relationship && <span className="px-2 py-1 rounded-full bg-purple-50 dark:bg-purple-500/10 text-[10px] font-bold text-purple-700 dark:text-purple-300">{item.relationship}</span>}
+                                                {item.severity && <span className="px-2 py-1 rounded-full bg-red-50 dark:bg-red-500/10 text-[10px] font-bold text-red-700 dark:text-red-300">{translateSeverity(item.severity)}</span>}
+                                            </div>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full uppercase ${item.status === "active" ? "bg-red-100 dark:bg-red-500/10 text-red-600" : item.status === "resolved" ? "bg-green-100 dark:bg-green-500/10 text-green-600" : "bg-blue-100 dark:bg-blue-500/10 text-blue-600"}`}>
-                                                {item.status === "active" ? "Hoạt động" : item.status === "resolved" ? "Đã xử lý" : "Theo dõi"}
+                                                {translateHistoryStatus(item.status)}
                                             </span>
                                         </div>
                                     </div>
-                                    {item.diagnosedDate && <p className="text-xs text-[#687582]/70 mt-3">Phát hiện: {item.diagnosedDate}</p>}
+                                    {item.diagnosedDate && <p className="text-xs text-[#687582]/70 mt-3">Phát hiện: {formatDisplayDateTime(item.diagnosedDate)}</p>}
                                 </div>
                             ))}
                         </div>
@@ -768,11 +1247,35 @@ function MedicalHistoryTab({ items, allergies }: { items: MedicalHistoryItem[]; 
     );
 }
 
-function LabResultsTab({ results }: { results: LabResult[] }) {
+function LabResultsTab({ results, summary, abnormalIds }: { results: LabResult[]; summary: any | null; abnormalIds: string[] }) {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     if (results.length === 0) return <EmptyState icon="science" message="Chưa có kết quả xét nghiệm" />;
     return (
         <div className="space-y-4">
+            {summary && (
+                <div className="grid grid-cols-2 xl:grid-cols-5 gap-4">
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Tổng chỉ định</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{summary?.total_orders ?? "—"}</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Đã có kết quả</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{summary?.total_with_results ?? "—"}</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Chờ xử lý</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{summary?.total_pending ?? "—"}</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Bất thường</p>
+                        <p className="text-2xl font-bold text-red-600">{abnormalIds.length}</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Gần nhất</p>
+                        <p className="text-base font-bold text-[#121417] dark:text-white">{formatDisplayDate(summary?.latest_result_at)}</p>
+                    </div>
+                </div>
+            )}
             {results.map(result => (
                 <div key={result.id} className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] overflow-hidden">
                     <button onClick={() => setExpandedId(expandedId === result.id ? null : result.id)}
@@ -784,9 +1287,12 @@ function LabResultsTab({ results }: { results: LabResult[] }) {
                             <div>
                                 <h4 className="text-sm font-bold text-[#121417] dark:text-white">{result.testName}</h4>
                                 <div className="flex items-center gap-3 text-xs text-[#687582] mt-0.5">
-                                    <span>{result.date}</span>
+                                    <span>{formatDisplayDateTime(result.date)}</span>
                                     {result.doctorName && <span>BS. {result.doctorName}</span>}
-                                    <span className="px-2 py-0.5 bg-purple-50 dark:bg-purple-500/10 text-purple-600 rounded-md font-medium">{result.category}</span>
+                                    <span className="px-2 py-0.5 bg-purple-50 dark:bg-purple-500/10 text-purple-600 rounded-md font-medium">{translateLabCategory(result.category)}</span>
+                                    {(result.isAbnormal || abnormalIds.includes(result.orderId ?? result.id)) && (
+                                        <span className="px-2 py-0.5 bg-red-50 dark:bg-red-500/10 text-red-600 rounded-md font-medium">Bất thường</span>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -812,6 +1318,25 @@ function LabResultsTab({ results }: { results: LabResult[] }) {
                                     </tr>
                                 ))}</tbody>
                             </table>
+                            {result.attachments && result.attachments.length > 0 && (
+                                <div className="mt-4">
+                                    <p className="text-xs font-bold uppercase text-[#687582] mb-2">Tệp đính kèm</p>
+                                    <div className="flex flex-wrap gap-2">
+                                        {result.attachments.map((attachment, index) => (
+                                            <a
+                                                key={`${attachment}_${index}`}
+                                                href={attachment}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-[#f6f7f8] dark:bg-[#13191f] text-xs font-semibold text-[#3C81C6]"
+                                            >
+                                                <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>attach_file</span>
+                                                Tệp {index + 1}
+                                            </a>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
@@ -820,29 +1345,58 @@ function LabResultsTab({ results }: { results: LabResult[] }) {
     );
 }
 
-function MedicationsTab({ medications }: { medications: Medication[] }) {
+function MedicationsTab({ medications, interactions, timeline }: { medications: Medication[]; interactions: any[]; timeline: any[] }) {
     const active = medications.filter(m => m.status === "active");
     const done = medications.filter(m => m.status !== "active");
-    if (medications.length === 0) return <EmptyState icon="medication" message="Chưa có thông tin thuốc" />;
+    if (medications.length === 0 && interactions.length === 0 && timeline.length === 0) {
+        return <EmptyState icon="medication" message="Chưa ghi nhận thuốc đang sử dụng hoặc lịch sử điều trị bằng thuốc" />;
+    }
     return (
         <div className="space-y-6">
+            {interactions.length > 0 && (
+                <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-amber-200 dark:border-amber-500/20 p-5">
+                    <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
+                        <span className="material-symbols-outlined text-amber-500" style={{ fontSize: "20px" }}>warning</span>Cảnh báo tương tác và dị ứng thuốc
+                    </h3>
+                    <div className="space-y-3">
+                        {interactions.slice(0, 4).map((interaction, index) => (
+                            <div key={`${interaction?.message ?? "interaction"}_${index}`} className="rounded-xl bg-amber-50/70 dark:bg-amber-500/5 p-4">
+                                <p className="text-sm font-semibold text-[#121417] dark:text-white">{translateDynamicText(interaction?.title ?? interaction?.pair ?? interaction?.drug_name ?? "Cảnh báo thuốc")}</p>
+                                <p className="text-xs text-[#687582] mt-1.5">{translateDynamicText(interaction?.message ?? interaction?.description ?? interaction?.note ?? "Cần kiểm tra thêm với bác sĩ điều trị.")}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
             <div>
                 <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
                     <span className="material-symbols-outlined text-green-500" style={{ fontSize: "20px" }}>medication</span>Đang sử dụng ({active.length})
                 </h3>
                 {active.length === 0 ? (
-                    <p className="text-xs text-[#687582]">Không có thuốc đang sử dụng</p>
+                    <div className="rounded-2xl border border-dashed border-[#d7dce1] dark:border-[#2d353e] bg-white dark:bg-[#1e242b] p-5">
+                        <p className="text-sm font-semibold text-[#121417] dark:text-white">Hiện chưa ghi nhận thuốc đang sử dụng</p>
+                        <p className="text-xs text-[#687582] mt-1.5">
+                            Hồ sơ vẫn có {timeline.length} mốc điều trị liên quan đến thuốc hoặc kế hoạch điều trị trong dòng thời gian, nhưng hiện không có thuốc nào còn hiệu lực ở danh sách dùng hiện tại.
+                        </p>
+                    </div>
                 ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {active.map(m => (
                             <div key={m.id} className="bg-white dark:bg-[#1e242b] rounded-2xl border-2 border-green-200 dark:border-green-500/20 p-5">
                                 <div className="flex items-start gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-500/10 flex items-center justify-center"><span className="material-symbols-outlined text-green-600" style={{ fontSize: "22px" }}>pill</span></div>
-                                    <div>
+                                <div className="w-10 h-10 rounded-xl bg-green-50 dark:bg-green-500/10 flex items-center justify-center"><span className="material-symbols-outlined text-green-600" style={{ fontSize: "22px" }}>pill</span></div>
+                                <div>
                                         <h4 className="text-sm font-bold text-[#121417] dark:text-white">{m.name}</h4>
                                         <p className="text-xs text-green-700 dark:text-green-400 font-medium mt-0.5">{m.frequency}</p>
-                                        <p className="text-xs text-[#687582] mt-1">Từ {m.startDate}{m.prescribedBy && ` • BS. ${m.prescribedBy}`}</p>
+                                        <p className="text-xs text-[#687582] mt-1">Từ {formatDisplayDate(m.startDate)}{m.prescribedBy && ` • BS. ${m.prescribedBy}`}</p>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {m.prescriptionCode && <span className="px-2 py-1 rounded-full bg-green-100 dark:bg-green-500/10 text-[10px] font-bold text-green-700 dark:text-green-300">{m.prescriptionCode}</span>}
+                                            {m.route && <span className="px-2 py-1 rounded-full bg-white dark:bg-[#13191f] text-[10px] font-bold text-[#687582] border border-[#e5e7eb] dark:border-[#2d353e]">{m.route}</span>}
+                                            {m.dispensingUnit && <span className="px-2 py-1 rounded-full bg-white dark:bg-[#13191f] text-[10px] font-bold text-[#687582] border border-[#e5e7eb] dark:border-[#2d353e]">{m.dispensingUnit}</span>}
+                                            {m.estimatedEndDate && <span className="px-2 py-1 rounded-full bg-blue-50 dark:bg-blue-500/10 text-[10px] font-bold text-blue-700 dark:text-blue-300">Đến {formatDisplayDate(m.estimatedEndDate)}</span>}
+                                        </div>
                                         {m.notes && <p className="text-xs text-[#687582] mt-1 italic">{m.notes}</p>}
+                                        {m.activeIngredients && <p className="text-xs text-[#687582] mt-1">Hoạt chất: {m.activeIngredients}</p>}
                                     </div>
                                 </div>
                             </div>
@@ -858,17 +1412,47 @@ function MedicationsTab({ medications }: { medications: Medication[] }) {
                     {done.map(m => (
                         <div key={m.id} className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4 opacity-70 flex items-center gap-3 mb-2">
                             <span className="material-symbols-outlined text-[#687582]" style={{ fontSize: "20px" }}>pill</span>
-                            <div className="flex-1"><p className="text-sm font-semibold text-[#121417] dark:text-white">{m.name}</p><p className="text-xs text-[#687582]">{m.startDate}{m.endDate ? ` → ${m.endDate}` : ""}{m.prescribedBy ? ` • ${m.prescribedBy}` : ""}</p></div>
+                            <div className="flex-1"><p className="text-sm font-semibold text-[#121417] dark:text-white">{m.name}</p><p className="text-xs text-[#687582]">{formatDisplayDate(m.startDate)}{m.endDate ? ` → ${formatDisplayDate(m.endDate)}` : ""}{m.prescribedBy ? ` • ${m.prescribedBy}` : ""}</p></div>
                             <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-gray-100 dark:bg-gray-700 text-[#687582]">Hoàn thành</span>
                         </div>
                     ))}
+                </div>
+            )}
+            {timeline.length > 0 && (
+                <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5">
+                    <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
+                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>schedule</span>Diễn tiến điều trị thuốc
+                    </h3>
+                    <div className="space-y-3">
+                        {timeline.slice(0, 4).map((item, index) => {
+                            const presentation = getMedicationTimelinePresentation(item);
+
+                            return (
+                                <div key={item?.event_id ?? `${item?.reference_id ?? "med_timeline"}_${index}`} className="flex items-start justify-between gap-3 rounded-xl bg-[#f6f7f8] dark:bg-[#13191f] p-3">
+                                    <div>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <p className="text-sm font-semibold text-[#121417] dark:text-white">{presentation.title}</p>
+                                            {presentation.code && (
+                                                <span className="px-2 py-1 rounded-full bg-white dark:bg-[#1e242b] text-[10px] font-bold text-[#687582] border border-[#e5e7eb] dark:border-[#2d353e]">
+                                                    {presentation.code}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-[#687582] mt-1">{presentation.subtitle}</p>
+                                        <p className="text-[11px] text-[#687582] mt-2">{translateTimelineType(item?.event_type)}</p>
+                                    </div>
+                                    <span className="text-xs text-[#687582] whitespace-nowrap">{formatDisplayDate(item?.event_date ?? item?.prescribed_at ?? item?.created_at)}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
         </div>
     );
 }
 
-function VitalsTab({ vitals }: { vitals: VitalSign[] }) {
+function VitalsTab({ vitals, summary, abnormal }: { vitals: VitalSign[]; summary: any | null; abnormal: any[] }) {
     if (vitals.length === 0) return <EmptyState icon="monitor_heart" message="Chưa có dữ liệu sinh hiệu" />;
     const sortedVitals = vitals
         .slice()
@@ -881,6 +1465,35 @@ function VitalsTab({ vitals }: { vitals: VitalSign[] }) {
 
     return (
         <div className="space-y-6">
+            {summary && (
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">BMI hiện tại</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{toNumber(summary?.current_bmi).toFixed(1)}</p>
+                        <p className="text-xs text-[#687582] mt-1">{translateDynamicText(summary?.bmi_classification) || "Chưa phân loại"}</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">HA trung bình</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">
+                            {summary?.avg_bp_systolic && summary?.avg_bp_diastolic
+                                ? `${summary.avg_bp_systolic}/${summary.avg_bp_diastolic}`
+                                : "—"}
+                        </p>
+                        <p className="text-xs text-[#687582] mt-1">Tổng {summary?.total_measurements ?? vitals.length} lần đo</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Xu hướng cân nặng</p>
+                        <p className="text-2xl font-bold text-[#121417] dark:text-white">{translateWeightTrend(summary?.weight_trend) || "—"}</p>
+                        <p className="text-xs text-[#687582] mt-1">Cập nhật {formatDisplayDate(summary?.latest_measurement_at)}</p>
+                    </div>
+                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4">
+                        <p className="text-xs text-[#687582] uppercase">Bất thường</p>
+                        <p className="text-2xl font-bold text-red-600">{abnormal.length}</p>
+                        <p className="text-xs text-[#687582] mt-1">Cần theo dõi thêm</p>
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
                 <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-5">
                     <span className="material-symbols-outlined text-red-500" style={{ fontSize: "20px" }}>bloodtype</span>Biểu đồ huyết áp
@@ -910,6 +1523,22 @@ function VitalsTab({ vitals }: { vitals: VitalSign[] }) {
                 </div>
             </div>
 
+            {abnormal.length > 0 && (
+                <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-amber-200 dark:border-amber-500/20 p-5">
+                    <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
+                        <span className="material-symbols-outlined text-amber-500" style={{ fontSize: "20px" }}>warning</span>Cảnh báo chỉ số bất thường
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {abnormal.slice(0, 4).map((item, index) => (
+                            <div key={`${item?.metric_type ?? "abnormal"}_${index}`} className="rounded-xl bg-amber-50/70 dark:bg-amber-500/5 p-4">
+                                <p className="text-sm font-semibold text-[#121417] dark:text-white">{item?.metric_label ?? item?.metric_type ?? "Chỉ số bất thường"}</p>
+                                <p className="text-xs text-[#687582] mt-1.5">{item?.message ?? item?.description ?? `${item?.value ?? "—"} ${item?.unit ?? ""}`}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
                 <h3 className="text-sm font-bold text-[#121417] dark:text-white flex items-center gap-2 mb-4">
                     <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>table_chart</span>Lịch sử đo chi tiết
@@ -921,12 +1550,12 @@ function VitalsTab({ vitals }: { vitals: VitalSign[] }) {
                         </tr></thead>
                         <tbody>{vitals.map(v => (
                             <tr key={v.id} className="border-b border-[#e5e7eb]/50 dark:border-[#2d353e]/50 hover:bg-[#f6f7f8] dark:hover:bg-[#13191f]">
-                                <td className="py-3 font-medium text-[#121417] dark:text-white">{v.date}</td>
+                                <td className="py-3 font-medium text-[#121417] dark:text-white">{formatDisplayDateTime(v.date)}</td>
                                 <td className={`py-3 text-center ${v.bloodPressureSystolic > 130 ? "text-red-600 font-bold" : "text-[#121417] dark:text-white"}`}>{v.bloodPressureSystolic}/{v.bloodPressureDiastolic}</td>
                                 <td className="py-3 text-center text-[#121417] dark:text-white">{v.heartRate}</td>
                                 <td className="py-3 text-center text-[#121417] dark:text-white">{v.spo2 ?? "—"}%</td>
                                 <td className="py-3 text-center text-[#121417] dark:text-white">{v.weight ? `${v.weight}kg` : "—"}</td>
-                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.bmi ? v.bmi.toFixed(1) : "—"}</td>
+                                <td className="py-3 text-center text-[#121417] dark:text-white">{v.bmi ? toNumber(v.bmi).toFixed(1) : "—"}</td>
                             </tr>
                         ))}</tbody>
                     </table>

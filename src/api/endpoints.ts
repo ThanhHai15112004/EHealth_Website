@@ -1128,6 +1128,8 @@ export const MEDICAL_HISTORY_EHR_ENDPOINTS = {
     DELETE: (patientId: string, historyId: string) => `/api/ehr/patients/${patientId}/medical-histories/${historyId}`, // DELETE
     ALLERGIES: (patientId: string) => `/api/ehr/patients/${patientId}/allergies`,             // GET/POST
     ALLERGY_DETAIL: (patientId: string, allergyId: string) => `/api/ehr/patients/${patientId}/allergies/${allergyId}`, // GET/PUT
+    RISK_FACTORS: (patientId: string) => `/api/ehr/patients/${patientId}/risk-factors`,      // GET/POST
+    SPECIAL_CONDITIONS: (patientId: string) => `/api/ehr/patients/${patientId}/special-conditions`, // GET/POST
 };
 
 // ============================================
