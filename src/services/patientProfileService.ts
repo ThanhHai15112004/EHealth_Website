@@ -1,7 +1,7 @@
 import axiosClient from "@/api/axiosClient";
 import { PATIENT_PROFILE_ENDPOINTS } from "@/api/endpoints";
 import { unwrap, unwrapList } from "@/api/response";
-import type { PatientProfile } from "@/types/patient-profile";
+import type { AvatarImage, PatientProfile } from "@/types/patient-profile";
 import {
     getPatientRelationshipLabel,
     toPatientGender,
@@ -21,6 +21,7 @@ export interface PatientProfileBE {
     email: string | null;
     id_card_number: string | null;
     address: string | null;
+    avatar_url?: AvatarImage[];
     relationship?: PatientRelationship;
     is_default?: boolean;
     status: string;
@@ -81,6 +82,21 @@ export const patientProfileService = {
         const response = await axiosClient.put(PATIENT_PROFILE_ENDPOINTS.UPDATE_RELATIONSHIP(id), { relationship });
         return unwrap<PatientProfileBE>(response);
     },
+
+    uploadAvatar: async (id: string, file: File): Promise<AvatarImage> => {
+        const formData = new FormData();
+        formData.append("avatar", file);
+        const response = await axiosClient.post(PATIENT_PROFILE_ENDPOINTS.AVATAR_UPLOAD(id), formData, {
+            headers: { "Content-Type": "multipart/form-data" },
+        });
+        return unwrap<AvatarImage>(response);
+    },
+
+    deleteAvatar: async (id: string, publicId: string): Promise<void> => {
+        await axiosClient.delete(PATIENT_PROFILE_ENDPOINTS.AVATAR_DELETE(id), {
+            data: { public_id: publicId },
+        });
+    },
 };
 
 export function mapBEToFEProfile(
@@ -88,6 +104,9 @@ export function mapBEToFEProfile(
     userId?: string,
     overrides?: Partial<PatientProfile>,
 ): PatientProfile {
+    const avatarImages = Array.isArray(profile.avatar_url) ? profile.avatar_url : [];
+    const primaryAvatar = avatarImages[0];
+
     return {
         id: profile.id,
         userId: profile.account_id || userId || "",
@@ -106,6 +125,9 @@ export function mapBEToFEProfile(
         medicalHistory: "",
         isActive: profile.status !== "INACTIVE",
         isPrimary: Boolean(profile.is_default),
+        avatar: primaryAvatar?.url || "",
+        avatarPublicId: primaryAvatar?.public_id || "",
+        avatarImages,
         createdAt: profile.created_at,
         updatedAt: profile.updated_at,
         insuranceStatus: "none",

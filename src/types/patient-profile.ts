@@ -1,3 +1,9 @@
+export interface AvatarImage {
+    url: string;
+    public_id: string;
+    uploaded_at: string;
+}
+
 export interface PatientProfile {
     id: string;
     userId: string;
@@ -20,6 +26,8 @@ export interface PatientProfile {
     isActive: boolean;
     isPrimary: boolean;
     avatar?: string;
+    avatarPublicId?: string;
+    avatarImages?: AvatarImage[];
     createdAt: string;
     updatedAt: string;
     insuranceStatus?: "active" | "expiring" | "expired" | "none";

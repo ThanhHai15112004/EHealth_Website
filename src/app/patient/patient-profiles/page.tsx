@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/contexts/ToastContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { patientInsuranceService } from "@/services/patientInsuranceService";
 import { mapBEToFEProfile, patientProfileService, type PatientProfileBE } from "@/services/patientProfileService";
 import { updatePatientStatus } from "@/services/patientService";
-import { RELATIONSHIP_OPTIONS, type PatientProfile } from "@/types/patient-profile";
+import { RELATIONSHIP_OPTIONS, type AvatarImage, type PatientProfile } from "@/types/patient-profile";
+import { validateFile } from "@/utils/fileValidation";
 import { enrichPatientProfileInsurance, getInsuranceStatusMeta, toPatientRelationshipEnum } from "@/utils/patientProfileHelpers";
 import { validateDob, validateIdNumber, validateName, validatePhone } from "@/utils/validation";
 
@@ -35,6 +36,8 @@ const EMPTY_FORM: FormState = {
     relationship: "other",
     isPrimary: false,
 };
+
+const AVATAR_ALLOWED_TYPES = ["jpg", "jpeg", "png", "webp"];
 
 function normalizePhoneNumber(value: string) {
     return value.replace(/[\s().-]/g, "");
@@ -71,6 +74,13 @@ export default function PatientProfilesPage() {
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [saving, setSaving] = useState(false);
     const [pendingDisableId, setPendingDisableId] = useState<string | null>(null);
+    const [initialAvatar, setInitialAvatar] = useState<AvatarImage | null>(null);
+    const [selectedAvatarFile, setSelectedAvatarFile] = useState<File | null>(null);
+    const [selectedAvatarPreview, setSelectedAvatarPreview] = useState("");
+    const [avatarMarkedForDeletion, setAvatarMarkedForDeletion] = useState(false);
+
+    const avatarInputRef = useRef<HTMLInputElement | null>(null);
+    const generatedPreviewRef = useRef<string | null>(null);
 
     const loadProfiles = useCallback(async () => {
         if (!user?.id) {
@@ -109,6 +119,32 @@ export default function PatientProfilesPage() {
     }, [loadProfiles]);
 
     useEffect(() => {
+        return () => {
+            if (generatedPreviewRef.current) {
+                URL.revokeObjectURL(generatedPreviewRef.current);
+            }
+        };
+    }, []);
+
+    const clearGeneratedPreview = useCallback(() => {
+        if (generatedPreviewRef.current) {
+            URL.revokeObjectURL(generatedPreviewRef.current);
+            generatedPreviewRef.current = null;
+        }
+    }, []);
+
+    const resetAvatarState = useCallback((avatar?: AvatarImage | null) => {
+        clearGeneratedPreview();
+        setInitialAvatar(avatar || null);
+        setSelectedAvatarFile(null);
+        setSelectedAvatarPreview("");
+        setAvatarMarkedForDeletion(false);
+        if (avatarInputRef.current) {
+            avatarInputRef.current.value = "";
+        }
+    }, [clearGeneratedPreview]);
+
+    useEffect(() => {
         if (!profiles.length) return;
 
         const action = searchParams?.get("action");
@@ -131,8 +167,9 @@ export default function PatientProfilesPage() {
             isPrimary: profile.isPrimary,
         });
         setErrors({});
+        resetAvatarState(profile.avatarImages?.[0] || null);
         setView("form");
-    }, [profiles, searchParams]);
+    }, [profiles, resetAvatarState, searchParams]);
 
     const activeProfiles = useMemo(() => profiles.filter((profile) => profile.isActive), [profiles]);
     const inactiveProfiles = useMemo(() => profiles.filter((profile) => !profile.isActive), [profiles]);
@@ -140,6 +177,7 @@ export default function PatientProfilesPage() {
     const openCreate = () => {
         setEditingId(null);
         setErrors({});
+        resetAvatarState(null);
         setFormData({
             ...EMPTY_FORM,
             relationship: profiles.length === 0 ? "self" : "other",
@@ -151,6 +189,7 @@ export default function PatientProfilesPage() {
     const openEdit = (profile: PatientProfile) => {
         setEditingId(profile.id);
         setErrors({});
+        resetAvatarState(profile.avatarImages?.[0] || null);
         setFormData({
             fullName: profile.fullName,
             dob: profile.dob,
@@ -170,9 +209,48 @@ export default function PatientProfilesPage() {
         setEditingId(null);
         setErrors({});
         setFormData(EMPTY_FORM);
+        resetAvatarState(null);
 
         if (searchParams?.get("action")) {
             router.replace("/patient/patient-profiles");
+        }
+    };
+
+    const handleAvatarFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const validation = validateFile(file, {
+            allowedTypes: AVATAR_ALLOWED_TYPES,
+        });
+
+        if (!validation.valid) {
+            showToast(validation.message, "error");
+            if (avatarInputRef.current) {
+                avatarInputRef.current.value = "";
+            }
+            return;
+        }
+
+        clearGeneratedPreview();
+        const previewUrl = URL.createObjectURL(file);
+        generatedPreviewRef.current = previewUrl;
+        setSelectedAvatarFile(file);
+        setSelectedAvatarPreview(previewUrl);
+        setAvatarMarkedForDeletion(false);
+    };
+
+    const handleAvatarRemove = () => {
+        clearGeneratedPreview();
+        setSelectedAvatarFile(null);
+        setSelectedAvatarPreview("");
+
+        if (initialAvatar?.public_id) {
+            setAvatarMarkedForDeletion(true);
+        }
+
+        if (avatarInputRef.current) {
+            avatarInputRef.current.value = "";
         }
     };
 
@@ -217,12 +295,32 @@ export default function PatientProfilesPage() {
                 is_default: formData.isPrimary,
             };
 
-            if (editingId) {
-                await patientProfileService.update(editingId, payload);
-                showToast("Đã cập nhật hồ sơ bệnh nhân.", "success");
-            } else {
-                await patientProfileService.create(payload);
-                showToast("Đã tạo hồ sơ bệnh nhân mới.", "success");
+            const savedProfile = editingId
+                ? await patientProfileService.update(editingId, payload)
+                : await patientProfileService.create(payload);
+
+            let avatarMessage: string | null = null;
+            try {
+                if (selectedAvatarFile) {
+                    await patientProfileService.uploadAvatar(savedProfile.id, selectedAvatarFile);
+                    avatarMessage = editingId ? "Ảnh hồ sơ đã được cập nhật." : "Ảnh hồ sơ đã được tải lên.";
+                } else if (avatarMarkedForDeletion && initialAvatar?.public_id) {
+                    await patientProfileService.deleteAvatar(savedProfile.id, initialAvatar.public_id);
+                    avatarMessage = "Ảnh hồ sơ đã được xóa.";
+                }
+            } catch (avatarError: any) {
+                showToast(
+                    avatarError?.response?.data?.message || "Đã lưu hồ sơ nhưng chưa thể cập nhật ảnh.",
+                    "warning",
+                );
+            }
+
+            showToast(
+                editingId ? "Đã cập nhật hồ sơ bệnh nhân." : "Đã tạo hồ sơ bệnh nhân mới.",
+                "success",
+            );
+            if (avatarMessage) {
+                showToast(avatarMessage, "success");
             }
 
             closeForm();
@@ -265,6 +363,9 @@ export default function PatientProfilesPage() {
         }
     };
 
+    const displayAvatar = selectedAvatarPreview || (!avatarMarkedForDeletion ? initialAvatar?.url || "" : "");
+    const canRemoveAvatar = Boolean(selectedAvatarFile || (!avatarMarkedForDeletion && initialAvatar?.url));
+
     if (loading) {
         return (
             <div className="flex justify-center py-20">
@@ -279,15 +380,15 @@ export default function PatientProfilesPage() {
         <div className="space-y-6">
             {view === "list" ? (
                 <>
-                    <section className="flex flex-col gap-4 rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200/70 dark:bg-[#111821] dark:ring-[#2d353e] lg:flex-row lg:items-center lg:justify-between">
+                    <section className="flex flex-col gap-3 rounded-[28px] bg-white p-5 shadow-sm ring-1 ring-slate-200/70 dark:bg-[#111821] dark:ring-[#2d353e] lg:flex-row lg:items-center lg:justify-between">
                         <div>
-                            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900 dark:text-white">
+                            <h1 className="flex items-center gap-2 text-[20px] font-bold leading-tight text-slate-900 dark:text-white">
                                 <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "28px" }}>
                                     family_restroom
                                 </span>
                                 Hồ sơ bệnh nhân
                             </h1>
-                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                            <p className="mt-1 max-w-3xl text-sm text-slate-500 dark:text-slate-400">
                                 Quản lý hồ sơ của bản thân và người thân. Bảo hiểm, tiền sử và tài liệu được cập nhật bên trong từng hồ sơ.
                             </p>
                         </div>
@@ -295,14 +396,14 @@ export default function PatientProfilesPage() {
                         <button
                             type="button"
                             onClick={openCreate}
-                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-4 py-3 text-sm font-semibold text-white shadow-md shadow-[#3C81C6]/20 transition-all hover:shadow-lg"
+                            className="inline-flex items-center justify-center gap-2 self-start rounded-2xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-4 py-2.5 text-sm font-semibold text-white shadow-md shadow-[#3C81C6]/20 transition-all hover:shadow-lg lg:self-auto"
                         >
                             <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
                             Thêm hồ sơ
                         </button>
                     </section>
 
-                    <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                    <section className="grid grid-cols-1 gap-4 min-[1200px]:grid-cols-2">
                         {activeProfiles.map((profile) => (
                             <ProfileCard
                                 key={profile.id}
@@ -315,7 +416,7 @@ export default function PatientProfilesPage() {
                         <button
                             type="button"
                             onClick={openCreate}
-                            className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed border-slate-200 bg-white p-8 text-slate-400 transition-all hover:border-[#3C81C6] hover:text-[#3C81C6] dark:border-[#2d353e] dark:bg-[#111821]"
+                            className="flex min-h-[180px] flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed border-slate-200 bg-white p-5 text-slate-400 transition-all hover:border-[#3C81C6] hover:text-[#3C81C6] dark:border-[#2d353e] dark:bg-[#111821]"
                         >
                             <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 dark:bg-[#0f141b]">
                                 <span className="material-symbols-outlined" style={{ fontSize: "28px" }}>person_add</span>
@@ -388,21 +489,40 @@ export default function PatientProfilesPage() {
                                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                                     <div>
                                         <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Ảnh hồ sơ</h3>
-                                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                                            Backend hiện chưa có API lưu ảnh riêng cho từng hồ sơ bệnh nhân, nên phần này mới là vị trí chờ triển khai.
-                                        </p>
                                     </div>
                                     <div className="flex items-center gap-4">
-                                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#3C81C6] to-[#2563eb] text-white shadow-md">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "28px" }}>person</span>
+                                        <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#3C81C6] to-[#2563eb] text-white shadow-md">
+                                            {displayAvatar ? (
+                                                <img src={displayAvatar} alt="Ảnh hồ sơ bệnh nhân" className="h-full w-full object-cover" />
+                                            ) : (
+                                                <span className="material-symbols-outlined" style={{ fontSize: "28px" }}>person</span>
+                                            )}
                                         </div>
-                                        <button
-                                            type="button"
-                                            disabled
-                                            className="rounded-2xl border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-400"
-                                        >
-                                            Tải ảnh lên
-                                        </button>
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => avatarInputRef.current?.click()}
+                                                className="rounded-2xl border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:border-[#3C81C6] hover:text-[#3C81C6] dark:border-[#2d353e] dark:text-slate-300"
+                                            >
+                                                {canRemoveAvatar ? "Đổi ảnh" : "Tải ảnh lên"}
+                                            </button>
+                                            {canRemoveAvatar && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAvatarRemove}
+                                                    className="rounded-2xl px-4 py-2.5 text-sm font-medium text-rose-500 transition-colors hover:bg-rose-50 dark:hover:bg-rose-500/10"
+                                                >
+                                                    Xóa ảnh
+                                                </button>
+                                            )}
+                                        </div>
+                                        <input
+                                            ref={avatarInputRef}
+                                            type="file"
+                                            accept=".jpg,.jpeg,.png,.webp"
+                                            className="hidden"
+                                            onChange={handleAvatarFileChange}
+                                        />
                                     </div>
                                 </div>
                             </section>
@@ -585,18 +705,22 @@ function ProfileCard({
     const insuranceMeta = getInsuranceStatusMeta(profile.insuranceStatus);
 
     return (
-        <article className="group rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-[#2d353e] dark:bg-[#111821]">
+        <article className="group rounded-[28px] border border-slate-200/80 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-[#2d353e] dark:bg-[#111821]">
             <div className="flex items-start justify-between gap-4">
                 <div className="flex items-start gap-4">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#3C81C6] to-[#2563eb] text-white shadow-lg shadow-[#3C81C6]/20">
-                        <span className="material-symbols-outlined" style={{ fontSize: "26px" }}>
-                            {RELATIONSHIP_OPTIONS.find((item) => item.value === profile.relationship)?.icon || "person"}
-                        </span>
+                    <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#3C81C6] to-[#2563eb] text-white shadow-lg shadow-[#3C81C6]/20 sm:h-14 sm:w-14">
+                        {profile.avatar ? (
+                            <img src={profile.avatar} alt={profile.fullName} className="h-full w-full object-cover" />
+                        ) : (
+                            <span className="material-symbols-outlined" style={{ fontSize: "26px" }}>
+                                {RELATIONSHIP_OPTIONS.find((item) => item.value === profile.relationship)?.icon || "person"}
+                            </span>
+                        )}
                     </div>
 
                     <div>
-                        <h2 className="text-[26px] font-semibold leading-tight text-slate-900 dark:text-white">{profile.fullName}</h2>
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <h2 className="text-xl font-semibold leading-tight text-slate-900 dark:text-white sm:text-[22px]">{profile.fullName}</h2>
+                        <div className="mt-1 flex flex-wrap items-center gap-2">
                             <span className="rounded-full bg-[#3C81C6]/10 px-2.5 py-1 text-[11px] font-bold text-[#3C81C6]">
                                 {profile.relationshipLabel}
                             </span>
@@ -634,7 +758,7 @@ function ProfileCard({
                 </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+            <div className="mt-3.5 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
                 <InfoRow icon="cake" label="Ngày sinh" value={profile.dob ? new Date(`${profile.dob}T00:00:00`).toLocaleDateString("vi-VN") : "Chưa cập nhật"} />
                 <InfoRow icon="wc" label="Giới tính" value={profile.gender === "male" ? "Nam" : profile.gender === "female" ? "Nữ" : "Khác"} />
                 <InfoRow icon="call" label="Số điện thoại" value={profile.phone || "Chưa cập nhật"} />
@@ -643,17 +767,17 @@ function ProfileCard({
                 <InfoRow icon="health_and_safety" label="Thẻ BHYT" value={profile.insuranceNumber || "Chưa liên kết"} />
             </div>
 
-            <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-[#2d353e] sm:flex-row">
+            <div className="mt-3.5 flex flex-col gap-2.5 border-t border-slate-100 pt-3 dark:border-[#2d353e] sm:flex-row">
                 <Link
                     href={`/patient/patient-profiles/${profile.id}`}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-[#3C81C6] transition-colors hover:bg-slate-200 dark:bg-[#0f141b] dark:hover:bg-slate-800"
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-[#3C81C6] transition-colors hover:bg-slate-200 dark:bg-[#0f141b] dark:hover:bg-slate-800"
                 >
                     <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>visibility</span>
                     Xem chi tiết
                 </Link>
                 <Link
                     href={`/booking?profileId=${profile.id}`}
-                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-3 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-md"
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-3 py-2 text-sm font-semibold text-white transition-all hover:shadow-md"
                 >
                     <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>calendar_month</span>
                     Đặt lịch

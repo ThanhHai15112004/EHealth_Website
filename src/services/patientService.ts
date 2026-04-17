@@ -134,6 +134,12 @@ export type PatientStatus = 'ACTIVE' | 'INACTIVE' | 'DECEASED';
 export type IdentityType = 'CCCD' | 'PASSPORT' | 'OTHER';
 export type RelationType = 'PARENT' | 'SPOUSE' | 'CHILD' | 'SIBLING' | 'OTHER';
 
+export interface PatientAvatarImage {
+    url: string;
+    public_id: string;
+    uploaded_at: string;
+}
+
 export interface PatientRelationType {
     relation_types_id: string;
     code: string;
@@ -170,6 +176,7 @@ export interface Patient {
     account_id?: string;
     account_phone?: string;
     account_email?: string;
+    avatar_url?: PatientAvatarImage[];
 }
 
 export interface CreatePatientRequest {

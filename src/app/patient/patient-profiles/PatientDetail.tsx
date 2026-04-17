@@ -85,37 +85,47 @@ export default function PatientDetail({ profile, onBack, onEdit, onRefresh }: Pa
                     </button>
                 </div>
 
-                <div className="mt-5">
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-[#3C81C6]/10 px-2.5 py-1 text-[11px] font-bold tracking-wide text-[#3C81C6]">
-                            {profile.relationshipLabel}
-                        </span>
-                        {profile.isPrimary && (
-                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                                Hồ sơ mặc định
-                            </span>
+                <div className="mt-5 flex items-start gap-4">
+                    <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-[#3C81C6] to-[#2563eb] text-white shadow-md">
+                        {profile.avatar ? (
+                            <img src={profile.avatar} alt={profile.fullName} className="h-full w-full object-cover" />
+                        ) : (
+                            <span className="material-symbols-outlined" style={{ fontSize: "30px" }}>person</span>
                         )}
-                        <span
-                            className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
-                                profile.isActive ? "bg-slate-100 text-slate-700" : "bg-gray-100 text-gray-500"
-                            }`}
-                        >
-                            {profile.isActive ? "Đang hoạt động" : "Tạm ngưng"}
-                        </span>
-                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${insuranceMeta.className}`}>
-                            {insuranceMeta.label}
-                        </span>
                     </div>
 
-                    <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-[30px]">
-                        {profile.fullName}
-                    </h1>
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                        Mã bệnh nhân:{" "}
-                        <span className="font-medium text-slate-700 dark:text-slate-200">
-                            {profile.patientCode || profile.id}
-                        </span>
-                    </p>
+                    <div className="min-w-0">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-[#3C81C6]/10 px-2.5 py-1 text-[11px] font-bold tracking-wide text-[#3C81C6]">
+                                {profile.relationshipLabel}
+                            </span>
+                            {profile.isPrimary && (
+                                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                                    Hồ sơ mặc định
+                                </span>
+                            )}
+                            <span
+                                className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                    profile.isActive ? "bg-slate-100 text-slate-700" : "bg-gray-100 text-gray-500"
+                                }`}
+                            >
+                                {profile.isActive ? "Đang hoạt động" : "Tạm ngưng"}
+                            </span>
+                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${insuranceMeta.className}`}>
+                                {insuranceMeta.label}
+                            </span>
+                        </div>
+
+                        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-[30px]">
+                            {profile.fullName}
+                        </h1>
+                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                            Mã bệnh nhân:{" "}
+                            <span className="font-medium text-slate-700 dark:text-slate-200">
+                                {profile.patientCode || profile.id}
+                            </span>
+                        </p>
+                    </div>
                 </div>
             </div>
 

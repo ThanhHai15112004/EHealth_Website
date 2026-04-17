@@ -372,6 +372,8 @@ export const PATIENT_PROFILE_ENDPOINTS = {
     DELETE: (id: string) => `/api/patient/profiles/${id}`,
     SET_DEFAULT: (id: string) => `/api/patient/profiles/${id}/set-default`,
     UPDATE_RELATIONSHIP: (id: string) => `/api/patient/profiles/${id}/relationship`,
+    AVATAR_UPLOAD: (id: string) => `/api/patient/profiles/${id}/avatar`,
+    AVATAR_DELETE: (id: string) => `/api/patient/profiles/${id}/avatar`,
 };
 
 export const PATIENT_ENDPOINTS = {

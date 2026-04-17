@@ -70,6 +70,10 @@ function fmtFileSize(bytes?: number): string {
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function getPrimaryAvatarUrl(patient?: Patient | null): string {
+    return Array.isArray(patient?.avatar_url) ? patient.avatar_url[0]?.url || "" : "";
+}
+
 // ==================== COMPONENTS ====================
 function LoadingSpinner({ text = "Đang tải..." }: { text?: string }) {
     return (
@@ -450,8 +454,12 @@ export default function PatientDetailPage({ params }: { params: { id: string } }
                                 <span className="material-symbols-outlined text-[#687582]">arrow_back</span>
                             </button>
                             {/* Avatar */}
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#3C81C6] to-[#2a6da8] flex items-center justify-center text-white text-xl font-bold flex-shrink-0">
-                                {patient.full_name.charAt(0)}
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#3C81C6] to-[#2a6da8] flex items-center justify-center overflow-hidden text-white text-xl font-bold flex-shrink-0">
+                                {getPrimaryAvatarUrl(patient) ? (
+                                    <img src={getPrimaryAvatarUrl(patient)} alt={patient.full_name} className="h-full w-full object-cover" />
+                                ) : (
+                                    patient.full_name.charAt(0)
+                                )}
                             </div>
                             <div>
                                 <h1 className="text-2xl font-bold text-[#121417] dark:text-white">{patient.full_name}</h1>
