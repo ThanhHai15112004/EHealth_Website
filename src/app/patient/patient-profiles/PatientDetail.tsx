@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { type PatientProfile } from "@/types/patient-profile";
+import { getInsuranceStatusMeta } from "@/utils/patientProfileHelpers";
 
 import OverviewTab from "./tabs/OverviewTab";
 import InsuranceTab from "./tabs/InsuranceTab";
@@ -15,6 +16,7 @@ interface PatientDetailProps {
     profile: PatientProfile;
     onBack: () => void;
     onEdit: () => void;
+    onRefresh?: () => Promise<void> | void;
 }
 
 type TabId =
@@ -36,15 +38,16 @@ const TABS: Array<{ id: TabId; label: string }> = [
     { id: "timeline", label: "Dòng thời gian" },
 ];
 
-export default function PatientDetail({ profile, onBack, onEdit }: PatientDetailProps) {
+export default function PatientDetail({ profile, onBack, onEdit, onRefresh }: PatientDetailProps) {
     const [activeTab, setActiveTab] = useState<TabId>("overview");
+    const insuranceMeta = getInsuranceStatusMeta(profile.insuranceStatus);
 
     const renderActiveTab = () => {
         switch (activeTab) {
             case "overview":
                 return <OverviewTab profile={profile} />;
             case "insurance":
-                return <InsuranceTab profile={profile} />;
+                return <InsuranceTab profile={profile} onInsuranceChanged={onRefresh} />;
             case "vitals":
                 return <VitalsTab profile={profile} />;
             case "medical-history":
@@ -62,7 +65,7 @@ export default function PatientDetail({ profile, onBack, onEdit }: PatientDetail
 
     return (
         <div className="min-h-full w-full bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_100%)] dark:bg-[linear-gradient(180deg,#0d1117_0%,#111821_100%)]">
-            <div className="border-b border-slate-200/80 bg-white/85 px-5 py-5 backdrop-blur-sm dark:border-[#2d353e] dark:bg-[#111821]/90 sm:px-8">
+            <div className="border-b border-slate-200/80 bg-white/90 px-5 py-5 backdrop-blur-sm dark:border-[#2d353e] dark:bg-[#111821]/90 sm:px-8">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                     <button
                         onClick={onBack}
@@ -75,7 +78,7 @@ export default function PatientDetail({ profile, onBack, onEdit }: PatientDetail
                     <button
                         onClick={onEdit}
                         className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-[#3C81C6] transition-all hover:border-[#3C81C6]/30 hover:bg-[#3C81C6]/5 dark:border-[#2d353e] dark:bg-[#111821]"
-                        title="Chỉnh sửa thông tin"
+                        title="Chỉnh sửa thông tin hồ sơ"
                     >
                         <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>edit</span>
                         Chỉnh sửa
@@ -83,13 +86,13 @@ export default function PatientDetail({ profile, onBack, onEdit }: PatientDetail
                 </div>
 
                 <div className="mt-5">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
                         <span className="rounded-full bg-[#3C81C6]/10 px-2.5 py-1 text-[11px] font-bold tracking-wide text-[#3C81C6]">
                             {profile.relationshipLabel}
                         </span>
                         {profile.isPrimary && (
                             <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
-                                Hồ sơ chính
+                                Hồ sơ mặc định
                             </span>
                         )}
                         <span
@@ -97,7 +100,10 @@ export default function PatientDetail({ profile, onBack, onEdit }: PatientDetail
                                 profile.isActive ? "bg-slate-100 text-slate-700" : "bg-gray-100 text-gray-500"
                             }`}
                         >
-                            {profile.isActive ? "Đang hoạt động" : "Đã ngưng"}
+                            {profile.isActive ? "Đang hoạt động" : "Tạm ngưng"}
+                        </span>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${insuranceMeta.className}`}>
+                            {insuranceMeta.label}
                         </span>
                     </div>
 

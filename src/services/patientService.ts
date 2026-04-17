@@ -174,18 +174,23 @@ export interface Patient {
 
 export interface CreatePatientRequest {
     full_name: string;
-    date_of_birth: string; // format: YYYY-MM-DD
+    date_of_birth: string;
     gender?: PatientGender;
     identity_type?: IdentityType;
     identity_number?: string;
+    id_card_number?: string;
     nationality?: string;
-    contact: {
-        phone_number: string;
-        email?: string;
-        street_address?: string;
-        ward?: string;
-        province?: string;
-    };
+    phone_number?: string;
+    email?: string;
+    address?: string;
+    province_id?: number;
+    district_id?: number;
+    ward_id?: number;
+    emergency_contact_name?: string;
+    emergency_contact_phone?: string;
+    blood_type?: string;
+    allergies?: string;
+    chronic_diseases?: string;
 }
 
 export interface UpdatePatientRequest {
@@ -194,7 +199,16 @@ export interface UpdatePatientRequest {
     gender?: PatientGender;
     identity_type?: IdentityType;
     identity_number?: string;
+    id_card_number?: string;
     nationality?: string;
+    phone_number?: string;
+    email?: string;
+    address?: string;
+    province_id?: number;
+    district_id?: number;
+    ward_id?: number;
+    emergency_contact_name?: string;
+    emergency_contact_phone?: string;
     blood_type?: string;
     allergies?: string;
     chronic_diseases?: string;

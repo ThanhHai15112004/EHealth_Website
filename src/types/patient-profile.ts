@@ -41,4 +41,4 @@ export const RELATIONSHIP_OPTIONS = [
     { value: "sibling", label: "Anh/Chị/Em", icon: "group" },
     { value: "spouse", label: "Vợ/Chồng", icon: "favorite" },
     { value: "other", label: "Khác", icon: "person_add" },
-];
+] as const;

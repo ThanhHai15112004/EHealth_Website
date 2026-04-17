@@ -3,8 +3,6 @@ import Modal from "@/components/common/Modal";
 import { useToast } from "@/contexts/ToastContext";
 import { type PatientProfile } from "@/types/patient-profile";
 import {
-    type PatientRelation,
-    type PatientRelationType,
     createPatientRelation,
     getPatientRelationMedicalDecisionNote,
     getRelationTypes,
@@ -14,6 +12,8 @@ import {
     setPatientRelationLegalRepresentative,
     updatePatientRelation,
     updatePatientRelationMedicalDecisionNote,
+    type PatientRelation,
+    type PatientRelationType,
 } from "@/services/patientService";
 
 interface TabProps {
@@ -61,10 +61,7 @@ export default function OverviewTab({ profile }: TabProps) {
 
         try {
             setLoading(true);
-            const [relationsRes, relationTypesRes] = await Promise.all([
-                getRelations(profile.id),
-                getRelationTypes(),
-            ]);
+            const [relationsRes, relationTypesRes] = await Promise.all([getRelations(profile.id), getRelationTypes()]);
 
             if (relationsRes.success) {
                 setRelations(Array.isArray(relationsRes.data) ? relationsRes.data : []);
@@ -150,8 +147,8 @@ export default function OverviewTab({ profile }: TabProps) {
         return Object.keys(nextErrors).length === 0;
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
         if (!validateForm()) return;
 
         try {
@@ -187,10 +184,7 @@ export default function OverviewTab({ profile }: TabProps) {
                 return;
             }
 
-            const noteRes = await updatePatientRelationMedicalDecisionNote(
-                relationId,
-                form.medical_decision_note.trim()
-            );
+            const noteRes = await updatePatientRelationMedicalDecisionNote(relationId, form.medical_decision_note.trim());
             if (!noteRes.success) {
                 showToast(noteRes.message || "Không thể cập nhật ghi chú quyền quyết định y tế.", "error");
                 return;
@@ -224,39 +218,23 @@ export default function OverviewTab({ profile }: TabProps) {
             return;
         }
 
-        showToast(
-            relation.is_emergency_contact ? "Đã gỡ liên hệ khẩn cấp." : "Đã đặt làm liên hệ khẩn cấp.",
-            "success"
-        );
+        showToast(relation.is_emergency_contact ? "Đã gỡ liên hệ khẩn cấp." : "Đã đặt làm liên hệ khẩn cấp.", "success");
         await loadOverviewData();
     };
 
     const handleToggleLegal = async (relation: PatientRelation) => {
-        const res = await setPatientRelationLegalRepresentative(
-            relation.patient_contacts_id,
-            !relation.is_legal_representative
-        );
+        const res = await setPatientRelationLegalRepresentative(relation.patient_contacts_id, !relation.is_legal_representative);
         if (!res.success) {
             showToast(res.message || "Không thể cập nhật đại diện pháp lý.", "error");
             return;
         }
 
-        showToast(
-            relation.is_legal_representative ? "Đã gỡ đại diện pháp lý." : "Đã đặt làm đại diện pháp lý.",
-            "success"
-        );
+        showToast(relation.is_legal_representative ? "Đã gỡ đại diện pháp lý." : "Đã đặt làm đại diện pháp lý.", "success");
         await loadOverviewData();
     };
 
     return (
         <div className="space-y-8">
-            <div>
-                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Thông tin cá nhân</h2>
-                <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                    Tập trung vào thông tin hành chính của bệnh nhân và các liên hệ gia đình cần thiết.
-                </p>
-            </div>
-
             <section className="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-sm dark:border-[#2d353e] dark:bg-[#13191f]">
                 <h3 className="flex items-center gap-2 text-base font-semibold text-slate-900 dark:text-white">
                     <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>badge</span>
@@ -268,16 +246,9 @@ export default function OverviewTab({ profile }: TabProps) {
                     <InfoTile label="Mã bệnh nhân" value={profile.patientCode || profile.id} />
                     <InfoTile label="Quan hệ hồ sơ" value={profile.relationshipLabel} />
                     <InfoTile label="Trạng thái hồ sơ" value={profile.isActive ? "Đang hoạt động" : "Đã ngưng"} />
-                    <InfoTile
-                        label="Ngày sinh"
-                        value={profile.dob ? new Date(profile.dob).toLocaleDateString("vi-VN") : "Chưa cập nhật"}
-                    />
-                    <InfoTile
-                        label="Giới tính"
-                        value={profile.gender === "male" ? "Nam" : profile.gender === "female" ? "Nữ" : "Khác"}
-                    />
+                    <InfoTile label="Ngày sinh" value={profile.dob ? new Date(profile.dob).toLocaleDateString("vi-VN") : "Chưa cập nhật"} />
+                    <InfoTile label="Giới tính" value={profile.gender === "male" ? "Nam" : profile.gender === "female" ? "Nữ" : "Khác"} />
                     <InfoTile label="CCCD/CMND" value={profile.idNumber || "Chưa cập nhật"} />
-                    <InfoTile label="Quốc tịch" value={profile.nationality || "Chưa cập nhật"} />
                     <InfoTile label="Số điện thoại" value={profile.phone || "Chưa cập nhật"} />
                     <InfoTile label="Email" value={profile.email || "Chưa cập nhật"} />
                     <InfoTile label="Địa chỉ" value={profile.address || "Chưa cập nhật"} className="md:col-span-2 xl:col-span-3" />
@@ -294,7 +265,7 @@ export default function OverviewTab({ profile }: TabProps) {
                             Người thân
                         </h3>
                         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                            Quản lý người thân, liên hệ khẩn cấp và đại diện pháp lý của bệnh nhân.
+                            Quản lý người thân, liên hệ khẩn cấp và đại diện pháp lý của hồ sơ này.
                         </p>
                     </div>
 

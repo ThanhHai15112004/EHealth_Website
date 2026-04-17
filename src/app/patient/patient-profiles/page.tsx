@@ -1,18 +1,61 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/contexts/ToastContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { patientInsuranceService } from "@/services/patientInsuranceService";
+import { mapBEToFEProfile, patientProfileService, type PatientProfileBE } from "@/services/patientProfileService";
+import { updatePatientStatus } from "@/services/patientService";
 import { RELATIONSHIP_OPTIONS, type PatientProfile } from "@/types/patient-profile";
-import { validateName, validatePhone, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
-import { getPatientsByAccountId, createPatient, updatePatient, linkAccount, updatePatientStatus, updateContact } from "@/services/patientService";
-import { mapToProfile, saveLocalRelation } from "@/utils/patientMapper";
+import { enrichPatientProfileInsurance, getInsuranceStatusMeta, toPatientRelationshipEnum } from "@/utils/patientProfileHelpers";
+import { validateDob, validateIdNumber, validateName, validatePhone } from "@/utils/validation";
 
-// ============================================
-// Tách logic fetch & map profile từ backend
-// ============================================
+type FormState = {
+    fullName: string;
+    dob: string;
+    gender: PatientProfile["gender"];
+    phone: string;
+    email: string;
+    idNumber: string;
+    address: string;
+    relationship: PatientProfile["relationship"];
+    isPrimary: boolean;
+};
+
+const EMPTY_FORM: FormState = {
+    fullName: "",
+    dob: "",
+    gender: "male",
+    phone: "",
+    email: "",
+    idNumber: "",
+    address: "",
+    relationship: "other",
+    isPrimary: false,
+};
+
+function normalizePhoneNumber(value: string) {
+    return value.replace(/[\s().-]/g, "");
+}
+
+function toGenderEnum(value: PatientProfile["gender"]): "MALE" | "FEMALE" | "OTHER" {
+    if (value === "male") return "MALE";
+    if (value === "female") return "FEMALE";
+    return "OTHER";
+}
+
+async function hydrateProfile(profile: PatientProfileBE, userId?: string) {
+    const baseProfile = mapBEToFEProfile(profile, userId);
+
+    try {
+        const insuranceResponse = await patientInsuranceService.getByPatient(profile.id);
+        return enrichPatientProfileInsurance(baseProfile, insuranceResponse.data || []);
+    } catch {
+        return baseProfile;
+    }
+}
 
 export default function PatientProfilesPage() {
     const { user } = useAuth();
@@ -20,465 +63,506 @@ export default function PatientProfilesPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
 
-    // Load từ localStorage, fallback sang mock data
     const [profiles, setProfiles] = useState<PatientProfile[]>([]);
-    const [loaded, setLoaded] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [view, setView] = useState<"list" | "form">("list");
     const [editingId, setEditingId] = useState<string | null>(null);
-    const [formData, setFormData] = useState<Partial<PatientProfile>>({});
-    const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+    const [formData, setFormData] = useState<FormState>(EMPTY_FORM);
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [saving, setSaving] = useState(false);
+    const [pendingDisableId, setPendingDisableId] = useState<string | null>(null);
 
-    // Fetch Data from API
-    const loadData = useCallback(async () => {
-        if (!user?.id) return;
-        setLoaded(false);
+    const loadProfiles = useCallback(async () => {
+        if (!user?.id) {
+            setProfiles([]);
+            setLoading(false);
+            return;
+        }
+
+        setLoading(true);
         try {
-            const res = await getPatientsByAccountId(user.id);
-            if (res.success && res.data) {
-                // Map Backend patients to Frontend struct
-                const mapped = res.data.map(p => {
-                    const prof = mapToProfile(p, user);
-                    prof.userId = user.id;
-                    return prof;
-                });
-                setProfiles(mapped);
-            } else {
-                setProfiles([]);
-            }
+            const backendProfiles = await patientProfileService.getMyProfiles();
+            const hydratedProfiles = await Promise.all(backendProfiles.map((profile) => hydrateProfile(profile, user.id)));
+
+            hydratedProfiles.sort((left, right) => {
+                const primaryDiff = Number(Boolean(right.isPrimary)) - Number(Boolean(left.isPrimary));
+                if (primaryDiff !== 0) return primaryDiff;
+
+                const activeDiff = Number(Boolean(right.isActive)) - Number(Boolean(left.isActive));
+                if (activeDiff !== 0) return activeDiff;
+
+                return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
+            });
+
+            setProfiles(hydratedProfiles);
         } catch (error) {
-            showToast("Kh?ng th? t?i danh s?ch h? s?", "error");
+            console.error(error);
+            showToast("Không thể tải danh sách hồ sơ bệnh nhân.", "error");
+            setProfiles([]);
         } finally {
-            setLoaded(true);
+            setLoading(false);
         }
-    }, [user?.id, showToast]);
+    }, [showToast, user?.id]);
 
     useEffect(() => {
-        loadData();
-    }, [loadData]);
+        loadProfiles();
+    }, [loadProfiles]);
 
-    // Handle auto-edit from URL params (e.g. from detail page)
     useEffect(() => {
-        if (loaded && profiles.length > 0) {
-            const action = searchParams?.get('action');
-            const targetId = searchParams?.get('id');
-            if (action === 'edit' && targetId) {
-                const targetProfile = profiles.find(p => p.id === targetId);
-                if (targetProfile) {
-                    openEdit(targetProfile);
-                }
-            }
-        }
-    }, [loaded, searchParams, profiles]);
+        if (!profiles.length) return;
+
+        const action = searchParams?.get("action");
+        const targetId = searchParams?.get("id");
+        if (action !== "edit" || !targetId) return;
+
+        const profile = profiles.find((item) => item.id === targetId);
+        if (!profile) return;
+
+        setEditingId(profile.id);
+        setFormData({
+            fullName: profile.fullName,
+            dob: profile.dob,
+            gender: profile.gender,
+            phone: profile.phone,
+            email: profile.email || "",
+            idNumber: profile.idNumber || "",
+            address: profile.address || "",
+            relationship: profile.relationship,
+            isPrimary: profile.isPrimary,
+        });
+        setErrors({});
+        setView("form");
+    }, [profiles, searchParams]);
+
+    const activeProfiles = useMemo(() => profiles.filter((profile) => profile.isActive), [profiles]);
+    const inactiveProfiles = useMemo(() => profiles.filter((profile) => !profile.isActive), [profiles]);
 
     const openCreate = () => {
-        setFormData({ relationship: "other", relationshipLabel: "Khác", gender: "male", isActive: true, isPrimary: false });
         setEditingId(null);
         setErrors({});
+        setFormData({
+            ...EMPTY_FORM,
+            relationship: profiles.length === 0 ? "self" : "other",
+            isPrimary: profiles.length === 0,
+        });
         setView("form");
     };
 
     const openEdit = (profile: PatientProfile) => {
-        setFormData({ ...profile });
         setEditingId(profile.id);
         setErrors({});
+        setFormData({
+            fullName: profile.fullName,
+            dob: profile.dob,
+            gender: profile.gender,
+            phone: profile.phone,
+            email: profile.email || "",
+            idNumber: profile.idNumber || "",
+            address: profile.address || "",
+            relationship: profile.relationship,
+            isPrimary: profile.isPrimary,
+        });
         setView("form");
     };
 
-    // ============================================
-    // Validation — kiểm tra chuẩn logic
-    // ============================================
-    const validateForm = (): boolean => {
-        const errs: Record<string, string> = {};
+    const closeForm = () => {
+        setView("list");
+        setEditingId(null);
+        setErrors({});
+        setFormData(EMPTY_FORM);
 
-        // Tên: bắt buộc, 2-100 ký tự, không chứa số
-        const nameRes = validateName(formData.fullName || "", "Họ tên");
-        if (!nameRes.valid) errs.fullName = nameRes.message;
-
-        // SĐT: bắt buộc, đúng format VN (10 số, 03x/05x/07x/08x/09x)
-        const phoneRes = validatePhone(formData.phone || "");
-        if (!phoneRes.valid) errs.phone = phoneRes.message;
-
-        // Ngày sinh: không ở tương lai, tuổi 0-150
-        if (formData.dob) {
-            const dobRes = validateDob(formData.dob);
-            if (!dobRes.valid) errs.dob = dobRes.message;
+        if (searchParams?.get("action")) {
+            router.replace("/patient/patient-profiles");
         }
-
-        // CCCD: 9 hoặc 12 chữ số (optional)
-        if (formData.idNumber) {
-            const idRes = validateIdNumber(formData.idNumber);
-            if (!idRes.valid) errs.idNumber = idRes.message;
-        }
-
-        // BHYT: 15 ký tự — 2 chữ cái + 13 số (optional)
-        if (formData.insuranceNumber) {
-            const bhytRes = validateBHYT(formData.insuranceNumber);
-            if (!bhytRes.valid) errs.insuranceNumber = bhytRes.message;
-        }
-
-        // Giới tính: bắt buộc
-        if (!formData.gender) errs.gender = "Vui lòng chọn giới tính";
-
-        setErrors(errs);
-        return Object.keys(errs).length === 0;
     };
 
-    // ============================================
-    // Save
-    // ============================================
-    // ============================================
-    // Save
-    // ============================================
+    const validateForm = () => {
+        const nextErrors: Record<string, string> = {};
+
+        const nameResult = validateName(formData.fullName, "Họ và tên");
+        if (!nameResult.valid) nextErrors.fullName = nameResult.message;
+
+        const phoneResult = validatePhone(formData.phone);
+        if (!phoneResult.valid) nextErrors.phone = phoneResult.message;
+
+        const dobResult = validateDob(formData.dob);
+        if (!dobResult.valid) nextErrors.dob = dobResult.message;
+
+        if (formData.idNumber) {
+            const idResult = validateIdNumber(formData.idNumber);
+            if (!idResult.valid) nextErrors.idNumber = idResult.message;
+        }
+
+        setErrors(nextErrors);
+        return Object.keys(nextErrors).length === 0;
+    };
+
     const handleSave = async () => {
         if (!validateForm()) {
-            showToast("Vui lòng kiểm tra lại thông tin", "error");
+            showToast("Vui lòng kiểm tra lại thông tin hồ sơ.", "error");
             return;
         }
 
-        if (editingId) {
-            // API call to update patient
-            try {
-                const res = await updatePatient(editingId, {
-                    full_name: formData.fullName?.trim() || "",
-                    date_of_birth: formData.dob || "",
-                    gender: (formData.gender?.toUpperCase() || "MALE") as any,
-                    identity_number: formData.idNumber?.replace(/\s/g, "") || undefined,
-                });
-                
-                // Cập nhật sđt và địa chỉ thông qua updateContact nếu cần
-                if (res.success) {
-                    await updateContact(editingId, {
-                        phone_number: formData.phone?.replace(/[\s\-\.]/g, "") || "",
-                        street_address: formData.address?.trim() || undefined
-                    });
-                }
-                if (res.success) {
-                    saveLocalRelation(editingId, formData.relationship || 'other', formData.relationshipLabel || 'Khác');
-                    showToast("Cập nhật hồ sơ thành công!", "success");
-                    loadData();
-                } else {
-                    showToast(res.message || "Lỗi cập nhật", "error");
-                }
-            } catch (err) {
-                showToast("Lỗi hệ thống", "error");
+        setSaving(true);
+        try {
+            const payload = {
+                full_name: formData.fullName.trim(),
+                date_of_birth: formData.dob,
+                gender: toGenderEnum(formData.gender),
+                phone_number: normalizePhoneNumber(formData.phone),
+                email: formData.email.trim() || undefined,
+                id_card_number: formData.idNumber.trim() || undefined,
+                address: formData.address.trim() || undefined,
+                relationship: toPatientRelationshipEnum(formData.relationship) as PatientProfileBE["relationship"],
+                is_default: formData.isPrimary,
+            };
+
+            if (editingId) {
+                await patientProfileService.update(editingId, payload);
+                showToast("Đã cập nhật hồ sơ bệnh nhân.", "success");
+            } else {
+                await patientProfileService.create(payload);
+                showToast("Đã tạo hồ sơ bệnh nhân mới.", "success");
             }
-            
-        } else {
-            // API call to create patient
-            try {
-                const phoneNumber = formData.phone?.replace(/[\s\-\.]/g, "") || undefined; 
-                const createRes = await createPatient({
-                    full_name: formData.fullName?.trim() || "",
-                    date_of_birth: formData.dob || "1990-01-01",
-                    gender: (formData.gender?.toUpperCase() || "MALE") as any,
-                    identity_number: formData.idNumber?.replace(/\s/g, "") || undefined,
-                    contact: {
-                        phone_number: phoneNumber || "",
-                        street_address: formData.address?.trim() || undefined
-                    }
-                });
 
-                const createdPatientId = createRes.data?.id || createRes.data?.patient_id;
-                if (createRes.success && createdPatientId) {
-                    // Link to account regardless of relationship so it appears in the user's patient list
-                    if (user?.id) {
-                        await linkAccount(createdPatientId, user.id);
-                    }
-                    saveLocalRelation(createdPatientId, formData.relationship || 'other', formData.relationshipLabel || 'Khác');
-                    showToast("Tạo hồ sơ mới thành công!", "success");
-                    loadData();
-                } else {
-                    showToast(createRes.message || "Tạo hồ sơ thất bại", "error");
-                }
-            } catch (err) {
-                showToast("Lỗi hệ thống", "error");
+            closeForm();
+            await loadProfiles();
+        } catch (error: any) {
+            showToast(error?.response?.data?.message || "Không thể lưu hồ sơ bệnh nhân.", "error");
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleDeactivate = async (profileId: string) => {
+        try {
+            const result = await updatePatientStatus(profileId, "INACTIVE");
+            if (!result.success) {
+                showToast(result.message || "Không thể ngưng sử dụng hồ sơ.", "error");
+                return;
             }
-        }
-        setView("list");
-        setEditingId(null);
-    };
 
-    const handleDeactivate = async (id: string) => {
-        const res = await updatePatientStatus(id, "INACTIVE");
-        if (res.success) {
-            showToast("Đã ngừng sử dụng hồ sơ", "info");
-            loadData();
-        } else {
-            showToast("Ngừng sử dụng thất bại", "error");
-        }
-        setDeleteConfirm(null);
-    };
-
-    const handleReactivate = async (id: string) => {
-        const res = await updatePatientStatus(id, "ACTIVE");
-        if (res.success) {
-            showToast("Đã kích hoạt lại hồ sơ", "success");
-            loadData();
-        } else {
-            showToast("Kích hoạt lại thất bại", "error");
+            showToast("Đã ngưng sử dụng hồ sơ.", "success");
+            setPendingDisableId(null);
+            await loadProfiles();
+        } catch {
+            showToast("Không thể ngưng sử dụng hồ sơ.", "error");
         }
     };
 
-    const activeProfiles = useMemo(() => profiles.filter(p => p.isActive), [profiles]);
-    const inactiveProfiles = useMemo(() => profiles.filter(p => !p.isActive), [profiles]);
+    const handleReactivate = async (profileId: string) => {
+        try {
+            const result = await updatePatientStatus(profileId, "ACTIVE");
+            if (!result.success) {
+                showToast(result.message || "Không thể kích hoạt lại hồ sơ.", "error");
+                return;
+            }
 
-    const getRelIcon = (rel: string) => RELATIONSHIP_OPTIONS.find(r => r.value === rel)?.icon || "person";
-    const getRelColor = (rel: string) => {
-        const colors: Record<string, string> = { self: "from-[#3C81C6] to-[#2563eb]", parent: "from-violet-500 to-purple-600", child: "from-cyan-500 to-teal-600", sibling: "from-emerald-500 to-green-600", spouse: "from-rose-500 to-pink-600", other: "from-gray-500 to-gray-600" };
-        return colors[rel] || colors.other;
+            showToast("Đã kích hoạt lại hồ sơ.", "success");
+            await loadProfiles();
+        } catch {
+            showToast("Không thể kích hoạt lại hồ sơ.", "error");
+        }
     };
 
-    const getInsuranceBadge = (profile: PatientProfile) => {
-        if (!profile.hasInsurance && !profile.insuranceNumber) return { label: "Chưa có BH", className: "bg-amber-50 text-amber-700" };
-        if (profile.insuranceStatus === "expired") return { label: "BH hết hạn", className: "bg-rose-50 text-rose-700" };
-        if (profile.insuranceStatus === "expiring") return { label: "BH sắp hết hạn", className: "bg-amber-50 text-amber-700" };
-        return { label: "BH còn hiệu lực", className: "bg-emerald-50 text-emerald-700" };
-    };
-
-    if (!loaded) return <div className="flex justify-center py-20"><span className="material-symbols-outlined animate-spin text-[#3C81C6]" style={{ fontSize: "32px" }}>progress_activity</span></div>;
+    if (loading) {
+        return (
+            <div className="flex justify-center py-20">
+                <span className="material-symbols-outlined animate-spin text-[#3C81C6]" style={{ fontSize: "32px" }}>
+                    progress_activity
+                </span>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-6">
-            {/* ===== LIST VIEW ===== */}
-            {view === "list" && (<>
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-[#121417] dark:text-white flex items-center gap-2">
-                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "28px" }}>family_restroom</span>
-                        Hồ sơ bệnh nhân
-                    </h1>
-                    <p className="text-sm text-[#687582] mt-1">Quản lý hồ sơ bệnh nhân cho bản thân và người thân trong gia đình</p>
-                </div>
-                <button onClick={openCreate}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white text-sm font-bold rounded-xl shadow-md shadow-[#3C81C6]/20 hover:shadow-lg transition-all active:scale-[0.97]">
-                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
-                    Thêm hồ sơ
-                </button>
-            </div>
-
-            {/* Info banner */}
-            <div className="p-4 bg-blue-50 dark:bg-blue-500/10 border border-blue-100 dark:border-blue-500/20 rounded-xl flex items-start gap-3">
-                <span className="material-symbols-outlined text-[#3C81C6] mt-0.5" style={{ fontSize: "20px" }}>info</span>
-                <div>
-                    <p className="text-sm text-blue-900 dark:text-blue-300 font-medium">Một tài khoản có thể quản lý nhiều hồ sơ bệnh nhân</p>
-                    <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">Thêm hồ sơ cho cha mẹ, con cái, vợ/chồng để đặt lịch nhanh hơn mà không cần nhập lại thông tin.</p>
-                </div>
-            </div>
-
-            {/* Active profiles */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {activeProfiles.map(profile => (
-                    <div key={profile.id}
-                        className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5 hover:shadow-lg hover:border-[#3C81C6]/20 transition-all group">
-                        <div className="flex items-start justify-between mb-4">
-                            <div className="flex items-center gap-3">
-                                <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getRelColor(profile.relationship)} flex items-center justify-center text-white shadow-lg`}>
-                                    <span className="material-symbols-outlined" style={{ fontSize: "24px" }}>{getRelIcon(profile.relationship)}</span>
-                                </div>
-                                <div>
-                                    <h3 className="text-base font-bold text-[#121417] dark:text-white">{profile.fullName}</h3>
-                                    <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${profile.isPrimary ? "bg-[#3C81C6]/10 text-[#3C81C6]" : "bg-gray-100 dark:bg-gray-800 text-gray-500"}`}>
-                                            {profile.relationshipLabel}
-                                        </span>
-                                        {profile.isPrimary && (
-                                            <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-600 rounded-full">Chính</span>
-                                        )}
-                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${getInsuranceBadge(profile).className}`}>
-                                            {getInsuranceBadge(profile).label}
-                                        </span>
-                                    </div>
-                                    <p className="text-xs text-gray-400 mt-1">{profile.patientCode || profile.id}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button onClick={() => openEdit(profile)}
-                                    className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 hover:text-[#3C81C6] transition-colors" title="Chỉnh sửa">
-                                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>edit</span>
-                                </button>
-                                {!profile.isPrimary && (
-                                    <button onClick={() => setDeleteConfirm(profile.id)}
-                                        className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-gray-500 hover:text-red-500 transition-colors" title="Ngưng sử dụng">
-                                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>person_off</span>
-                                    </button>
-                                )}
-                            </div>
+            {view === "list" ? (
+                <>
+                    <section className="flex flex-col gap-4 rounded-[28px] bg-white p-6 shadow-sm ring-1 ring-slate-200/70 dark:bg-[#111821] dark:ring-[#2d353e] lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                            <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900 dark:text-white">
+                                <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "28px" }}>
+                                    family_restroom
+                                </span>
+                                Hồ sơ bệnh nhân
+                            </h1>
+                            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                Quản lý hồ sơ của bản thân và người thân. Bảo hiểm, tiền sử và tài liệu được cập nhật bên trong từng hồ sơ.
+                            </p>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                            <InfoRow icon="cake" label="Ngày sinh" value={profile.dob ? new Date(profile.dob + "T00:00:00").toLocaleDateString("vi-VN") : "—"} />
-                            <InfoRow icon="wc" label="Giới tính" value={profile.gender === "male" ? "Nam" : profile.gender === "female" ? "Nữ" : "Khác"} />
-                            <InfoRow icon="call" label="SĐT" value={profile.phone} />
-                            <InfoRow icon="badge" label="CCCD" value={profile.idNumber || "—"} />
-                            <InfoRow icon="health_and_safety" label="BHYT" value={profile.insuranceNumber || "—"} />
-                            <InfoRow icon="location_on" label="Địa chỉ" value={profile.address || "—"} />
-                        </div>
+                        <button
+                            type="button"
+                            onClick={openCreate}
+                            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-4 py-3 text-sm font-semibold text-white shadow-md shadow-[#3C81C6]/20 transition-all hover:shadow-lg"
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
+                            Thêm hồ sơ
+                        </button>
+                    </section>
 
-                        {(profile.allergies && profile.allergies.length > 0) && (
-                            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-[#2d353e]">
-                                <p className="text-xs text-gray-500 mb-1 flex items-center gap-1">
-                                    <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>warning</span> Dị ứng
-                                </p>
-                                <div className="flex flex-wrap gap-1">
-                                    {profile.allergies.map(a => (
-                                        <span key={a} className="px-2 py-0.5 bg-red-50 dark:bg-red-500/10 text-red-600 text-[10px] font-bold rounded-full">{a}</span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Quick actions */}
-                        <div className="mt-4 pt-3 border-t border-gray-100 dark:border-[#2d353e] flex items-center gap-2">
-                            <Link href={`/patient/patient-profiles/${profile.id}`}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-[#3C81C6]/10 text-[#3C81C6] text-xs font-bold rounded-lg hover:bg-[#3C81C6]/20 transition-all">
-                                <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>visibility</span>
-                                Xem chi tiết
-                            </Link>
-                            <Link href={`/booking?profileId=${profile.id}`}
-                                className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white text-xs font-bold rounded-lg shadow-sm hover:shadow-md transition-all active:scale-[0.97]">
-                                <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>calendar_month</span>
-                                Đặt lịch
-                            </Link>
-                            <Link href="/patient/medication-reminders"
-                                className="flex items-center justify-center gap-1 py-2 px-3 border border-gray-200 dark:border-[#2d353e] text-gray-600 dark:text-gray-400 text-xs font-medium rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
-                                <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>medication</span>
-                                Nhắc thuốc
-                            </Link>
-                        </div>
-                    </div>
-                ))}
-
-                {/* Add new card */}
-                <button onClick={openCreate}
-                    className="bg-white dark:bg-[#1e242b] rounded-2xl border-2 border-dashed border-gray-200 dark:border-[#2d353e] p-8 flex flex-col items-center justify-center gap-3 text-gray-400 hover:border-[#3C81C6] hover:text-[#3C81C6] transition-all group cursor-pointer min-h-[250px]">
-                    <div className="w-14 h-14 rounded-xl bg-gray-50 dark:bg-gray-800 group-hover:bg-[#3C81C6]/10 flex items-center justify-center transition-colors">
-                        <span className="material-symbols-outlined" style={{ fontSize: "28px" }}>person_add</span>
-                    </div>
-                    <p className="text-sm font-semibold">Thêm hồ sơ mới</p>
-                    <p className="text-xs text-center max-w-[200px]">Thêm hồ sơ cho người thân để đặt lịch nhanh hơn</p>
-                </button>
-            </div>
-
-            {/* Inactive profiles */}
-            {inactiveProfiles.length > 0 && (
-                <div>
-                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3">Hồ sơ đã ngưng</h3>
-                    <div className="space-y-2">
-                        {inactiveProfiles.map(p => (
-                            <div key={p.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-[#13191f] rounded-xl opacity-60">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
-                                        <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "16px" }}>person_off</span>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-medium text-gray-500">{p.fullName}</p>
-                                        <p className="text-[10px] text-gray-400">{p.relationshipLabel}</p>
-                                    </div>
-                                </div>
-                                <button onClick={() => handleReactivate(p.id)}
-                                    className="text-xs text-[#3C81C6] font-medium hover:underline">Kích hoạt lại</button>
-                            </div>
+                    <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        {activeProfiles.map((profile) => (
+                            <ProfileCard
+                                key={profile.id}
+                                profile={profile}
+                                onEdit={() => openEdit(profile)}
+                                onDisable={() => setPendingDisableId(profile.id)}
+                            />
                         ))}
-                    </div>
-                </div>
-            )}
 
-            </>)}
+                        <button
+                            type="button"
+                            onClick={openCreate}
+                            className="flex min-h-[220px] flex-col items-center justify-center gap-3 rounded-[28px] border-2 border-dashed border-slate-200 bg-white p-8 text-slate-400 transition-all hover:border-[#3C81C6] hover:text-[#3C81C6] dark:border-[#2d353e] dark:bg-[#111821]"
+                        >
+                            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 dark:bg-[#0f141b]">
+                                <span className="material-symbols-outlined" style={{ fontSize: "28px" }}>person_add</span>
+                            </div>
+                            <p className="text-base font-semibold">Thêm hồ sơ mới</p>
+                            <p className="max-w-[240px] text-center text-sm">
+                                Tạo thêm hồ sơ cho người thân để đặt lịch, quản lý bảo hiểm và theo dõi lịch sử khám riêng.
+                            </p>
+                        </button>
+                    </section>
 
-            {/* ===== Form tạo/chỉnh sửa (Inline) ===== */}
-            {view === "form" && (
-                <div className="bg-white dark:bg-[#0d1117] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e]">
-                    <div className="max-w-lg mx-auto py-6 px-4">
-                        <div className="pb-4 mb-4 border-b border-gray-100 dark:border-[#2d353e] flex items-center justify-between">
+                    {inactiveProfiles.length > 0 && (
+                        <section className="rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-[#2d353e] dark:bg-[#111821]">
+                            <h3 className="text-sm font-bold uppercase tracking-[0.18em] text-slate-400">Hồ sơ đang tạm ngưng</h3>
+                            <div className="mt-4 space-y-3">
+                                {inactiveProfiles.map((profile) => (
+                                    <div
+                                        key={profile.id}
+                                        className="flex flex-col gap-3 rounded-2xl bg-slate-50 p-4 dark:bg-[#0f141b] sm:flex-row sm:items-center sm:justify-between"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-200 text-slate-500 dark:bg-slate-800 dark:text-slate-300">
+                                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>person_off</span>
+                                            </div>
+                                            <div>
+                                                <p className="font-medium text-slate-700 dark:text-slate-200">{profile.fullName}</p>
+                                                <p className="text-xs text-slate-400">{profile.relationshipLabel}</p>
+                                            </div>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => handleReactivate(profile.id)}
+                                            className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-4 py-2 text-sm font-semibold text-[#3C81C6] shadow-sm ring-1 ring-slate-200 transition-colors hover:bg-slate-50 dark:bg-[#111821] dark:ring-[#2d353e]"
+                                        >
+                                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>restart_alt</span>
+                                            Kích hoạt lại
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+                </>
+            ) : (
+                <section className="rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-[#2d353e] dark:bg-[#111821]">
+                    <div className="mx-auto max-w-4xl">
+                        <div className="mb-6 flex items-center justify-between border-b border-slate-100 pb-4 dark:border-[#2d353e]">
                             <div className="flex items-center gap-3">
-                                <button onClick={() => {
-                                    setView("list");
-                                    // if there was an action parameter, remove it by routing to base
-                                    if (searchParams?.get('action')) {
-                                        router.replace('/patient/patient-profiles');
-                                    }
-                                }} className="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                                    <span className="material-symbols-outlined text-gray-500" style={{ fontSize: "20px" }}>arrow_back</span>
+                                <button
+                                    type="button"
+                                    onClick={closeForm}
+                                    className="rounded-2xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white"
+                                >
+                                    <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>arrow_back</span>
                                 </button>
-                                <h2 className="text-lg font-bold text-[#121417] dark:text-white">
-                                    {editingId ? "Chỉnh sửa hồ sơ" : "Thêm hồ sơ mới"}
-                                </h2>
+                                <div>
+                                    <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                                        {editingId ? "Chỉnh sửa hồ sơ" : "Tạo hồ sơ mới"}
+                                    </h2>
+                                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                        Form này đã có đủ nhóm thông tin cơ bản cho một hồ sơ bệnh nhân. Bảo hiểm và người thân quản lý ở các tab riêng sau khi tạo xong.
+                                    </p>
+                                </div>
                             </div>
                         </div>
-                        <div className="space-y-4">
-                            {/* Relationship */}
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Quan hệ</label>
+
+                        <div className="space-y-6">
+                            <section className="rounded-[24px] bg-slate-50 p-4 dark:bg-[#0f141b]">
+                                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                                    <div>
+                                        <h3 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-500">Ảnh hồ sơ</h3>
+                                        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                                            Backend hiện chưa có API lưu ảnh riêng cho từng hồ sơ bệnh nhân, nên phần này mới là vị trí chờ triển khai.
+                                        </p>
+                                    </div>
+                                    <div className="flex items-center gap-4">
+                                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-[#3C81C6] to-[#2563eb] text-white shadow-md">
+                                            <span className="material-symbols-outlined" style={{ fontSize: "28px" }}>person</span>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            disabled
+                                            className="rounded-2xl border border-dashed border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-400"
+                                        >
+                                            Tải ảnh lên
+                                        </button>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section>
+                                <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Quan hệ với chủ tài khoản</label>
                                 <div className="flex flex-wrap gap-2">
-                                    {RELATIONSHIP_OPTIONS.map(opt => (
-                                        <button key={opt.value} onClick={() => setFormData(prev => ({ ...prev, relationship: opt.value as PatientProfile["relationship"], relationshipLabel: opt.label }))}
-                                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium border-2 transition-all
-                                            ${formData.relationship === opt.value ? "border-[#3C81C6] bg-[#3C81C6]/10 text-[#3C81C6]" : "border-gray-100 text-gray-600 hover:border-gray-200"}`}>
-                                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{opt.icon}</span>
-                                            {opt.label}
+                                    {RELATIONSHIP_OPTIONS.map((option) => (
+                                        <button
+                                            key={option.value}
+                                            type="button"
+                                            onClick={() => setFormData((current) => ({ ...current, relationship: option.value }))}
+                                            className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-medium transition-all ${
+                                                formData.relationship === option.value
+                                                    ? "border-[#3C81C6] bg-[#3C81C6]/10 text-[#3C81C6]"
+                                                    : "border-slate-200 text-slate-600 hover:border-slate-300 dark:border-[#2d353e] dark:text-slate-300"
+                                            }`}
+                                        >
+                                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{option.icon}</span>
+                                            {option.label}
                                         </button>
                                     ))}
                                 </div>
-                            </div>
+                            </section>
 
-                            <ModalField label="Họ và tên *" value={formData.fullName || ""} onChange={v => { setFormData(p => ({ ...p, fullName: v })); setErrors(e => ({ ...e, fullName: "" })); }} error={errors.fullName} />
-                            <div className="grid grid-cols-2 gap-4">
-                                <ModalField label="Số điện thoại *" value={formData.phone || ""} onChange={v => { setFormData(p => ({ ...p, phone: v })); setErrors(e => ({ ...e, phone: "" })); }} type="tel" error={errors.phone} placeholder="VD: 0901234567" />
-                                <ModalField label="Ngày sinh" value={formData.dob || ""} onChange={v => { setFormData(p => ({ ...p, dob: v })); setErrors(e => ({ ...e, dob: "" })); }} type="date" error={errors.dob} />
-                            </div>
-
-                            <div>
-                                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">Giới tính *</label>
-                                <div className="flex gap-2">
-                                    {[{ v: "male", l: "Nam" }, { v: "female", l: "Nữ" }, { v: "other", l: "Khác" }].map(g => (
-                                        <button key={g.v} onClick={() => { setFormData(p => ({ ...p, gender: g.v as PatientProfile["gender"] })); setErrors(e => ({ ...e, gender: "" })); }}
-                                            className={`flex-1 py-2.5 rounded-xl border text-sm font-medium transition-all
-                                            ${formData.gender === g.v ? "border-[#3C81C6] bg-[#3C81C6]/[0.06] text-[#3C81C6]" : "border-gray-200 text-gray-600 hover:bg-gray-50"}`}>
-                                            {g.l}
-                                        </button>
-                                    ))}
+                            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                                <FormField
+                                    label="Họ và tên"
+                                    required
+                                    value={formData.fullName}
+                                    onChange={(value) => setFormData((current) => ({ ...current, fullName: value }))}
+                                    error={errors.fullName}
+                                />
+                                <FormField
+                                    label="Số điện thoại"
+                                    required
+                                    value={formData.phone}
+                                    onChange={(value) => setFormData((current) => ({ ...current, phone: value }))}
+                                    error={errors.phone}
+                                    placeholder="Ví dụ: 0901234567"
+                                />
+                                <FormField
+                                    label="Ngày sinh"
+                                    required
+                                    type="date"
+                                    value={formData.dob}
+                                    onChange={(value) => setFormData((current) => ({ ...current, dob: value }))}
+                                    error={errors.dob}
+                                />
+                                <FormField
+                                    label="Email"
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={(value) => setFormData((current) => ({ ...current, email: value }))}
+                                    placeholder="email@example.com"
+                                />
+                                <FormField
+                                    label="CCCD"
+                                    value={formData.idNumber}
+                                    onChange={(value) => setFormData((current) => ({ ...current, idNumber: value }))}
+                                    error={errors.idNumber}
+                                    placeholder="9 hoặc 12 chữ số"
+                                />
+                                <div>
+                                    <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">Giới tính</label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                        {[
+                                            { value: "male", label: "Nam" },
+                                            { value: "female", label: "Nữ" },
+                                            { value: "other", label: "Khác" },
+                                        ].map((item) => (
+                                            <button
+                                                key={item.value}
+                                                type="button"
+                                                onClick={() => setFormData((current) => ({ ...current, gender: item.value as PatientProfile["gender"] }))}
+                                                className={`rounded-2xl border px-3 py-3 text-sm font-medium transition-all ${
+                                                    formData.gender === item.value
+                                                        ? "border-[#3C81C6] bg-[#3C81C6]/10 text-[#3C81C6]"
+                                                        : "border-slate-200 text-slate-600 hover:border-slate-300 dark:border-[#2d353e] dark:text-slate-300"
+                                                }`}
+                                            >
+                                                {item.label}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
-                                {errors.gender && <p className="text-xs text-red-500 mt-1">{errors.gender}</p>}
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4">
-                                <ModalField label="CCCD" value={formData.idNumber || ""} onChange={v => { setFormData(p => ({ ...p, idNumber: v })); setErrors(e => ({ ...e, idNumber: "" })); }} error={errors.idNumber} placeholder="9 hoặc 12 chữ số" />
-                                <ModalField label="Số BHYT" value={formData.insuranceNumber || ""} onChange={v => { setFormData(p => ({ ...p, insuranceNumber: v })); setErrors(e => ({ ...e, insuranceNumber: "" })); }} error={errors.insuranceNumber} placeholder="15 ký tự" />
-                            </div>
-                            <ModalField label="Địa chỉ" value={formData.address || ""} onChange={v => setFormData(p => ({ ...p, address: v }))} />
+                            <FormField
+                                label="Địa chỉ"
+                                value={formData.address}
+                                onChange={(value) => setFormData((current) => ({ ...current, address: value }))}
+                                placeholder="Số nhà, đường, phường/xã, quận/huyện..."
+                            />
+
+                            <label className="flex items-start gap-3 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600 dark:bg-[#0f141b] dark:text-slate-300">
+                                <input
+                                    type="checkbox"
+                                    checked={formData.isPrimary}
+                                    onChange={(event) => setFormData((current) => ({ ...current, isPrimary: event.target.checked }))}
+                                    disabled={Boolean(editingId && profiles.find((profile) => profile.id === editingId)?.isPrimary)}
+                                    className="mt-0.5 rounded border-slate-300 text-[#3C81C6] focus:ring-[#3C81C6]"
+                                />
+                                <span>
+                                    Đặt làm hồ sơ mặc định
+                                    <span className="mt-1 block text-xs text-slate-500">
+                                        Hồ sơ mặc định sẽ được ưu tiên khi đặt lịch và hiển thị nhanh ở các màn dành cho bệnh nhân.
+                                    </span>
+                                </span>
+                            </label>
                         </div>
-                        <div className="pt-4 mt-4 border-t border-gray-100 dark:border-[#2d353e] flex items-center justify-end gap-3">
-                            <button onClick={() => setView("list")}
-                                className="px-4 py-2.5 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors">
+
+                        <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-5 dark:border-[#2d353e]">
+                            <button
+                                type="button"
+                                onClick={closeForm}
+                                className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-[#2d353e] dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
                                 Hủy
                             </button>
-                            <button onClick={handleSave}
-                                className="px-6 py-2.5 text-sm font-bold text-white bg-gradient-to-r from-[#3C81C6] to-[#2563eb] rounded-xl shadow-md hover:shadow-lg transition-all active:scale-[0.97]">
+                            <button
+                                type="button"
+                                onClick={handleSave}
+                                disabled={saving}
+                                className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-5 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg disabled:opacity-60"
+                            >
+                                {saving && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>}
                                 {editingId ? "Lưu thay đổi" : "Tạo hồ sơ"}
                             </button>
                         </div>
                     </div>
-                </div>
+                </section>
             )}
 
-            {/* ===== Delete Confirm ===== */}
-            {deleteConfirm && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4" onClick={() => setDeleteConfirm(null)}>
-                    <div className="bg-white dark:bg-[#1e242b] rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center" onClick={e => e.stopPropagation()}>
-                        <div className="w-14 h-14 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-4">
-                            <span className="material-symbols-outlined text-red-500" style={{ fontSize: "28px" }}>person_off</span>
+            {pendingDisableId && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm" onClick={() => setPendingDisableId(null)}>
+                    <div
+                        className="w-full max-w-md rounded-[28px] bg-white p-6 shadow-2xl dark:bg-[#111821]"
+                        onClick={(event) => event.stopPropagation()}
+                    >
+                        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-600 dark:bg-rose-500/10">
+                            <span className="material-symbols-outlined" style={{ fontSize: "28px" }}>person_off</span>
                         </div>
-                        <h3 className="text-lg font-bold text-[#121417] dark:text-white mb-2">Ngưng sử dụng hồ sơ?</h3>
-                        <p className="text-sm text-gray-500 mb-6">Hồ sơ này sẽ không hiển thị khi đặt lịch nhưng có thể kích hoạt lại.</p>
-                        <div className="flex gap-3">
-                            <button onClick={() => setDeleteConfirm(null)}
-                                className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                        <h3 className="text-center text-lg font-semibold text-slate-900 dark:text-white">Ngưng sử dụng hồ sơ này?</h3>
+                        <p className="mt-2 text-center text-sm text-slate-500 dark:text-slate-400">
+                            Hồ sơ sẽ tạm ẩn khỏi danh sách đặt lịch nhưng vẫn có thể kích hoạt lại khi cần.
+                        </p>
+                        <div className="mt-6 flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setPendingDisableId(null)}
+                                className="flex-1 rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-[#2d353e] dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
                                 Hủy
                             </button>
-                            <button onClick={() => handleDeactivate(deleteConfirm)}
-                                className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 transition-colors active:scale-[0.97]">
+                            <button
+                                type="button"
+                                onClick={() => handleDeactivate(pendingDisableId)}
+                                className="flex-1 rounded-2xl bg-rose-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rose-600"
+                            >
                                 Ngưng sử dụng
                             </button>
                         </div>
@@ -489,35 +573,152 @@ export default function PatientProfilesPage() {
     );
 }
 
-function DetailField({ label, value }: { label: string; value: string }) {
+function ProfileCard({
+    profile,
+    onEdit,
+    onDisable,
+}: {
+    profile: PatientProfile;
+    onEdit: () => void;
+    onDisable: () => void;
+}) {
+    const insuranceMeta = getInsuranceStatusMeta(profile.insuranceStatus);
+
     return (
-        <div>
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">{label}</p>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">{value}</p>
+        <article className="group rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-[#2d353e] dark:bg-[#111821]">
+            <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-[#3C81C6] to-[#2563eb] text-white shadow-lg shadow-[#3C81C6]/20">
+                        <span className="material-symbols-outlined" style={{ fontSize: "26px" }}>
+                            {RELATIONSHIP_OPTIONS.find((item) => item.value === profile.relationship)?.icon || "person"}
+                        </span>
+                    </div>
+
+                    <div>
+                        <h2 className="text-[26px] font-semibold leading-tight text-slate-900 dark:text-white">{profile.fullName}</h2>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-[#3C81C6]/10 px-2.5 py-1 text-[11px] font-bold text-[#3C81C6]">
+                                {profile.relationshipLabel}
+                            </span>
+                            {profile.isPrimary && (
+                                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                                    Hồ sơ mặc định
+                                </span>
+                            )}
+                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${insuranceMeta.className}`}>
+                                {insuranceMeta.label}
+                            </span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-400">{profile.patientCode || profile.id}</p>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <button
+                        type="button"
+                        onClick={onEdit}
+                        className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#3C81C6] dark:hover:bg-slate-800"
+                        title="Chỉnh sửa hồ sơ"
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>edit</span>
+                    </button>
+                    <button
+                        type="button"
+                        onClick={onDisable}
+                        disabled={profile.isPrimary}
+                        className="rounded-xl p-2 text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-rose-500/10"
+                        title={profile.isPrimary ? "Không thể ngưng hồ sơ mặc định" : "Ngưng sử dụng hồ sơ"}
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>person_off</span>
+                    </button>
+                </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                <InfoRow icon="cake" label="Ngày sinh" value={profile.dob ? new Date(`${profile.dob}T00:00:00`).toLocaleDateString("vi-VN") : "Chưa cập nhật"} />
+                <InfoRow icon="wc" label="Giới tính" value={profile.gender === "male" ? "Nam" : profile.gender === "female" ? "Nữ" : "Khác"} />
+                <InfoRow icon="call" label="Số điện thoại" value={profile.phone || "Chưa cập nhật"} />
+                <InfoRow icon="mail" label="Email" value={profile.email || "Chưa cập nhật"} />
+                <InfoRow icon="badge" label="CCCD" value={profile.idNumber || "Chưa cập nhật"} />
+                <InfoRow icon="health_and_safety" label="Thẻ BHYT" value={profile.insuranceNumber || "Chưa liên kết"} />
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 border-t border-slate-100 pt-4 dark:border-[#2d353e] sm:flex-row">
+                <Link
+                    href={`/patient/patient-profiles/${profile.id}`}
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-slate-100 px-3 py-2.5 text-sm font-semibold text-[#3C81C6] transition-colors hover:bg-slate-200 dark:bg-[#0f141b] dark:hover:bg-slate-800"
+                >
+                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>visibility</span>
+                    Xem chi tiết
+                </Link>
+                <Link
+                    href={`/booking?profileId=${profile.id}`}
+                    className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-3 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-md"
+                >
+                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>calendar_month</span>
+                    Đặt lịch
+                </Link>
+            </div>
+        </article>
+    );
+}
+
+function InfoRow({
+    icon,
+    label,
+    value,
+}: {
+    icon: string;
+    label: string;
+    value: string;
+}) {
+    return (
+        <div className="flex items-start gap-2">
+            <span className="material-symbols-outlined mt-0.5 text-slate-400" style={{ fontSize: "18px" }}>
+                {icon}
+            </span>
+            <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</p>
+                <p className="truncate text-sm font-medium text-slate-700 dark:text-slate-200">{value}</p>
+            </div>
         </div>
     );
 }
 
-function InfoRow({ icon, label, value }: { icon: string; label: string; value: string }) {
-    return (
-        <div className="flex items-center gap-1.5">
-            <span className="material-symbols-outlined text-gray-400" style={{ fontSize: "14px" }}>{icon}</span>
-            <span className="text-xs text-gray-400">{label}:</span>
-            <span className="text-xs font-medium text-[#121417] dark:text-white truncate">{value}</span>
-        </div>
-    );
-}
-
-function ModalField({ label, value, onChange, type = "text", error, placeholder }: {
-    label: string; value: string; onChange: (v: string) => void; type?: string; error?: string; placeholder?: string;
+function FormField({
+    label,
+    value,
+    onChange,
+    type = "text",
+    placeholder,
+    error,
+    required = false,
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+    type?: string;
+    placeholder?: string;
+    error?: string;
+    required?: boolean;
 }) {
     return (
         <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5 block">{label}</label>
-            <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-                className={`w-full px-4 py-3 border rounded-xl text-sm text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-[#13191f] focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 placeholder-gray-400 transition-colors
-                ${error ? "border-red-300 dark:border-red-500/40 focus:ring-red-300/30" : "border-gray-200 dark:border-[#2d353e]"}`} />
-            {error && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><span className="material-symbols-outlined" style={{ fontSize: "12px" }}>error</span>{error}</p>}
+            <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                {label} {required && <span className="text-rose-500">*</span>}
+            </label>
+            <input
+                type={type}
+                value={value}
+                onChange={(event) => onChange(event.target.value)}
+                placeholder={placeholder}
+                className={`w-full rounded-2xl border bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:ring-4 dark:bg-[#0f141b] dark:text-white ${
+                    error
+                        ? "border-rose-300 focus:border-rose-400 focus:ring-rose-100 dark:border-rose-500/40 dark:focus:ring-rose-500/10"
+                        : "border-slate-200 focus:border-[#3C81C6] focus:ring-[#3C81C6]/10 dark:border-[#2d353e] dark:focus:ring-[#3C81C6]/10"
+                }`}
+            />
+            {error && <p className="mt-1 text-xs text-rose-500">{error}</p>}
         </div>
     );
 }

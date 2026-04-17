@@ -1,13 +1,14 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
-import { getPatientDetail, getPatientsByAccountId } from "@/services/patientService";
 import PatientDetail from "../PatientDetail";
-import { type PatientProfile } from "@/types/patient-profile";
-import { mapToProfile } from "@/utils/patientMapper";
+import { patientProfileService, mapBEToFEProfile } from "@/services/patientProfileService";
+import { patientInsuranceService } from "@/services/patientInsuranceService";
+import { enrichPatientProfileInsurance } from "@/utils/patientProfileHelpers";
+import type { PatientProfile } from "@/types/patient-profile";
 
 export default function PatientProfileDetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -20,39 +21,25 @@ export default function PatientProfileDetailPage() {
 
     const loadProfile = useCallback(async () => {
         if (!id) return;
+
         setLoading(true);
         try {
-            const res = await getPatientDetail(id);
-            let mapped = res.success && res.data ? mapToProfile(res.data, user) : null;
+            const backendProfile = await patientProfileService.getById(id);
+            const insuranceResponse = await patientInsuranceService.getByPatient(id).catch(() => ({ data: [] }));
+            const mappedProfile = enrichPatientProfileInsurance(
+                mapBEToFEProfile(backendProfile, user?.id),
+                insuranceResponse.data || [],
+            );
 
-            if (user?.id && (!mapped || !mapped.id || mapped.id === id || mapped.id.startsWith("PAT_"))) {
-                const listRes = await getPatientsByAccountId(user.id);
-                const matchedPatient = listRes.data?.find((patient) =>
-                    patient.patient_id === id ||
-                    patient.patient_code === id ||
-                    patient.id === id,
-                );
-
-                if (matchedPatient) {
-                    mapped = mapToProfile(matchedPatient, user);
-                }
-            }
-
-            if (mapped) {
-                if (user?.id) {
-                    mapped.userId = user.id;
-                }
-                setProfile(mapped);
-            } else {
-                showToast("Không tìm thấy hồ sơ bệnh nhân.", "error");
-                router.push("/patient/patient-profiles");
-            }
+            setProfile(mappedProfile);
         } catch (error) {
-            showToast("Lỗi khi tải dữ liệu", "error");
+            console.error(error);
+            showToast("Không tìm thấy hồ sơ bệnh nhân.", "error");
+            router.push("/patient/patient-profiles");
         } finally {
             setLoading(false);
         }
-    }, [id, user, showToast, router]);
+    }, [id, router, showToast, user?.id]);
 
     useEffect(() => {
         loadProfile();
@@ -66,7 +53,9 @@ export default function PatientProfileDetailPage() {
         );
     }
 
-    if (!profile) return null;
+    if (!profile) {
+        return null;
+    }
 
     return (
         <div className="h-full w-full">
@@ -74,6 +63,7 @@ export default function PatientProfileDetailPage() {
                 profile={profile}
                 onBack={() => router.push("/patient/patient-profiles")}
                 onEdit={() => router.push(`/patient/patient-profiles?action=edit&id=${profile.id}`)}
+                onRefresh={loadProfile}
             />
         </div>
     );

@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { type PatientProfile } from "@/types/patient-profile";
 import Modal from "@/components/common/Modal";
 import { extractErrorMessage } from "@/api/response";
 import { useToast } from "@/contexts/ToastContext";
 import { patientInsuranceService, type InsuranceProvider, type PatientInsuranceRecord } from "@/services/patientInsuranceService";
+import { sortInsuranceRecords } from "@/utils/patientProfileHelpers";
+import { type PatientProfile } from "@/types/patient-profile";
 
 interface TabProps {
     profile: PatientProfile;
@@ -66,29 +67,7 @@ export default function InsuranceTab({ profile, onInsuranceChanged }: TabProps) 
         loadInsuranceData();
     }, [profile.id]);
 
-    const normalizedInsurances = useMemo(() => {
-        const today = new Date();
-        const sorted = [...insurances].sort((a, b) => {
-            const primaryDiff = Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary));
-            if (primaryDiff !== 0) return primaryDiff;
-            return new Date(b.end_date || 0).getTime() - new Date(a.end_date || 0).getTime();
-        });
-
-        return sorted.map((insurance) => {
-            const endDate = insurance.end_date ? new Date(insurance.end_date) : null;
-            const diffDays = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
-            const effectiveStatus =
-                diffDays === null ? "active" : diffDays < 0 ? "expired" : diffDays <= 30 ? "expiring" : "active";
-
-            return {
-                ...insurance,
-                effectiveStatus,
-            };
-        });
-    }, [insurances]);
-
-    const activeInsurances = normalizedInsurances.filter((item) => item.effectiveStatus !== "expired");
-    const expiringInsurances = activeInsurances.filter((item) => item.effectiveStatus === "expiring");
+    const normalizedInsurances = useMemo(() => sortInsuranceRecords(insurances), [insurances]);
 
     const resetForm = () => {
         setForm(INITIAL_FORM());
@@ -130,8 +109,8 @@ export default function InsuranceTab({ profile, onInsuranceChanged }: TabProps) 
         return Object.keys(nextErrors).length === 0;
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
         if (!validateForm()) return;
 
         try {
@@ -147,10 +126,10 @@ export default function InsuranceTab({ profile, onInsuranceChanged }: TabProps) 
 
             if (selectedInsurance?.patient_insurances_id) {
                 await patientInsuranceService.update(selectedInsurance.patient_insurances_id, payload);
-                showToast("Cập nhật thẻ bảo hiểm thành công!", "success");
+                showToast("Cập nhật thẻ bảo hiểm thành công.", "success");
             } else {
                 await patientInsuranceService.createForPatient(profile.id, payload);
-                showToast("Liên kết bảo hiểm thành công!", "success");
+                showToast("Liên kết thẻ bảo hiểm thành công.", "success");
             }
 
             setIsFormOpen(false);
@@ -188,15 +167,13 @@ export default function InsuranceTab({ profile, onInsuranceChanged }: TabProps) 
         }
     };
 
-    const hasAnyInsurance = normalizedInsurances.length > 0;
-
     return (
         <div className="space-y-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-[#2d353e] dark:bg-[#111821] lg:flex-row lg:items-center lg:justify-between">
                 <div>
                     <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Bảo hiểm y tế</h2>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                        Chỉ hiển thị các thẻ còn hiệu lực để người dùng dễ theo dõi và thao tác hơn.
+                        Quản lý các thẻ đang liên kết với hồ sơ này. Thẻ chính sẽ được ưu tiên hiển thị ở ngoài danh sách hồ sơ.
                     </p>
                 </div>
 
@@ -209,46 +186,30 @@ export default function InsuranceTab({ profile, onInsuranceChanged }: TabProps) 
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <StatusSummaryCard
-                    label="Đang hiển thị"
-                    value={String(activeInsurances.length)}
-                    tone="from-emerald-50 to-white text-emerald-700"
-                    icon="verified_user"
-                />
-                <StatusSummaryCard
-                    label="Sắp hết hạn"
-                    value={String(expiringInsurances.length)}
-                    tone="from-amber-50 to-white text-amber-700"
-                    icon="event_upcoming"
-                />
-            </div>
-
             {loading ? (
                 <div className="flex items-center justify-center p-12">
                     <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3C81C6] border-t-transparent"></div>
                 </div>
-            ) : activeInsurances.length > 0 ? (
-                <InsuranceSection
-                    title="Thẻ đang hiệu lực"
-                    description="Ưu tiên hiển thị thẻ chính trước, sau đó đến các thẻ còn sử dụng."
-                    items={activeInsurances}
-                    onEdit={openEdit}
-                    onDelete={handleDelete}
-                    onHistory={handleViewHistory}
-                />
+            ) : normalizedInsurances.length > 0 ? (
+                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                    {normalizedInsurances.map((insurance) => (
+                        <InsuranceCard
+                            key={insurance.patient_insurances_id}
+                            insurance={insurance}
+                            onEdit={openEdit}
+                            onDelete={handleDelete}
+                            onHistory={handleViewHistory}
+                        />
+                    ))}
+                </div>
             ) : (
                 <div className="rounded-3xl border border-dashed border-gray-300 bg-gray-50 p-12 text-center dark:border-[#2d353e] dark:bg-[#13191f]">
                     <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[#3C81C6]/10">
                         <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "40px" }}>health_and_safety</span>
                     </div>
-                    <h4 className="mb-2 font-semibold text-gray-900 dark:text-white">
-                        {hasAnyInsurance ? "Không có thẻ bảo hiểm còn hiệu lực" : "Chưa liên kết bảo hiểm"}
-                    </h4>
+                    <h4 className="mb-2 font-semibold text-gray-900 dark:text-white">Chưa liên kết bảo hiểm</h4>
                     <p className="mx-auto max-w-md text-sm text-gray-500">
-                        {hasAnyInsurance
-                            ? "Các thẻ đã hết hạn đang được ẩn đi. Hãy liên kết thẻ mới hoặc cập nhật lại thẻ hiện có để tiếp tục sử dụng."
-                            : "Hãy liên kết thẻ bảo hiểm để hiển thị nhà cung cấp, thời hạn và tình trạng sử dụng nhanh hơn."}
+                        Hãy liên kết thẻ bảo hiểm để hiển thị nhà cung cấp, thời hạn và trạng thái sử dụng rõ ràng hơn.
                     </p>
                 </div>
             )}
@@ -378,7 +339,7 @@ export default function InsuranceTab({ profile, onInsuranceChanged }: TabProps) 
                                 {item.user_email || item.user_name || "Hệ thống"}
                             </p>
                             {(item.new_values || item.old_values) && (
-                                <pre className="mt-3 overflow-x-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-500 whitespace-pre-wrap break-words dark:bg-[#0f141b]">
+                                <pre className="mt-3 overflow-x-auto rounded-lg bg-gray-50 p-3 text-xs whitespace-pre-wrap break-words text-gray-500 dark:bg-[#0f141b]">
                                     {JSON.stringify(item.new_values || item.old_values, null, 2)}
                                 </pre>
                             )}
@@ -389,42 +350,6 @@ export default function InsuranceTab({ profile, onInsuranceChanged }: TabProps) 
                 </div>
             </Modal>
         </div>
-    );
-}
-
-function InsuranceSection({
-    title,
-    description,
-    items,
-    onEdit,
-    onDelete,
-    onHistory,
-}: {
-    title: string;
-    description: string;
-    items: Array<PatientInsuranceRecord & { effectiveStatus: string }>;
-    onEdit: (insurance: PatientInsuranceRecord) => void;
-    onDelete: (insurance: PatientInsuranceRecord) => void;
-    onHistory: (insurance: PatientInsuranceRecord) => void;
-}) {
-    return (
-        <section className="space-y-4">
-            <div>
-                <h3 className="font-semibold text-gray-900 dark:text-white">{title}</h3>
-                <p className="mt-1 text-sm text-gray-500">{description}</p>
-            </div>
-            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                {items.map((insurance) => (
-                    <InsuranceCard
-                        key={insurance.patient_insurances_id}
-                        insurance={insurance}
-                        onEdit={onEdit}
-                        onDelete={onDelete}
-                        onHistory={onHistory}
-                    />
-                ))}
-            </div>
-        </section>
     );
 }
 
@@ -447,48 +372,40 @@ function InsuranceCard({
     const status = statusMap[insurance.effectiveStatus] || statusMap.active;
 
     return (
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#3C81C6] to-[#2563eb] p-6 text-white shadow-md">
-            <div className="absolute -right-4 -top-6 opacity-10">
-                <span className="material-symbols-outlined" style={{ fontSize: "140px" }}>health_and_safety</span>
-            </div>
-            <div className="relative z-10">
-                <div className="flex items-start justify-between gap-3">
-                    <div>
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
-                            <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-bold">
-                                {insurance.provider_name || "Nhà cung cấp bảo hiểm"}
+        <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-[#2d353e] dark:bg-[#111821]">
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                            {insurance.provider_name || "Nhà cung cấp bảo hiểm"}
+                        </span>
+                        {insurance.is_primary && (
+                            <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">
+                                Thẻ chính
                             </span>
-                            {insurance.is_primary && (
-                                <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-[#2563eb]">
-                                    Thẻ chính
-                                </span>
-                            )}
-                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${status.className}`}>
-                                {status.label}
-                            </span>
-                        </div>
-                        <p className="text-xs uppercase tracking-[0.22em] opacity-80">Số thẻ</p>
-                        <p className="mt-2 break-all font-mono text-xl font-bold tracking-[0.18em]">{insurance.insurance_number}</p>
+                        )}
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${status.className}`}>
+                            {status.label}
+                        </span>
                     </div>
-                    <div className="flex items-center gap-1">
-                        <IconButton icon="edit" title="Cập nhật thẻ" onClick={() => onEdit(insurance)} />
-                        <IconButton icon="history" title="Lịch sử thay đổi" onClick={() => onHistory(insurance)} />
-                        <IconButton icon="delete" title="Xóa thẻ" onClick={() => onDelete(insurance)} />
-                    </div>
+                    <p className="text-xs uppercase tracking-[0.22em] text-slate-400">Số thẻ</p>
+                    <p className="mt-2 break-all font-mono text-lg font-bold tracking-[0.16em] text-slate-900 dark:text-white">
+                        {insurance.insurance_number}
+                    </p>
                 </div>
 
-                <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
-                    <InsuranceMeta
-                        label="Ngày bắt đầu"
-                        value={insurance.start_date ? new Date(insurance.start_date).toLocaleDateString("vi-VN") : "Chưa có"}
-                    />
-                    <InsuranceMeta
-                        label="Ngày kết thúc"
-                        value={insurance.end_date ? new Date(insurance.end_date).toLocaleDateString("vi-VN") : "Chưa có"}
-                    />
-                    <InsuranceMeta label="Tỷ lệ hưởng" value={`${insurance.coverage_percent ?? 0}%`} />
-                    <InsuranceMeta label="Mã thẻ" value={insurance.patient_insurances_id} />
+                <div className="flex items-center gap-1">
+                    <IconButton icon="edit" title="Cập nhật thẻ" onClick={() => onEdit(insurance)} />
+                    <IconButton icon="history" title="Lịch sử thay đổi" onClick={() => onHistory(insurance)} />
+                    <IconButton icon="delete" title="Xóa thẻ" onClick={() => onDelete(insurance)} />
                 </div>
+            </div>
+
+            <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                <InsuranceMeta label="Ngày bắt đầu" value={insurance.start_date ? new Date(insurance.start_date).toLocaleDateString("vi-VN") : "Chưa có"} />
+                <InsuranceMeta label="Ngày kết thúc" value={insurance.end_date ? new Date(insurance.end_date).toLocaleDateString("vi-VN") : "Chưa có"} />
+                <InsuranceMeta label="Tỷ lệ hưởng" value={`${insurance.coverage_percent ?? 0}%`} />
+                <InsuranceMeta label="Mã liên kết" value={insurance.patient_insurances_id} />
             </div>
         </div>
     );
@@ -496,21 +413,9 @@ function InsuranceCard({
 
 function InsuranceMeta({ label, value }: { label: string; value: string }) {
     return (
-        <div className="rounded-2xl bg-white/10 p-3">
-            <p className="text-[11px] uppercase tracking-[0.15em] opacity-70">{label}</p>
-            <p className="mt-1 break-all text-sm font-semibold">{value}</p>
-        </div>
-    );
-}
-
-function StatusSummaryCard({ label, value, tone, icon }: { label: string; value: string; tone: string; icon: string }) {
-    return (
-        <div className={`rounded-2xl border border-gray-100 bg-gradient-to-br ${tone} p-4 dark:border-[#2d353e]`}>
-            <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-[0.15em]">{label}</p>
-                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
-            </div>
-            <p className="mt-3 text-2xl font-bold">{value}</p>
+        <div className="rounded-2xl bg-slate-50 p-3 dark:bg-[#0f141b]">
+            <p className="text-[11px] uppercase tracking-[0.15em] text-slate-400">{label}</p>
+            <p className="mt-1 break-all text-sm font-semibold text-slate-900 dark:text-white">{value}</p>
         </div>
     );
 }
@@ -527,8 +432,8 @@ function Field({ label, children, error }: { label: string; children: React.Reac
 
 function IconButton({ icon, title, onClick }: { icon: string; title: string; onClick: () => void }) {
     return (
-        <button onClick={onClick} className="rounded-xl bg-white/10 p-2 transition-colors hover:bg-white/20" title={title} type="button">
-            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
+        <button onClick={onClick} className="rounded-xl bg-slate-100 p-2 transition-colors hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700" title={title} type="button">
+            <span className="material-symbols-outlined text-slate-600 dark:text-slate-200" style={{ fontSize: "18px" }}>{icon}</span>
         </button>
     );
 }
