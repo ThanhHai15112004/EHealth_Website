@@ -854,6 +854,36 @@ export default function ExaminationPage() {
                                             className="w-full px-4 py-2.5 bg-[#f8f9fa] dark:bg-[#13191f] border border-[#dde0e4] dark:border-[#2d353e] rounded-xl text-sm outline-none focus:ring-2 focus:ring-[#3C81C6]/20 dark:text-white" />
                                     </div>
                                 </div>
+
+                                {/* Quick diagnosis templates */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className="material-symbols-outlined text-[16px] text-[#687582] dark:text-gray-400">bolt</span>
+                                        <span className="text-xs font-medium text-[#687582] dark:text-gray-400">Chẩn đoán thường gặp</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {[
+                                            { code: "J00", desc: "Cảm cúm thông thường" },
+                                            { code: "J02.9", desc: "Viêm họng cấp" },
+                                            { code: "K29.7", desc: "Viêm dạ dày không đặc hiệu" },
+                                            { code: "R50.9", desc: "Sốt không rõ nguyên nhân" },
+                                            { code: "I10", desc: "Tăng huyết áp vô căn" },
+                                            { code: "E11.9", desc: "Đái tháo đường type 2 không biến chứng" },
+                                            { code: "M54.5", desc: "Đau thắt lưng" },
+                                            { code: "R51", desc: "Đau đầu" },
+                                        ].map(t => (
+                                            <button key={t.code} type="button"
+                                                onClick={() => { setIcdCode(t.code); setDiagnosis(t.desc); }}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${icdCode === t.code
+                                                    ? "bg-[#3C81C6] text-white border-[#3C81C6]"
+                                                    : "bg-white dark:bg-[#13191f] text-[#121417] dark:text-gray-300 border-[#dde0e4] dark:border-[#2d353e] hover:border-[#3C81C6] hover:text-[#3C81C6]"
+                                                }`}>
+                                                <span className="font-mono text-[10px] opacity-70 mr-1.5">{t.code}</span>
+                                                {t.desc}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
                                 {/* Show lab results summary if available */}
                                 {Object.keys(labResults).length > 0 && (
                                     <div className="p-4 bg-teal-50 dark:bg-teal-900/10 rounded-xl border border-teal-200 dark:border-teal-800">

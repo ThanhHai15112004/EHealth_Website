@@ -50,27 +50,39 @@ export default function BillingPage() {
             const res = await billingService.getInvoices(params);
             const { data } = unwrapList<any>(res);
             if (data.length > 0) {
-                const mapped: Invoice[] = data.map((inv: any) => ({
-                    id:              inv.id ?? inv._id ?? "",
-                    code:            inv.invoiceNumber ?? inv.code ?? inv.id ?? "",
-                    date:            inv.createdAt ? new Date(inv.createdAt).toLocaleDateString("vi-VN") : (inv.date ?? ""),
-                    patientName:     inv.patientName ?? inv.patient ?? "",
-                    doctorName:      inv.doctorName ?? "",
-                    department:      inv.department ?? inv.departmentName ?? "",
-                    status:          (inv.status ?? "pending") as Invoice["status"],
-                    subtotal:        Number(inv.subtotal ?? inv.totalAmount ?? 0),
-                    insuranceCovered: Number(inv.insuranceCovered ?? inv.insuranceAmount ?? 0),
-                    discount:        Number(inv.discount ?? 0),
-                    total:           Number(inv.total ?? inv.totalAmount ?? 0),
-                    paymentMethod:   inv.paymentMethod ?? "",
-                    paidAt:          inv.paidAt ?? inv.updatedAt ?? "",
-                    items:           (inv.items ?? []).map((item: any) => ({
-                        name:      item.name ?? item.serviceName ?? "",
-                        quantity:  Number(item.quantity ?? 1),
-                        unitPrice: Number(item.unitPrice ?? item.price ?? 0),
-                        total:     Number(item.total ?? item.totalPrice ?? 0),
-                    })),
-                }));
+                // BE (snake_case): invoices_id, invoice_code, patient_name, total_amount,
+                //   insurance_amount, discount_amount, net_amount, status=UNPAID/PAID/...
+                const statusMap: Record<string, Invoice["status"]> = {
+                    UNPAID: "pending", PENDING: "pending", OVERDUE: "overdue",
+                    PAID: "paid", PARTIAL: "paid",
+                    REFUNDED: "refunded", CANCELLED: "refunded",
+                };
+                const mapped: Invoice[] = data.map((inv: any) => {
+                    const rawStatus = (inv.status ?? "pending").toString().toUpperCase();
+                    const createdAt = inv.created_at ?? inv.createdAt;
+                    const paidAt = inv.paid_at ?? inv.paidAt ?? inv.updated_at ?? inv.updatedAt ?? "";
+                    return {
+                        id:              inv.invoices_id ?? inv.id ?? inv._id ?? "",
+                        code:            inv.invoice_code ?? inv.invoiceNumber ?? inv.code ?? inv.invoices_id ?? "",
+                        date:            createdAt ? new Date(createdAt).toLocaleDateString("vi-VN") : (inv.date ?? ""),
+                        patientName:     inv.patient_name ?? inv.patientName ?? inv.patient ?? "",
+                        doctorName:      inv.doctor_name ?? inv.doctorName ?? inv.created_by_name ?? "",
+                        department:      inv.department_name ?? inv.department ?? inv.departmentName ?? "",
+                        status:          statusMap[rawStatus] ?? (rawStatus.toLowerCase() as Invoice["status"]),
+                        subtotal:        Number(inv.total_amount ?? inv.subtotal ?? 0),
+                        insuranceCovered: Number(inv.insurance_amount ?? inv.insuranceCovered ?? 0),
+                        discount:        Number(inv.discount_amount ?? inv.discount ?? 0),
+                        total:           Number(inv.net_amount ?? inv.total ?? inv.totalAmount ?? 0),
+                        paymentMethod:   inv.payment_method ?? inv.paymentMethod ?? "",
+                        paidAt,
+                        items:           (inv.items ?? []).map((item: any) => ({
+                            name:      item.service_name ?? item.name ?? item.serviceName ?? "",
+                            quantity:  Number(item.quantity ?? 1),
+                            unitPrice: Number(item.unit_price ?? item.unitPrice ?? item.price ?? 0),
+                            total:     Number(item.total_amount ?? item.total ?? item.totalPrice ?? 0),
+                        })),
+                    };
+                });
                 setInvoices(mapped);
             }
         } catch {
@@ -88,13 +100,16 @@ export default function BillingPage() {
             .then(res => {
                 const { data } = unwrapList<any>(res);
                 if (data.length > 0) {
+                    // BE catalog: services_id, code, name, service_group, service_type,
+                    //   insurance_code, description, is_active, category_name
+                    // Giá nằm trong bảng pricing riêng, cần gọi resolvePrice nếu muốn
                     const mapped: ServicePrice[] = data.map((s: any) => ({
-                        id:           s.id ?? s._id ?? "",
-                        name:         s.name ?? s.serviceName ?? "",
-                        category:     s.category ?? s.categoryName ?? "Khác",
-                        description:  s.description ?? "",
-                        price:        Number(s.price ?? s.unitPrice ?? 0),
-                        insuranceRate: Number(s.insuranceRate ?? s.insuranceCoverageRate ?? 0),
+                        id:            s.services_id ?? s.id ?? s._id ?? "",
+                        name:          s.name ?? s.serviceName ?? "",
+                        category:      s.category_name ?? s.service_group ?? s.category ?? s.categoryName ?? "Khác",
+                        description:   s.description ?? "",
+                        price:         Number(s.base_price ?? s.unit_price ?? s.price ?? s.unitPrice ?? 0),
+                        insuranceRate: Number(s.insurance_rate ?? s.insuranceRate ?? s.insuranceCoverageRate ?? 0),
                     }));
                     setCatalog(mapped);
                 }

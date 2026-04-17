@@ -8,6 +8,7 @@ import { getPatients } from "@/services/patientService";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 import { AIQueuePredictor } from "@/components/portal/ai";
+import { QueueCard, type QueueStatus } from "@/components/shared/cards";
 
 const STATS_CONFIG = [
     { label: "Lịch hẹn hôm nay", icon: "calendar_month", bg: "bg-blue-50 dark:bg-blue-900/20", color: "text-blue-600", badgeColor: "text-blue-600 bg-blue-50 dark:bg-blue-900/20" },
@@ -48,6 +49,11 @@ export default function ReceptionistDashboard() {
     const [appointments, setAppointments] = useState<AptDash[]>([]);
     const [loadingApts, setLoadingApts] = useState(true);
     const [stats, setStats] = useState<StatItem[]>(STATS_CONFIG.map(s => ({ ...s, value: "—", badge: "Đang tải..." })));
+    const [now, setNow] = useState(new Date());
+    useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), 1000);
+        return () => clearInterval(id);
+    }, []);
 
     useEffect(() => {
         const today = new Date().toISOString().split("T")[0];
@@ -114,9 +120,17 @@ export default function ReceptionistDashboard() {
                             <p className="text-[#687582] dark:text-gray-400 mt-0.5 text-sm">Quầy tiếp nhận — Ca sáng</p>
                         </div>
                         <div className="flex items-center gap-3">
-                            <div className="flex items-center gap-2 text-sm text-[#687582] dark:text-gray-400">
-                                <span className="material-symbols-outlined text-[18px]">calendar_today</span>
-                                <span>{getCurrentDate()}</span>
+                            <div className="hidden md:flex flex-col items-end">
+                                <div className="flex items-center gap-2 text-sm text-[#687582] dark:text-gray-400">
+                                    <span className="material-symbols-outlined text-[18px]">calendar_today</span>
+                                    <span>{getCurrentDate()}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5 mt-1">
+                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    <span className="text-lg font-mono font-extrabold text-[#121417] dark:text-white tracking-tight tabular-nums">
+                                        {now.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                                    </span>
+                                </div>
                             </div>
                             <Link href="/portal/receptionist/reception" className="flex items-center gap-2 px-4 py-2.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white rounded-xl text-sm font-medium transition-colors shadow-lg shadow-[#3C81C6]/20">
                                 <span className="material-symbols-outlined text-[18px]">person_add</span>
@@ -184,45 +198,40 @@ export default function ReceptionistDashboard() {
                                 ))}
                             </div>
                         </div>
-                        <div className="divide-y divide-[#f0f1f3] dark:divide-[#2d353e]">
+                        <div className="p-5">
                             {loadingApts ? (
-                                <div className="px-5 py-8 text-center text-sm text-[#687582]">
+                                <div className="py-8 text-center text-sm text-[#687582]">
                                     <div className="w-6 h-6 border-2 border-[#3C81C6]/20 border-t-[#3C81C6] rounded-full animate-spin mx-auto mb-2" />
                                     Đang tải lịch hẹn...
                                 </div>
                             ) : filtered.length === 0 ? (
-                                <div className="px-5 py-10 text-center text-sm text-[#687582]">
-                                    <span className="material-symbols-outlined text-[36px] mb-2 block">event_busy</span>
-                                    Không có lịch hẹn nào hôm nay
+                                <div className="py-12 flex flex-col items-center justify-center text-center">
+                                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-900/10 flex items-center justify-center mb-3">
+                                        <span className="material-symbols-outlined text-blue-600 text-[32px]">event_busy</span>
+                                    </div>
+                                    <p className="text-sm font-semibold text-[#121417] dark:text-white mb-1">
+                                        {filter === "all" ? "Không có lịch hẹn" : filter === "waiting" ? "Không có ai đang chờ" : "Chưa ai được tiếp nhận"}
+                                    </p>
+                                    <p className="text-xs text-[#687582] dark:text-gray-500">Lịch hẹn hôm nay sẽ hiển thị ở đây.</p>
                                 </div>
                             ) : (
-                                filtered.map((apt) => (
-                                    <div key={apt.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-[#f6f7f8] dark:hover:bg-[#13191f] transition-colors">
-                                        <div className="flex items-center gap-4">
-                                            <div className="text-center min-w-[50px]">
-                                                <p className="text-lg font-bold text-[#121417] dark:text-white">{apt.time}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-semibold text-[#121417] dark:text-white">{apt.patient}</p>
-                                                <p className="text-xs text-[#687582] dark:text-gray-500">{apt.doctor} • {apt.dept}</p>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${apt.status === "checked_in"
-                                                ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600"
-                                                : "bg-amber-50 dark:bg-amber-500/10 text-amber-600"
-                                                }`}>
-                                                <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                                                {apt.status === "checked_in" ? "Đã tiếp nhận" : "Chờ đến"}
-                                            </span>
-                                            {apt.status === "waiting" && (
-                                                <button onClick={() => setAppointments(prev => prev.map(a => a.id === apt.id ? { ...a, status: "checked_in" } : a))} className="p-1.5 rounded-lg bg-[#3C81C6]/10 text-[#3C81C6] hover:bg-[#3C81C6]/20 transition-colors" title="Tiếp nhận">
-                                                    <span className="material-symbols-outlined text-[18px]">how_to_reg</span>
-                                                </button>
-                                            )}
-                                        </div>
-                                    </div>
-                                ))
+                                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                                    {filtered.map((apt, idx) => (
+                                        <QueueCard
+                                            key={apt.id}
+                                            queueNumber={idx + 1}
+                                            patientName={apt.patient}
+                                            department={apt.dept}
+                                            note={apt.doctor ? `BS: ${apt.doctor}` : undefined}
+                                            status={(apt.status === "checked_in" ? "called" : "waiting") as QueueStatus}
+                                            priority="normal"
+                                            onCall={apt.status === "waiting" ? () =>
+                                                setAppointments(prev => prev.map(a => a.id === apt.id ? { ...a, status: "checked_in" } : a))
+                                                : undefined}
+                                            onDetail={() => { window.location.href = `/portal/receptionist/appointments`; }}
+                                        />
+                                    ))}
+                                </div>
                             )}
                         </div>
                     </div>

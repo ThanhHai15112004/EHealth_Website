@@ -10,6 +10,7 @@ import { dispensingService } from "@/services/dispensingService";
 import { inventoryService } from "@/services/inventoryService";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
 import { AIInventoryPredictor } from "@/components/portal/ai";
+import { PrescriptionCard } from "@/components/shared/cards";
 
 // ==================== HELPERS ====================
 function getGreeting(): string {
@@ -125,6 +126,27 @@ export default function PharmacistDashboard() {
                     </div>
                 </div>
 
+                {/* ===== QUICK ACTIONS ===== */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {[
+                        { icon: "local_pharmacy", label: "Cấp phát", href: "/portal/pharmacist/dispensing", color: "text-[#3C81C6]", bg: "bg-[#3C81C6]/[0.08]" },
+                        { icon: "inventory_2", label: "Kiểm kho", href: "/portal/pharmacist/inventory", color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
+                        { icon: "input", label: "Nhập thuốc", href: "/portal/pharmacist/inventory/import", color: "text-violet-600", bg: "bg-violet-50 dark:bg-violet-900/20" },
+                        { icon: "receipt_long", label: "Đơn thuốc", href: "/portal/pharmacist/prescriptions", color: "text-amber-600", bg: "bg-amber-50 dark:bg-amber-900/20" },
+                    ].map((a) => (
+                        <Link key={a.label} href={a.href}
+                            className="group bg-white dark:bg-[#1e242b] p-4 rounded-2xl border border-[#dde0e4] dark:border-[#2d353e] shadow-sm hover:shadow-md hover:border-[#3C81C6]/40 transition-all flex items-center gap-3">
+                            <div className={`p-2.5 ${a.bg} ${a.color} rounded-xl group-hover:scale-110 transition-transform`}>
+                                <span className="material-symbols-outlined text-[22px]">{a.icon}</span>
+                            </div>
+                            <div>
+                                <p className="text-sm font-bold text-[#121417] dark:text-white">{a.label}</p>
+                                <p className="text-[11px] text-[#687582] dark:text-gray-500">Mở nhanh</p>
+                            </div>
+                        </Link>
+                    ))}
+                </div>
+
                 {/* ===== STATS ===== */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-5">
                     {stats.map((s) => (
@@ -182,29 +204,38 @@ export default function PharmacistDashboard() {
                                 </button>
                             </div>
                         </div>
-                        <div className="divide-y divide-[#f0f1f3] dark:divide-[#2d353e]">
-                            {filtered.map((rx) => (
-                                <div key={rx.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-[#f6f7f8] dark:hover:bg-[#13191f] transition-colors">
-                                    <div className="flex items-center gap-3">
-                                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${rx.urgent ? "bg-red-50 dark:bg-red-500/10" : "bg-[#3C81C6]/10"}`}>
-                                            <span className={`material-symbols-outlined text-[18px] ${rx.urgent ? "text-red-500" : "text-[#3C81C6]"}`}>
-                                                {rx.urgent ? "priority_high" : "receipt_long"}
-                                            </span>
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <p className="text-sm font-semibold text-[#121417] dark:text-white">{rx.patient}</p>
-                                                {rx.urgent && <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 dark:bg-red-500/10 text-red-500">KHẨN</span>}
-                                            </div>
-                                            <p className="text-xs text-[#687582] dark:text-gray-500">{rx.doctor} • {rx.dept} • {rx.medicines} thuốc</p>
-                                        </div>
+                        <div className="p-5">
+                            {filtered.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-12 text-center">
+                                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-900/10 flex items-center justify-center mb-3">
+                                        <span className="material-symbols-outlined text-emerald-600 text-[32px]">inbox</span>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        <span className="text-xs text-[#687582] dark:text-gray-500 bg-[#f6f7f8] dark:bg-[#13191f] px-2 py-0.5 rounded">{rx.time}</span>
-                                        <button onClick={() => router.push('/portal/pharmacist/dispensing')} className="px-3 py-1.5 bg-[#3C81C6] hover:bg-[#2a6da8] text-white text-xs font-medium rounded-lg transition-colors">Cấp phát</button>
-                                    </div>
+                                    <p className="text-sm font-semibold text-[#121417] dark:text-white mb-1">
+                                        {filter === "urgent" ? "Không có đơn khẩn" : "Không có đơn chờ cấp phát"}
+                                    </p>
+                                    <p className="text-xs text-[#687582] dark:text-gray-500">
+                                        {filter === "urgent" ? "Tuyệt vời! Tất cả đơn khẩn đã xử lý." : "Các đơn mới sẽ xuất hiện ở đây."}
+                                    </p>
                                 </div>
-                            ))}
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {filtered.map((rx) => (
+                                        <PrescriptionCard
+                                            key={rx.id}
+                                            code={rx.id}
+                                            patientName={rx.patient}
+                                            doctorName={rx.doctor}
+                                            department={rx.dept}
+                                            medicineCount={rx.medicines}
+                                            createdAt={rx.time}
+                                            urgent={rx.urgent}
+                                            status="pending"
+                                            onDispense={() => router.push('/portal/pharmacist/dispensing')}
+                                            onDetail={() => router.push(`/portal/pharmacist/prescriptions`)}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -256,21 +287,33 @@ export default function PharmacistDashboard() {
                                     <p className="text-xs text-[#687582] dark:text-gray-500">4 đơn gần nhất</p>
                                 </div>
                             </div>
-                            <div className="divide-y divide-[#f0f1f3] dark:divide-[#2d353e]">
-                                {recentDispenses.map((d) => (
-                                    <div key={d.id} className="px-5 py-3 flex items-center justify-between">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center">
-                                                <span className="material-symbols-outlined text-emerald-600 text-[16px]">check_circle</span>
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-medium text-[#121417] dark:text-white">{d.patient}</p>
-                                                <p className="text-[11px] text-[#687582] dark:text-gray-500">{d.medicines} thuốc • {d.time}</p>
-                                            </div>
-                                        </div>
-                                        <span className="text-xs font-bold text-[#121417] dark:text-white">{d.total}</span>
+                            <div className="px-5 py-4">
+                                {recentDispenses.length === 0 ? (
+                                    <div className="py-8 flex flex-col items-center justify-center text-center">
+                                        <span className="material-symbols-outlined text-4xl text-gray-300 dark:text-gray-600 mb-2">history</span>
+                                        <p className="text-xs text-[#687582] dark:text-gray-500">Chưa cấp đơn nào hôm nay</p>
                                     </div>
-                                ))}
+                                ) : (
+                                    <div className="relative pl-5">
+                                        <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-emerald-200 via-emerald-100 to-transparent dark:from-emerald-800/50 dark:via-emerald-900/30" />
+                                        <div className="space-y-3.5">
+                                            {recentDispenses.map((d) => (
+                                                <div key={d.id} className="relative">
+                                                    <div className="absolute -left-5 top-1 w-[18px] h-[18px] rounded-full bg-emerald-100 dark:bg-emerald-900/50 border-2 border-white dark:border-[#1e242b] flex items-center justify-center">
+                                                        <span className="material-symbols-outlined text-emerald-600" style={{ fontSize: "10px" }}>check</span>
+                                                    </div>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-medium text-[#121417] dark:text-white truncate">{d.patient}</p>
+                                                            <p className="text-[11px] text-[#687582] dark:text-gray-500">{d.medicines} thuốc • {d.time}</p>
+                                                        </div>
+                                                        <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex-shrink-0">{d.total}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

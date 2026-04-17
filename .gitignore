@@ -49,3 +49,9 @@ project.md
 
 # Gemini
 .gemini/
+
+# QC reports
+qc-reports/
+
+# Vitest coverage
+coverage/

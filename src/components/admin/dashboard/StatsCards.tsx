@@ -14,8 +14,18 @@ interface DashboardStats {
 }
 
 interface StatsCardsProps {
-    stats: DashboardStats;
+    stats: DashboardStats | null | undefined;
 }
+
+const DEFAULT_STATS: DashboardStats = {
+    totalRevenue: 0,
+    revenueChange: 0,
+    todayVisits: 0,
+    visitsChange: 0,
+    doctorsOnDuty: 0,
+    totalDoctors: 0,
+    medicineAlerts: 0,
+};
 
 function formatNumber(num: number): string {
     return num.toLocaleString("vi-VN");
@@ -78,7 +88,8 @@ function MiniSparkline({ color }: { color: string }) {
     );
 }
 
-export function StatsCards({ stats }: StatsCardsProps) {
+export function StatsCards({ stats: rawStats }: StatsCardsProps) {
+    const stats: DashboardStats = { ...DEFAULT_STATS, ...(rawStats ?? {}) };
     const avatarColors = ["from-blue-400 to-blue-600", "from-emerald-400 to-teal-500", "from-amber-400 to-orange-500", "from-violet-400 to-purple-500"];
 
     return (
@@ -97,7 +108,7 @@ export function StatsCards({ stats }: StatsCardsProps) {
                                     {String.fromCharCode(65 + i)}
                                 </div>
                             ))}
-                            <div className="w-5 h-5 rounded-full border-[1.5px] border-white dark:border-[#1e242b] bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] text-gray-600 font-bold">+{stats.doctorsOnDuty - 4}</div>
+                            <div className="w-5 h-5 rounded-full border-[1.5px] border-white dark:border-[#1e242b] bg-gray-200 dark:bg-gray-700 flex items-center justify-center text-[8px] text-gray-600 font-bold">+{Math.max(0, stats.doctorsOnDuty - 4)}</div>
                         </div>
                         <span className="text-[10px] text-[#687582] dark:text-gray-500">Đang hoạt động</span>
                     </div>

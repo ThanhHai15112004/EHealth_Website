@@ -1,0 +1,53 @@
+version: 2
+updates:
+  # npm (frontend dependencies)
+  - package-ecosystem: 'npm'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+      time: '03:00'
+      timezone: 'Asia/Ho_Chi_Minh'
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'deps'
+      prefix-development: 'deps-dev'
+      include: 'scope'
+    labels:
+      - 'dependencies'
+    groups:
+      # Gom update cùng nhóm vào 1 PR để đỡ noise
+      react-ecosystem:
+        patterns:
+          - 'react'
+          - 'react-dom'
+          - '@types/react*'
+      next-ecosystem:
+        patterns:
+          - 'next'
+          - 'eslint-config-next'
+      testing:
+        patterns:
+          - '@playwright/*'
+          - 'tsx'
+      tailwind:
+        patterns:
+          - 'tailwindcss'
+          - 'postcss'
+          - 'autoprefixer'
+    ignore:
+      # Bỏ qua major version updates để không bị break
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+
+  # GitHub Actions
+  - package-ecosystem: 'github-actions'
+    directory: '/'
+    schedule:
+      interval: 'weekly'
+      day: 'monday'
+    commit-message:
+      prefix: 'ci'
+    labels:
+      - 'ci'
+      - 'dependencies'

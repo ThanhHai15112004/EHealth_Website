@@ -361,10 +361,10 @@ export default function DoctorsPage() {
                                     </td>
                                 </tr>
                             ) : (
-                                filteredDoctors.map((doctor) => {
+                                filteredDoctors.map((doctor, idx) => {
                                     const statusStyle = getStatusStyle(doctor.status);
                                     return (
-                                        <tr key={doctor.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                        <tr key={`${doctor.id || doctor.code || 'doc'}-${idx}`} className="group hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                                             <td className="py-4 px-6">
                                                 <div className="flex items-center gap-3">
                                                     <div

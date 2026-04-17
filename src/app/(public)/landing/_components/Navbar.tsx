@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth, getRedirectUrl } from "@/contexts/AuthContext";
 import { NAV_ITEMS } from "./data";
 
 export function LandingNavbar({ activeSection, scrollTo }: { activeSection: string; scrollTo: (id: string) => void }) {
@@ -60,21 +60,35 @@ export function LandingNavbar({ activeSection, scrollTo }: { activeSection: stri
                                             <p className="text-sm font-semibold text-gray-900 truncate">{user.fullName}</p>
                                             <p className="text-xs text-gray-500 truncate">{user.email}</p>
                                         </div>
-                                        <Link href="/patient" onClick={() => setUserMenuOpen(false)}
-                                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>dashboard</span>
-                                            Cổng bệnh nhân
-                                        </Link>
-                                        <Link href="/patient/appointments" onClick={() => setUserMenuOpen(false)}
-                                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>calendar_month</span>
-                                            Lịch hẹn của tôi
-                                        </Link>
-                                        <Link href="/patient/patient-profiles" onClick={() => setUserMenuOpen(false)}
-                                            className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>family_restroom</span>
-                                            Hồ sơ bệnh nhân
-                                        </Link>
+                                        {(() => {
+                                            const primaryRole = (user.roles?.[0] || (user as any).role || "patient").toString();
+                                            const dashboardHref = getRedirectUrl(primaryRole);
+                                            const isPatient = (user.roles?.some(r => r.toLowerCase() === "patient") ?? false)
+                                                || primaryRole.toLowerCase() === "patient";
+                                            return (
+                                                <>
+                                                    <Link href={dashboardHref} onClick={() => setUserMenuOpen(false)}
+                                                        className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                                                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>dashboard</span>
+                                                        Bảng điều khiển của tôi
+                                                    </Link>
+                                                    {isPatient && (
+                                                        <>
+                                                            <Link href="/patient/appointments" onClick={() => setUserMenuOpen(false)}
+                                                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                                                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>calendar_month</span>
+                                                                Lịch hẹn của tôi
+                                                            </Link>
+                                                            <Link href="/patient/patient-profiles" onClick={() => setUserMenuOpen(false)}
+                                                                className="flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
+                                                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>family_restroom</span>
+                                                                Hồ sơ bệnh nhân
+                                                            </Link>
+                                                        </>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
                                         <div className="border-t border-gray-100 my-1" />
                                         <button onClick={() => { setUserMenuOpen(false); logout(); }}
                                             className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 w-full transition-colors">
