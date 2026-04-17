@@ -204,8 +204,8 @@ export const SPECIALTY_ENDPOINTS = {
     DETAIL: (id: string) => `/api/specialties/${id}`,            // GET: chi tiết
     UPDATE: (id: string) => `/api/specialties/${id}`,            // PUT: cập nhật
     DELETE: (id: string) => `/api/specialties/${id}`,            // DELETE: xóa mềm
-    BY_FACILITY: (facilityId: string) => `/api/specialties/facility/${facilityId}`,
-    SPECIALTY_SERVICES: (id: string) => `/api/specialties/${id}/services`,
+    BY_FACILITY: (facilityId: string) => `/api/specialties/by-facility/${facilityId}`,
+    SPECIALTY_SERVICES: (id: string) => `/api/specialty-services/${id}/services`,
 };
 
 // ============================================
@@ -355,7 +355,7 @@ export const DOCTOR_ENDPOINTS = {
     DELETE: (id: string) => `/api/doctors/${id}`,
     BY_DEPARTMENT: (departmentId: string) => `/api/doctors/department/${departmentId}`,
     SCHEDULE: (doctorId: string) => `/api/doctors/${doctorId}/schedule`,
-    SERVICES: (doctorId: string) => `/api/doctors/${doctorId}/services`,
+    SERVICES: (doctorId: string) => `/api/doctor-services/${doctorId}/services`,
 };
 
 // ============================================
@@ -372,6 +372,8 @@ export const PATIENT_PROFILE_ENDPOINTS = {
     DELETE: (id: string) => `/api/patient/profiles/${id}`,
     SET_DEFAULT: (id: string) => `/api/patient/profiles/${id}/set-default`,
     UPDATE_RELATIONSHIP: (id: string) => `/api/patient/profiles/${id}/relationship`,
+    AVATAR_UPLOAD: (id: string) => `/api/patient/profiles/${id}/avatar`,
+    AVATAR_DELETE: (id: string) => `/api/patient/profiles/${id}/avatar`,
 };
 
 export const PATIENT_ENDPOINTS = {
@@ -381,6 +383,9 @@ export const PATIENT_ENDPOINTS = {
     UPDATE: (id: string) => `/api/patients/${id}`,
     STATUS: (id: string) => `/api/patients/${id}/status`,
     LINK: '/api/patients/link',
+    LINK_ACCOUNT: (id: string) => `/api/patients/${id}/link-account`,
+    UNLINK_ACCOUNT: (id: string) => `/api/patients/${id}/unlink-account`,
+    BY_ACCOUNT: (accountId: string) => `/api/patients/account/${accountId}`,
     UPDATE_CONTACT: (patientId: string) => `/api/patients/${patientId}/contact`,
     ADD_CONTACT: (patientId: string) => `/api/patients/${patientId}/contacts`,
     EDIT_CONTACT: (patientId: string, contactId: string) => `/api/patients/${patientId}/contacts/${contactId}`,
@@ -401,7 +406,9 @@ export const APPOINTMENT_ENDPOINTS = {
     CANCEL: (id: string) => `/api/appointments/${id}`,
     CONFIRM: (id: string) => `/api/appointment-confirmations/${id}/confirm`,
     GENERATE_QR: (id: string) => `/api/appointment-status/generate-qr/${id}`,
-    MY_APPOINTMENTS: '/api/appointments/me',
+    MY_APPOINTMENTS: '/api/appointments/my-appointments',
+    AVAILABLE_SLOTS: '/api/appointments/available-slots',
+    AVAILABLE_SLOTS_BY_DEPARTMENT: '/api/appointments/available-slots-by-department',
     BY_DOCTOR: (doctorId: string) => `/api/appointments/doctor/${doctorId}`,
     BY_PATIENT: (patientId: string) => `/api/appointments/patient/${patientId}`,
 };
@@ -562,7 +569,7 @@ export const EHR_ENDPOINTS = {
     RISK_FACTORS: (patientId: string) => `/api/ehr/patients/${patientId}/risk-factors`,
     NOTES: (patientId: string) => `/api/ehr/patients/${patientId}/notes`,
     // Aliases (POST endpoints — dùng chung path với GET)
-    ADD_HEALTH_METRIC: (patientId: string) => `/api/ehr/patients/${patientId}/vitals`,
+    ADD_HEALTH_METRIC: (patientId: string) => `/api/ehr/patients/${patientId}/health-metrics`,
     ADD_ALLERGY: (patientId: string) => `/api/ehr/patients/${patientId}/allergies`,
     ADD_MEDICAL_HISTORY: (patientId: string) => `/api/ehr/patients/${patientId}/medical-histories`,
 };
@@ -1123,6 +1130,8 @@ export const MEDICAL_HISTORY_EHR_ENDPOINTS = {
     DELETE: (patientId: string, historyId: string) => `/api/ehr/patients/${patientId}/medical-histories/${historyId}`, // DELETE
     ALLERGIES: (patientId: string) => `/api/ehr/patients/${patientId}/allergies`,             // GET/POST
     ALLERGY_DETAIL: (patientId: string, allergyId: string) => `/api/ehr/patients/${patientId}/allergies/${allergyId}`, // GET/PUT
+    RISK_FACTORS: (patientId: string) => `/api/ehr/patients/${patientId}/risk-factors`,      // GET/POST
+    SPECIAL_CONDITIONS: (patientId: string) => `/api/ehr/patients/${patientId}/special-conditions`, // GET/POST
 };
 
 // ============================================

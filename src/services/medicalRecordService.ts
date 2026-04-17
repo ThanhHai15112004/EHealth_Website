@@ -5,6 +5,9 @@ export const medicalRecordService = {
     getByPatient: (patientId: string, params?: Record<string, any>) =>
         axiosClient.get(MEDICAL_RECORD_ENDPOINTS.BY_PATIENT(patientId), { params }),
 
+    getStats: (patientId: string) =>
+        axiosClient.get(MEDICAL_RECORD_ENDPOINTS.STATS(patientId)),
+
     getDetail: (encounterId: string) =>
         axiosClient.get(MEDICAL_RECORD_ENDPOINTS.DETAIL(encounterId)),
 

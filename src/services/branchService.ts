@@ -14,15 +14,22 @@ export interface Branch {
   createdAt?: string;
 }
 
+const normalizeBranch = (b: any): Branch => ({
+  ...b,
+  id: b.branches_id || b.branch_id || b.id,
+});
+
 export const branchService = {
   getList: async (params?: any) => {
     const res = await axiosClient.get(BRANCH_ENDPOINTS.LIST, { params });
-    return unwrapList(res);
+    const result = unwrapList<Branch>(res);
+    return { ...result, data: result.data.map(normalizeBranch) };
   },
 
   getDropdown: async (params?: any) => {
     const res = await axiosClient.get(BRANCH_ENDPOINTS.DROPDOWN, { params });
-    return unwrapList(res);
+    const result = unwrapList<Branch>(res);
+    return { ...result, data: result.data.map(normalizeBranch) };
   },
 
   getDetail: async (id: string) => {

@@ -1,14 +1,16 @@
 import React, { useEffect, useState } from "react";
-import { type PatientProfile } from "@/data/patient-profiles-mock";
+import { type PatientProfile } from "@/types/patient-profile";
 import axiosClient from "@/api/axiosClient";
 import { DOCUMENT_ENDPOINTS, DOCUMENT_TYPE_ENDPOINTS } from "@/api/endpoints";
 import Modal from "@/components/common/Modal";
+import { useToast } from "@/contexts/ToastContext";
 
 interface TabProps {
     profile: PatientProfile;
 }
 
 export default function DocumentsTab({ profile }: TabProps) {
+    const { showToast } = useToast();
     const [documents, setDocuments] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -68,12 +70,14 @@ export default function DocumentsTab({ profile }: TabProps) {
     const handleDelete = async (docId: string) => {
         if (!window.confirm("Bạn có chắc chắn muốn xóa tài liệu này? Hành động này không thể hoàn tác.")) return;
         try {
-            await axiosClient.delete(DOCUMENT_ENDPOINTS.DELETE(profile.id.toString(), docId));
-            alert("Đã xóa tài liệu thành công.");
+            const patientId = profile.id;
+            if (!patientId) return;
+            await axiosClient.delete(DOCUMENT_ENDPOINTS.DELETE(patientId.toString(), docId));
+            showToast("Đã xóa tài liệu thành công.", "success");
             fetchDocuments();
         } catch (error) {
             console.error("Lỗi xóa tài liệu:", error);
-            alert("Có lỗi xảy ra khi xóa tài liệu.");
+            showToast("Có lỗi xảy ra khi xóa tài liệu.", "error");
         }
     };
 
@@ -82,7 +86,7 @@ export default function DocumentsTab({ profile }: TabProps) {
         if (url) {
             window.open(url, '_blank');
         } else {
-            alert("Không tìm thấy đường dẫn file.");
+            showToast("Không tìm thấy đường dẫn file.", "error");
         }
     };
 
@@ -91,14 +95,14 @@ export default function DocumentsTab({ profile }: TabProps) {
         if (url) {
             setViewingDoc(doc);
         } else {
-            alert("Không tìm thấy đường dẫn file để xem.");
+            showToast("Không tìm thấy đường dẫn file để xem.", "error");
         }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedFile) {
-            alert("Vui lòng chọn file để tải lên.");
+            showToast("Vui lòng chọn file để tải lên.", "warning");
             return;
         }
 
@@ -119,7 +123,7 @@ export default function DocumentsTab({ profile }: TabProps) {
                 }
             });
 
-            alert("Tải tài liệu lên thành công!");
+            showToast("Tải tài liệu lên thành công!", "success");
             setFileName("");
             setFileType(documentTypes.length > 0 ? documentTypes[0].document_type_id : "");
             setSelectedFile(null);
@@ -128,7 +132,7 @@ export default function DocumentsTab({ profile }: TabProps) {
             await fetchDocuments();
         } catch (error) {
             console.error("Lỗi upload tài liệu:", error);
-            alert("Có lỗi xảy ra, vui lòng thử lại sau.");
+            showToast("Có lỗi xảy ra, vui lòng thử lại sau.", "error");
         } finally {
             setSubmitting(false);
         }

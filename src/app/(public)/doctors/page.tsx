@@ -1,48 +1,65 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { PatientNavbar } from "@/components/patient/PatientNavbar";
 import { PatientFooter } from "@/components/patient/PatientFooter";
 import { DoctorCard } from "@/components/patient/DoctorCard";
-import { staffService, unwrapStaffList, type StaffMember } from "@/services/staffService";
+import { doctorService, type Doctor, formatCurrency } from "@/services/doctorService";
 import { getSpecialties, type Specialty } from "@/services/specialtyService";
-import type { Doctor } from "@/services/doctorService";
-
-// PublicDoctor kết hợp Doctor và StaffMember để dùng trong page này
-type PublicDoctor = Doctor & Pick<StaffMember, 'code' | 'qualification' | 'departmentId'>;
-
-const PRICE_RANGES = [
-    { label: "Tất cả", min: 0, max: 999999 },
-    { label: "< 300.000đ", min: 0, max: 300000 },
-    { label: "300K — 500K", min: 300000, max: 500000 },
-    { label: "> 500.000đ", min: 500000, max: 999999 },
-];
+import { MOCK_SPECIALTIES, filterMockDoctors } from "@/data/patient-mock";
+import { DoctorFilterSidebar } from "@/components/patient/DoctorFilterSidebar";
+import { facilityService, type Facility } from "@/services/facilityService";
+import { branchService, type Branch } from "@/services/branchService";
+import { medicalServiceApi, type MedicalService } from "@/services/medicalService";
 
 function DoctorsPageInner() {
     const searchParams = useSearchParams();
     const rawSpecialty = searchParams.get("specialtyId");
     const initialSpecialty = rawSpecialty && rawSpecialty !== "undefined" && rawSpecialty !== "null" ? rawSpecialty : "";
 
-    const [doctors, setDoctors] = useState<PublicDoctor[]>([]);
+    const [allDoctors, setAllDoctors] = useState<Doctor[]>([]);
+    const [totalDoctors, setTotalDoctors] = useState(0);
     const [specialties, setSpecialties] = useState<Specialty[]>([]);
+    const [facilities, setFacilities] = useState<Facility[]>([]);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [services, setServices] = useState<MedicalService[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState("");
     const [selectedSpecialty, setSelectedSpecialty] = useState(initialSpecialty);
     const [selectedGender, setSelectedGender] = useState("");
-    const [selectedPrice, setSelectedPrice] = useState(0);
+    const [priceRange, setPriceRange] = useState<[number, number]>([0, 15000000]);
+    const [selectedFacility, setSelectedFacility] = useState("");
+    const [selectedBranch, setSelectedBranch] = useState("");
+    const [selectedService, setSelectedService] = useState("");
     const [showFilters, setShowFilters] = useState(false);
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
-    const [error, setError] = useState(false);
+    const ITEMS_PER_PAGE = 12;
 
     useEffect(() => {
         loadSpecialties();
+        loadFacilities();
+        loadServices();
     }, []);
 
+    // Load branches khi selectedFacility thay đổi
+    useEffect(() => {
+        loadBranches(selectedFacility);
+        if (selectedFacility) {
+            setSelectedBranch(""); 
+        }
+    }, [selectedFacility]);
+
+    // Reset page khi filter thay đổi
+    useEffect(() => {
+        setPage(1);
+    }, [selectedSpecialty, selectedGender, priceRange, selectedFacility, selectedBranch, selectedService, search]);
+
+    // Fetch dữ liệu mới khi params hoặc page thay đổi
     useEffect(() => {
         loadDoctors();
-    }, [page, selectedSpecialty, search]);
+    }, [page, search, selectedSpecialty, selectedGender, priceRange, selectedFacility, selectedBranch, selectedService]);
 
     const loadSpecialties = async () => {
         try {
@@ -50,48 +67,74 @@ function DoctorsPageInner() {
             if (res.data && res.data.length > 0) {
                 setSpecialties(res.data);
             } else {
-                setSpecialties([]);
+                setSpecialties(MOCK_SPECIALTIES);
             }
         } catch {
-            setSpecialties([]);
+            setSpecialties(MOCK_SPECIALTIES);
+        }
+    };
+
+    const loadFacilities = async () => {
+        try {
+            const res = await facilityService.getList({ limit: 50 });
+            if (res.data) setFacilities(res.data);
+        } catch {
+            console.error("Failed to load facilities");
+        }
+    };
+
+    const loadBranches = async (facilityId?: string) => {
+        try {
+            const res = await branchService.getList({ limit: 100, facility_id: facilityId || undefined });
+            if (res.data) setBranches(res.data as any);
+        } catch {
+            console.error("Failed to load branches");
+        }
+    };
+
+    const loadServices = async () => {
+        try {
+            const res = await medicalServiceApi.getMasterList({ limit: 100 });
+            if (res.data) setServices(res.data);
+        } catch {
+            console.error("Failed to load services");
         }
     };
 
     const loadDoctors = async () => {
         try {
             setLoading(true);
-            setError(false);
-            const res = await staffService.getList({
-                page,
-                limit: 12,
+            const res = await doctorService.getList({
+                page: page,
+                limit: ITEMS_PER_PAGE,
                 search: search || undefined,
-                role: 'DOCTOR',
-                departmentId: selectedSpecialty || undefined,
+                specialty_id: selectedSpecialty || undefined,
+                gender: selectedGender || undefined,
+                facility_id: selectedFacility || undefined,
+                branch_id: selectedBranch || undefined,
+                service_id: selectedService || undefined,
+                min_price: priceRange[0] > 0 ? priceRange[0] : undefined,
+                max_price: priceRange[1] < 15000000 ? priceRange[1] : undefined,
             });
-            const items = unwrapStaffList(res);
-            // Map StaffMember → PublicDoctor shape dùng trong DoctorCard
-            const mapped: PublicDoctor[] = items.map((d) => ({
-                id: d.id,
-                code: d.code ?? '',
-                fullName: d.fullName,
-                departmentId: d.departmentId ?? '',
-                departmentName: d.departmentName ?? '',
-                specialization: d.specialization ?? '',
-                qualification: d.qualification ?? '',
-                phone: d.phone,
-                email: d.email,
-                rating: d.rating ?? 0,
-                status: d.status === 'ACTIVE' ? 'active' : 'inactive' as any,
-                avatar: d.avatar,
-                experience: d.experience ?? 0,
-            }));
-            setDoctors(mapped);
-            // Pagination từ response gốc
-            const pagination = (res as any)?.data?.pagination ?? (res as any)?.pagination;
-            if (pagination?.totalPages) setTotalPages(pagination.totalPages);
+
+            if (res.data) {
+                setAllDoctors(res.data);
+                if (res.pagination) {
+                    setTotalPages(res.pagination.totalPages || 1);
+                    setTotalDoctors(res.pagination.total || res.data.length);
+                } else {
+                    setTotalPages(1);
+                    setTotalDoctors(res.data.length);
+                }
+            } else {
+                setAllDoctors([]);
+                setTotalPages(1);
+                setTotalDoctors(0);
+            }
         } catch {
-            setDoctors([]);
-            setError(true);
+            setAllDoctors([]);
+            setTotalPages(1);
+            setTotalDoctors(0);
         } finally {
             setLoading(false);
         }
@@ -101,11 +144,15 @@ function DoctorsPageInner() {
         setSearch("");
         setSelectedSpecialty("");
         setSelectedGender("");
-        setSelectedPrice(0);
+        setPriceRange([0, 15000000]);
+        setSelectedFacility("");
+        setSelectedBranch("");
+        setSelectedService("");
         setPage(1);
     };
 
-    const hasFilters = search || selectedSpecialty || selectedGender || selectedPrice > 0;
+    const hasFilters = Boolean(search || selectedSpecialty || selectedGender || priceRange[0] > 0 || priceRange[1] < 15000000 || selectedFacility || selectedBranch || selectedService);
+    const paginatedDoctors = allDoctors;
 
     return (
         <div className="min-h-screen bg-gray-50/50">
@@ -121,7 +168,7 @@ function DoctorsPageInner() {
                         Đội ngũ <span className="bg-gradient-to-r from-[#60a5fa] to-[#06b6d4] bg-clip-text text-transparent">Bác sĩ</span>
                     </h1>
                     <p className="text-[#94a3b8] text-base md:text-lg max-w-2xl mx-auto mb-8">
-                        Tìm bác sĩ phù hợp từ đội ngũ 120+ chuyên gia giàu kinh nghiệm
+                        Tìm bác sĩ phù hợp từ đội ngũ chuyên gia giàu kinh nghiệm
                     </p>
 
                     {/* Search */}
@@ -140,68 +187,26 @@ function DoctorsPageInner() {
                     {/* Sidebar Filters — Desktop */}
                     <aside className="hidden lg:block w-64 flex-shrink-0">
                         <div className="sticky top-24 space-y-6">
-                            <div className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
-                                <div className="flex items-center justify-between mb-4">
-                                    <h3 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-                                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "18px" }}>tune</span>
-                                        Bộ lọc
-                                    </h3>
-                                    {hasFilters && (
-                                        <button onClick={clearFilters} className="text-xs text-red-500 hover:text-red-600 font-medium">Xoá lọc</button>
-                                    )}
-                                </div>
-
-                                {/* Specialty filter */}
-                                <div className="mb-5">
-                                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Chuyên khoa</label>
-                                    <select value={selectedSpecialty} onChange={e => { setSelectedSpecialty(e.target.value); setPage(1); }}
-                                        className="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30 focus:border-[#3C81C6]/30">
-                                        <option value="">Tất cả chuyên khoa</option>
-                                        {specialties.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                                    </select>
-                                </div>
-
-                                {/* Gender filter */}
-                                <div className="mb-5">
-                                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Giới tính</label>
-                                    <div className="flex gap-2">
-                                        {[{ v: "", l: "Tất cả" }, { v: "male", l: "Nam" }, { v: "female", l: "Nữ" }].map(g => (
-                                            <button key={g.v} onClick={() => setSelectedGender(g.v)}
-                                                className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all
-                                                ${selectedGender === g.v ? "bg-[#3C81C6] text-white shadow-sm" : "bg-gray-50 text-gray-600 hover:bg-gray-100"}`}>
-                                                {g.l}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Price filter */}
-                                <div className="mb-5">
-                                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Mức giá</label>
-                                    <div className="space-y-1.5">
-                                        {PRICE_RANGES.map((p, i) => (
-                                            <button key={i} onClick={() => setSelectedPrice(i)}
-                                                className={`w-full text-left px-3 py-2 text-xs font-medium rounded-lg transition-all
-                                                ${selectedPrice === i ? "bg-[#3C81C6]/10 text-[#3C81C6] border border-[#3C81C6]/20" : "text-gray-600 hover:bg-gray-50"}`}>
-                                                {p.label}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Consultation type */}
-                                <div>
-                                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 block">Hình thức</label>
-                                    <div className="flex gap-2">
-                                        {[{ l: "Tất cả", i: "select_all" }, { l: "Trực tiếp", i: "person" }, { l: "Online", i: "videocam" }].map((t, i) => (
-                                            <button key={i} className="flex-1 flex flex-col items-center gap-1 py-2.5 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors">
-                                                <span className="material-symbols-outlined text-gray-500" style={{ fontSize: "16px" }}>{t.i}</span>
-                                                <span className="text-[10px] text-gray-500 font-medium">{t.l}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
+                            <DoctorFilterSidebar 
+                                specialties={specialties}
+                                selectedSpecialty={selectedSpecialty}
+                                setSelectedSpecialty={selectedSpecialtyVal => { setSelectedSpecialty(selectedSpecialtyVal); setPage(1); }}
+                                selectedGender={selectedGender}
+                                setSelectedGender={selectedGenderVal => { setSelectedGender(selectedGenderVal); setPage(1); }}
+                                priceRange={priceRange}
+                                setPriceRange={priceRangeVal => { setPriceRange(priceRangeVal); setPage(1); }}
+                                facilities={facilities}
+                                selectedFacility={selectedFacility}
+                                setSelectedFacility={selectedFacilityVal => { setSelectedFacility(selectedFacilityVal); setPage(1); }}
+                                branches={branches}
+                                selectedBranch={selectedBranch}
+                                setSelectedBranch={selectedBranchVal => { setSelectedBranch(selectedBranchVal); setPage(1); }}
+                                services={services}
+                                selectedService={selectedService}
+                                setSelectedService={selectedServiceVal => { setSelectedService(selectedServiceVal); setPage(1); }}
+                                hasFilters={hasFilters}
+                                clearFilters={clearFilters}
+                            />
                         </div>
                     </aside>
 
@@ -218,7 +223,7 @@ function DoctorsPageInner() {
                         {/* Results count */}
                         <div className="flex items-center justify-between mb-6">
                             <p className="text-sm text-gray-500">
-                                {loading ? "Đang tải..." : `Tìm thấy ${doctors.length} bác sĩ`}
+                                {loading ? "Đang tải..." : `Tìm thấy ${totalDoctors} bác sĩ`}
                             </p>
                             <select className="text-sm text-gray-600 bg-white border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-[#3C81C6]/30">
                                 <option>Sắp xếp: Đánh giá cao</option>
@@ -247,16 +252,7 @@ function DoctorsPageInner() {
                                     </div>
                                 ))}
                             </div>
-                        ) : error ? (
-                            <div className="text-center py-20 bg-white rounded-2xl border border-red-100">
-                                <span className="material-symbols-outlined text-red-300 mb-3" style={{ fontSize: "64px" }}>cloud_off</span>
-                                <p className="text-gray-700 text-lg font-medium">Không thể tải danh sách bác sĩ</p>
-                                <p className="text-gray-400 text-sm mt-1 mb-4">Vui lòng thử lại sau</p>
-                                <button onClick={loadDoctors} className="px-4 py-2 text-sm font-medium text-white bg-[#3C81C6] rounded-xl hover:bg-[#2a6da8] transition-colors">
-                                    Thử lại
-                                </button>
-                            </div>
-                        ) : doctors.length === 0 ? (
+                        ) : paginatedDoctors.length === 0 ? (
                             <div className="text-center py-20 bg-white rounded-2xl border border-gray-100">
                                 <span className="material-symbols-outlined text-gray-300 mb-3" style={{ fontSize: "64px" }}>person_search</span>
                                 <p className="text-gray-500 text-lg font-medium">Không tìm thấy bác sĩ</p>
@@ -268,18 +264,20 @@ function DoctorsPageInner() {
                         ) : (
                             <>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                                    {doctors.map(doc => (
+                                    {paginatedDoctors.map(doc => (
                                         <DoctorCard
                                             key={doc.id}
                                             id={doc.id}
+                                            doctorId={doc.doctorId as string}
                                             fullName={doc.fullName}
+                                            title={doc.doctorTitle || doc.qualification || undefined}
                                             department={doc.departmentName}
                                             specialization={doc.specialization}
                                             experience={doc.experience}
                                             rating={doc.rating}
-                                            avatar={doc.avatar ?? undefined}
+                                            avatar={doc.avatar}
                                             available={doc.status === "active"}
-                                            fee={doc.qualification}
+                                            fee={doc.consultationFee ? formatCurrency(doc.consultationFee) : undefined}
                                         />
                                     ))}
                                 </div>

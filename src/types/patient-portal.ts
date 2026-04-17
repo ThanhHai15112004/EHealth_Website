@@ -10,12 +10,16 @@ export interface VitalSign {
     bmi: number;
     bloodSugar?: number;
     spo2?: number;
+    respiratoryRate?: number;
+    recordedBy?: string;
+    encounterDate?: string;
+    sourceType?: string;
 }
 
 export interface HealthTimelineItem {
     id: string;
     date: string;
-    type: "examination" | "lab_result" | "prescription" | "surgery" | "vaccination" | "vital_check";
+    type: "examination" | "lab_result" | "prescription" | "surgery" | "vaccination" | "vital_check" | "treatment_plan" | "manual_note";
     title: string;
     description: string;
     doctorName?: string;
@@ -23,15 +27,24 @@ export interface HealthTimelineItem {
     status: "completed" | "pending" | "in_progress";
     icon: string;
     color: string;
+    eventType?: string;
+    encounterId?: string | null;
+    metadata?: Record<string, unknown> | null;
+    source?: string;
 }
 
 export interface MedicalHistoryItem {
     id: string;
-    type: "chronic" | "allergy" | "surgery" | "family" | "risk_factor";
+    type: "chronic" | "allergy" | "surgery" | "family" | "risk_factor" | "special_condition";
     name: string;
     details: string;
     diagnosedDate?: string;
     status: "active" | "resolved" | "monitoring";
+    severity?: string | null;
+    allergenType?: string | null;
+    conditionCode?: string | null;
+    relationship?: string | null;
+    isActive?: boolean;
 }
 
 export interface LabResult {
@@ -42,6 +55,12 @@ export interface LabResult {
     results: { name: string; value: string; unit: string; reference: string; status: "normal" | "high" | "low" }[];
     doctorName: string;
     status: "completed" | "pending";
+    orderId?: string;
+    serviceCode?: string;
+    attachments?: string[];
+    isAbnormal?: boolean;
+    performedBy?: string;
+    summary?: string | null;
 }
 
 export interface Medication {
@@ -54,6 +73,11 @@ export interface Medication {
     prescribedBy: string;
     status: "active" | "completed" | "discontinued";
     notes?: string;
+    prescriptionCode?: string;
+    route?: string;
+    dispensingUnit?: string;
+    estimatedEndDate?: string;
+    activeIngredients?: string;
 }
 
 export interface Invoice {

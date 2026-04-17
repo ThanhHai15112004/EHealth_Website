@@ -1,336 +1,394 @@
-import React, { useEffect, useState } from "react";
-import { type PatientProfile } from "@/data/patient-profiles-mock";
+import React, { useEffect, useMemo, useState } from "react";
 import axiosClient from "@/api/axiosClient";
-import { EHR_ENDPOINTS } from "@/api/endpoints";
+import { EHR_ENDPOINTS, VITAL_SIGNS_ENDPOINTS } from "@/api/endpoints";
+import { extractErrorMessage } from "@/api/response";
 import Modal from "@/components/common/Modal";
+import { useToast } from "@/contexts/ToastContext";
+import { type PatientProfile } from "@/types/patient-profile";
 
 interface TabProps {
     profile: PatientProfile;
 }
 
-const METRICS_OPTIONS = [
-    { code: 'BLOOD_PRESSURE', name: 'Huyết áp', defaultUnit: 'mmHg' },
-    { code: 'HEART_RATE', name: 'Nhịp tim', defaultUnit: 'bpm' },
-    { code: 'TEMPERATURE', name: 'Nhiệt độ', defaultUnit: '°C' },
-    { code: 'SPO2', name: 'SpO2', defaultUnit: '%' },
-    { code: 'WEIGHT', name: 'Cân nặng', defaultUnit: 'kg' },
-    { code: 'HEIGHT', name: 'Chiều cao', defaultUnit: 'cm' },
-    { code: 'BLOOD_SUGAR', name: 'Đường huyết', defaultUnit: 'mg/dL' },
+type MetricOption = {
+    code: string;
+    name: string;
+    unit: string;
+    icon: string;
+};
+
+const METRIC_OPTIONS: MetricOption[] = [
+    { code: "BLOOD_PRESSURE", name: "Huyết áp", unit: "mmHg", icon: "blood_pressure" },
+    { code: "HEART_RATE", name: "Nhịp tim", unit: "bpm", icon: "favorite" },
+    { code: "TEMPERATURE", name: "Nhiệt độ", unit: "°C", icon: "device_thermostat" },
+    { code: "SPO2", name: "SpO2", unit: "%", icon: "spo2" },
+    { code: "WEIGHT", name: "Cân nặng", unit: "kg", icon: "monitor_weight" },
+    { code: "HEIGHT", name: "Chiều cao", unit: "cm", icon: "height" },
+    { code: "BLOOD_SUGAR", name: "Đường huyết", unit: "mg/dL", icon: "bloodtype" },
 ];
 
+function getInitialMeasuredAt() {
+    const current = new Date();
+    current.setMinutes(current.getMinutes() - current.getTimezoneOffset());
+    return current.toISOString().slice(0, 16);
+}
+
+function parseMetricValue(metric: any) {
+    try {
+        return typeof metric?.metric_value === "string" ? JSON.parse(metric.metric_value) : metric?.metric_value;
+    } catch {
+        return metric?.metric_value;
+    }
+}
+
 export default function VitalsTab({ profile }: TabProps) {
-    const [vitals, setVitals] = useState<any>(null);
+    const { showToast } = useToast();
     const [loading, setLoading] = useState(true);
-    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [latestVitals, setLatestVitals] = useState<Record<string, any>>({});
+    const [metricCode, setMetricCode] = useState("BLOOD_PRESSURE");
+    const [metricValue1, setMetricValue1] = useState("");
+    const [metricValue2, setMetricValue2] = useState("");
+    const [measuredAt, setMeasuredAt] = useState(getInitialMeasuredAt);
+    const [sourceType, setSourceType] = useState("DEVICE");
+    const [deviceInfo, setDeviceInfo] = useState("");
 
-    // Form states
-    const [metricCode, setMetricCode] = useState('BLOOD_PRESSURE');
-    const [metricValue1, setMetricValue1] = useState('');
-    const [metricValue2, setMetricValue2] = useState(''); // Only used for BP (diastolic)
-    const [unit, setUnit] = useState('mmHg');
-    const [measuredAt, setMeasuredAt] = useState(() => {
-        // Current local datetime string for input type="datetime-local"
-        const now = new Date();
-        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
-        return now.toISOString().slice(0, 16);
-    });
-    const [sourceType, setSourceType] = useState('DEVICE');
-    const [deviceInfo, setDeviceInfo] = useState('');
+    const activeMetric = useMemo(
+        () => METRIC_OPTIONS.find((item) => item.code === metricCode) || METRIC_OPTIONS[0],
+        [metricCode],
+    );
 
-    const fetchVitals = async () => {
+    const loadVitals = async () => {
+        if (!profile.id) return;
+
         try {
             setLoading(true);
-            const patientId = profile.id; 
-            if (!patientId) return;
-            
-            const [vitalsRes, metricsRes] = await Promise.all([
-                axiosClient.get(EHR_ENDPOINTS.VITALS_LATEST(patientId.toString())).catch(() => ({ data: null })),
-                axiosClient.get(EHR_ENDPOINTS.ADD_HEALTH_METRIC(patientId.toString()) + '?limit=50').catch(() => ({ data: null }))
+
+            const [latestResponse, metricsResponse] = await Promise.all([
+                axiosClient.get(EHR_ENDPOINTS.VITALS_LATEST(profile.id)).catch(() => ({ data: { data: {} } })),
+                axiosClient.get(VITAL_SIGNS_ENDPOINTS.HEALTH_METRICS(profile.id), { params: { limit: 50 } }).catch(() => ({ data: { data: [] } })),
             ]);
 
-            let mergedVitals = { ...(vitalsRes.data?.data || vitalsRes.data || {}) };
-            const metricsList = metricsRes.data?.data || [];
+            const latest = { ...(latestResponse.data?.data || latestResponse.data || {}) };
+            const metrics = Array.isArray(metricsResponse.data?.data) ? metricsResponse.data.data : [];
+            const newestMetrics: Record<string, any> = {};
 
-            const mostRecent: any = {};
-            metricsList.forEach((m: any) => {
-                const code = m.metric_code;
-                if (!mostRecent[code] || new Date(m.measured_at) > new Date(mostRecent[code].measured_at)) {
-                    mostRecent[code] = m;
+            metrics.forEach((metric: any) => {
+                const code = metric.metric_code;
+                if (!code) return;
+
+                if (!newestMetrics[code] || new Date(metric.measured_at).getTime() > new Date(newestMetrics[code].measured_at).getTime()) {
+                    newestMetrics[code] = metric;
                 }
             });
 
-            const ceDate = mergedVitals.created_at ? new Date(mergedVitals.created_at) : new Date(0);
-            const getVal = (m: any) => typeof m.metric_value === 'string' ? JSON.parse(m.metric_value) : m.metric_value;
+            const latestCreatedAt = latest.created_at ? new Date(latest.created_at) : new Date(0);
 
-            if (mostRecent['BLOOD_PRESSURE'] && new Date(mostRecent['BLOOD_PRESSURE'].measured_at) >= ceDate) {
-                const val = getVal(mostRecent['BLOOD_PRESSURE']);
-                mergedVitals.blood_pressure_systolic = val.systolic;
-                mergedVitals.blood_pressure_diastolic = val.diastolic;
-            }
-            if (mostRecent['HEART_RATE'] && new Date(mostRecent['HEART_RATE'].measured_at) >= ceDate) {
-                mergedVitals.pulse = getVal(mostRecent['HEART_RATE']).value || getVal(mostRecent['HEART_RATE']);
-            }
-            if (mostRecent['TEMPERATURE'] && new Date(mostRecent['TEMPERATURE'].measured_at) >= ceDate) {
-                mergedVitals.temperature = getVal(mostRecent['TEMPERATURE']).value || getVal(mostRecent['TEMPERATURE']);
-            }
-            if (mostRecent['SPO2'] && new Date(mostRecent['SPO2'].measured_at) >= ceDate) {
-                mergedVitals.spo2 = getVal(mostRecent['SPO2']).value || getVal(mostRecent['SPO2']);
-            }
-            if (mostRecent['WEIGHT'] && new Date(mostRecent['WEIGHT'].measured_at) >= ceDate) {
-                mergedVitals.weight = getVal(mostRecent['WEIGHT']).value || getVal(mostRecent['WEIGHT']);
-            }
-            if (mostRecent['HEIGHT'] && new Date(mostRecent['HEIGHT'].measured_at) >= ceDate) {
-                mergedVitals.height = getVal(mostRecent['HEIGHT']).value || getVal(mostRecent['HEIGHT']);
+            const bloodPressure = newestMetrics.BLOOD_PRESSURE;
+            if (bloodPressure && new Date(bloodPressure.measured_at) >= latestCreatedAt) {
+                const value = parseMetricValue(bloodPressure) || {};
+                latest.blood_pressure_systolic = value.systolic;
+                latest.blood_pressure_diastolic = value.diastolic;
             }
 
-            setVitals(mergedVitals);
+            const metricMap: Array<[string, string]> = [
+                ["HEART_RATE", "pulse"],
+                ["TEMPERATURE", "temperature"],
+                ["SPO2", "spo2"],
+                ["WEIGHT", "weight"],
+                ["HEIGHT", "height"],
+                ["BLOOD_SUGAR", "blood_sugar"],
+            ];
+
+            metricMap.forEach(([metricKey, targetKey]) => {
+                const metric = newestMetrics[metricKey];
+                if (!metric || new Date(metric.measured_at) < latestCreatedAt) return;
+                const value = parseMetricValue(metric);
+                latest[targetKey] = value?.value ?? value;
+            });
+
+            setLatestVitals(latest);
         } catch (error) {
-            console.error("Error fetching vitals:", error);
+            console.error(error);
+            showToast("Không thể tải chỉ số sinh tồn.", "error");
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        fetchVitals();
+        loadVitals();
     }, [profile.id]);
 
-    const handleMetricChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-        const code = e.target.value;
-        setMetricCode(code);
-        const opt = METRICS_OPTIONS.find(o => o.code === code);
-        if (opt) setUnit(opt.defaultUnit);
-        setMetricValue1('');
-        setMetricValue2('');
+    const resetForm = () => {
+        setMetricCode("BLOOD_PRESSURE");
+        setMetricValue1("");
+        setMetricValue2("");
+        setMeasuredAt(getInitialMeasuredAt());
+        setSourceType("DEVICE");
+        setDeviceInfo("");
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const closeModal = () => {
+        setIsModalOpen(false);
+        resetForm();
+    };
+
+    const handleMetricChange = (value: string) => {
+        setMetricCode(value);
+        setMetricValue1("");
+        setMetricValue2("");
+    };
+
+    const handleSubmit = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (!profile.id) return;
+
         try {
             setSubmitting(true);
-            const opt = METRICS_OPTIONS.find(o => o.code === metricCode);
-            
-            let metric_value: any = Number(metricValue1);
-            if (metricCode === 'BLOOD_PRESSURE') {
-                metric_value = {
-                    systolic: Number(metricValue1),
-                    diastolic: Number(metricValue2),
-                };
-            }
 
             const payload = {
                 metric_code: metricCode,
-                metric_name: opt?.name,
-                metric_value,
-                unit: unit,
+                metric_name: activeMetric.name,
+                metric_value:
+                    metricCode === "BLOOD_PRESSURE"
+                        ? {
+                            systolic: Number(metricValue1),
+                            diastolic: Number(metricValue2),
+                        }
+                        : Number(metricValue1),
+                unit: activeMetric.unit,
                 measured_at: new Date(measuredAt).toISOString(),
                 source_type: sourceType,
-                device_info: deviceInfo
+                device_info: deviceInfo.trim() || undefined,
             };
 
-            await axiosClient.post(EHR_ENDPOINTS.ADD_HEALTH_METRIC(profile.id.toString()), payload);
-            
-            // Re-fetch latest vitals after success
-            await fetchVitals();
-            
-            setIsAddModalOpen(false);
-            
-            // reset form
-            setMetricValue1('');
-            setMetricValue2('');
-            setDeviceInfo('');
-            
-            alert("Thêm chỉ số sinh tồn thành công!");
+            await axiosClient.post(EHR_ENDPOINTS.ADD_HEALTH_METRIC(profile.id), payload);
+            showToast("Đã lưu chỉ số sinh tồn.", "success");
+
+            closeModal();
+            await loadVitals();
         } catch (error) {
-            console.error("Failed to add metric:", error);
-            alert("Đã xảy ra lỗi khi lưu thông tin");
+            showToast(extractErrorMessage(error), "error");
         } finally {
             setSubmitting(false);
         }
     };
 
+    const cards = [
+        { icon: "monitor_weight", title: "Cân nặng", value: latestVitals.weight || "--", unit: "kg" },
+        { icon: "height", title: "Chiều cao", value: latestVitals.height || "--", unit: "cm" },
+        { icon: "favorite", title: "Nhịp tim", value: latestVitals.pulse || "--", unit: "bpm" },
+        {
+            icon: "blood_pressure",
+            title: "Huyết áp",
+            value: latestVitals.blood_pressure_systolic ? `${latestVitals.blood_pressure_systolic}/${latestVitals.blood_pressure_diastolic}` : "--/--",
+            unit: "mmHg",
+        },
+        { icon: "device_thermostat", title: "Nhiệt độ", value: latestVitals.temperature || "--", unit: "°C" },
+        { icon: "spo2", title: "SpO2", value: latestVitals.spo2 || "--", unit: "%" },
+    ];
+
     return (
         <div className="space-y-6">
-            <div className="flex items-center justify-between mb-6">
-                <h3 className="font-bold text-gray-900 dark:text-white text-lg">Chỉ số sinh tồn (Vital Signs)</h3>
-                <button onClick={() => setIsAddModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-[#3C81C6] text-white rounded-xl hover:bg-[#2b6cb0] transition-colors text-sm font-medium">
+            <div className="flex flex-col gap-4 rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-[#2d353e] dark:bg-[#111821] lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <h3 className="text-xl font-semibold text-slate-900 dark:text-white">Chỉ số sinh tồn</h3>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                        Ghi nhận nhanh huyết áp, nhiệt độ, nhịp tim và các chỉ số theo dõi thường xuyên của bệnh nhân.
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => setIsModalOpen(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#3C81C6] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#2b6cb0]"
+                >
                     <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add</span>
-                    Thêm chỉ số mới
+                    Ghi nhận chỉ số
                 </button>
             </div>
-            
+
             {loading ? (
                 <div className="flex items-center justify-center p-12">
-                    <div className="w-8 h-8 border-4 border-[#3C81C6] border-t-transparent rounded-full animate-spin"></div>
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3C81C6] border-t-transparent"></div>
                 </div>
-            ) : vitals && Object.keys(vitals).length > 0 ? (
+            ) : (
                 <>
-                    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        <VitalCard icon="monitor_weight" title="Cân nặng" value={vitals.weight || "--"} unit="kg" />
-                        <VitalCard icon="height" title="Chiều cao" value={vitals.height || "--"} unit="cm" />
-                        <VitalCard icon="favorite" title="Nhịp tim" value={vitals.pulse || "--"} unit="bpm" />
-                        <VitalCard icon="blood_pressure" title="Huyết áp" value={vitals.blood_pressure_systolic ? `${vitals.blood_pressure_systolic}/${vitals.blood_pressure_diastolic}` : "--/--"} unit="mmHg" />
-                        <VitalCard icon="device_thermostat" title="Nhiệt độ" value={vitals.temperature || "--"} unit="°C" />
-                        <VitalCard icon="spo2" title="SpO2" value={vitals.spo2 || "--"} unit="%" />
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {cards.map((card) => (
+                            <VitalCard key={card.title} {...card} />
+                        ))}
                     </div>
-                    
-                    {/* Timeline - Will show integrated history */}
-                    <div className="mt-8">
-                        <div className="flex items-center justify-between mb-4">
-                            <h4 className="font-bold text-gray-900 dark:text-white text-md">Lịch sử cập nhật</h4>
-                        </div>
-                        {/* Minimal Timeline structure - a full component could be loaded here */}
-                        <p className="text-sm text-gray-500">Xem toàn bộ lịch sử trong tab Hồ sơ bệnh án.</p>
+
+                    <div className="rounded-[28px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-[#2d353e] dark:bg-[#111821]">
+                        <h4 className="text-base font-semibold text-slate-900 dark:text-white">Lưu ý hiển thị</h4>
+                        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">
+                            Hệ thống ưu tiên chỉ số đo gần nhất theo từng loại. Với huyết áp, hai giá trị tâm thu và tâm trương luôn được lưu cùng nhau để tránh lệch số liệu.
+                        </p>
                     </div>
                 </>
-            ) : (
-                <div className="bg-gray-50 dark:bg-[#13191f] rounded-2xl p-10 text-center border border-gray-100 dark:border-[#2d353e]">
-                    <div className="w-16 h-16 bg-[#3C81C6]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "32px" }}>monitor_heart</span>
-                    </div>
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Chưa có dữ liệu sinh tồn</h4>
-                    <p className="text-sm text-gray-500 max-w-sm mx-auto">Chưa có chỉ số sinh tồn nào được ghi nhận cho bệnh nhân này.</p>
-                </div>
             )}
-            
+
             <Modal
-                isOpen={isAddModalOpen}
-                onClose={() => setIsAddModalOpen(false)}
+                isOpen={isModalOpen}
+                onClose={closeModal}
                 title="Ghi nhận chỉ số sinh tồn"
-                size="md"
-            >
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2 max-h-[70vh] overflow-y-auto px-1">
-                    <div className="flex flex-col gap-1">
-                        <label htmlFor="metricCode" className="text-sm font-medium text-gray-700 dark:text-gray-300">Loại chỉ số <span className="text-red-500">*</span></label>
-                        <select 
-                            id="metricCode"
-                            title="Loại chỉ số"
-                            value={metricCode}
-                            onChange={handleMetricChange}
-                            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                size="lg"
+                footer={
+                    <>
+                        <button
+                            type="button"
+                            onClick={closeModal}
+                            className="rounded-2xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-[#2d353e] dark:text-slate-300 dark:hover:bg-slate-800"
                         >
-                            {METRICS_OPTIONS.map(opt => (
-                                <option key={opt.code} value={opt.code}>{opt.name}</option>
+                            Hủy
+                        </button>
+                        <button
+                            form="vitals-form"
+                            type="submit"
+                            disabled={submitting}
+                            className="inline-flex items-center gap-2 rounded-2xl bg-[#3C81C6] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#2b6cb0] disabled:opacity-60"
+                        >
+                            {submitting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>}
+                            Lưu chỉ số
+                        </button>
+                    </>
+                }
+            >
+                <form id="vitals-form" onSubmit={handleSubmit} className="space-y-5">
+                    <div>
+                        <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-200">
+                            Loại chỉ số <span className="text-rose-500">*</span>
+                        </label>
+                        <select
+                            value={metricCode}
+                            onChange={(event) => handleMetricChange(event.target.value)}
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-all focus:border-[#3C81C6] focus:ring-4 focus:ring-[#3C81C6]/10 dark:border-[#2d353e] dark:bg-[#0f141b] dark:text-white"
+                        >
+                            {METRIC_OPTIONS.map((metric) => (
+                                <option key={metric.code} value={metric.code}>
+                                    {metric.name}
+                                </option>
                             ))}
                         </select>
                     </div>
 
-                    <div className="flex gap-4">
-                        <div className="flex-1 flex flex-col gap-1">
-                            <label htmlFor="metricValue1" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                                Giá trị {metricCode === 'BLOOD_PRESSURE' ? '(Huyết áp tâm thu)' : ''} <span className="text-red-500">*</span>
-                            </label>
-                            <input 
-                                id="metricValue1"
-                                title="Giá trị đo"
-                                type="number" 
-                                required
-                                value={metricValue1}
-                                onChange={e => setMetricValue1(e.target.value)}
-                                placeholder="Ví dụ: 120"
-                                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                            />
-                        </div>
-
-                        {metricCode === 'BLOOD_PRESSURE' && (
-                            <div className="flex-1 flex flex-col gap-1">
-                                <label htmlFor="metricValue2" className="text-sm font-medium text-gray-700 dark:text-gray-300">Tâm trương <span className="text-red-500">*</span></label>
-                                <input 
-                                    id="metricValue2"
-                                    title="Tâm trương"
-                                    type="number" 
+                    {metricCode === "BLOOD_PRESSURE" ? (
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                            <Field label="Tâm thu" required hint="Ví dụ: 120">
+                                <input
+                                    type="number"
+                                    required
+                                    value={metricValue1}
+                                    onChange={(event) => setMetricValue1(event.target.value)}
+                                    placeholder="120"
+                                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#3C81C6] focus:ring-4 focus:ring-[#3C81C6]/10 dark:border-[#2d353e] dark:bg-[#0f141b] dark:text-white"
+                                />
+                            </Field>
+                            <Field label="Tâm trương" required hint="Ví dụ: 80">
+                                <input
+                                    type="number"
                                     required
                                     value={metricValue2}
-                                    onChange={e => setMetricValue2(e.target.value)}
-                                    placeholder="Ví dụ: 80"
-                                    className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                    onChange={(event) => setMetricValue2(event.target.value)}
+                                    placeholder="80"
+                                    className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#3C81C6] focus:ring-4 focus:ring-[#3C81C6]/10 dark:border-[#2d353e] dark:bg-[#0f141b] dark:text-white"
                                 />
-                            </div>
-                        )}
-                        
-                        <div className="w-1/3 flex flex-col gap-1">
-                            <label htmlFor="unit" className="text-sm font-medium text-gray-700 dark:text-gray-300">Đơn vị</label>
-                            <input 
-                                id="unit"
-                                title="Đơn vị"
-                                type="text" 
-                                value={unit}
-                                readOnly
-                                className="bg-gray-100 border border-gray-300 text-gray-500 text-sm rounded-xl p-2.5 dark:bg-gray-600 dark:border-gray-500 dark:text-gray-400 cursor-not-allowed"
-                            />
+                            </Field>
                         </div>
-                    </div>
+                    ) : (
+                        <Field
+                            label={`Giá trị (${activeMetric.unit})`}
+                            required
+                            hint={`Ví dụ: ${metricCode === "HEART_RATE" ? "72" : metricCode === "TEMPERATURE" ? "36.8" : "98"}`}
+                        >
+                            <input
+                                type="number"
+                                step="any"
+                                required
+                                value={metricValue1}
+                                onChange={(event) => setMetricValue1(event.target.value)}
+                                placeholder="Nhập giá trị đo"
+                                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#3C81C6] focus:ring-4 focus:ring-[#3C81C6]/10 dark:border-[#2d353e] dark:bg-[#0f141b] dark:text-white"
+                            />
+                        </Field>
+                    )}
 
-                    <div className="flex gap-4">
-                        <div className="flex-1 flex flex-col gap-1">
-                            <label htmlFor="measuredAt" className="text-sm font-medium text-gray-700 dark:text-gray-300">Ngày đo <span className="text-red-500">*</span></label>
-                            <input 
-                                id="measuredAt"
-                                title="Ngày đo"
-                                type="datetime-local" 
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_220px]">
+                        <Field label="Thời gian đo" required>
+                            <input
+                                type="datetime-local"
                                 required
                                 value={measuredAt}
-                                onChange={e => setMeasuredAt(e.target.value)}
-                                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                onChange={(event) => setMeasuredAt(event.target.value)}
+                                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-all focus:border-[#3C81C6] focus:ring-4 focus:ring-[#3C81C6]/10 dark:border-[#2d353e] dark:bg-[#0f141b] dark:text-white"
                             />
-                        </div>
+                        </Field>
 
-                        <div className="flex-1 flex flex-col gap-1">
-                            <label htmlFor="sourceType" className="text-sm font-medium text-gray-700 dark:text-gray-300">Nguồn dữ liệu</label>
-                            <select 
-                                id="sourceType"
-                                title="Nguồn dữ liệu"
+                        <Field label="Nguồn dữ liệu">
+                            <select
                                 value={sourceType}
-                                onChange={e => setSourceType(e.target.value)}
-                                className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                                onChange={(event) => setSourceType(event.target.value)}
+                                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-all focus:border-[#3C81C6] focus:ring-4 focus:ring-[#3C81C6]/10 dark:border-[#2d353e] dark:bg-[#0f141b] dark:text-white"
                             >
                                 <option value="DEVICE">Thiết bị đo</option>
                                 <option value="CLINIC">Khám lâm sàng</option>
-                                <option value="SELF_REPORTED">Bệnh nhân khai báo</option>
+                                <option value="SELF_REPORTED">Bệnh nhân tự khai báo</option>
                             </select>
-                        </div>
+                        </Field>
                     </div>
 
-                    <div className="flex flex-col gap-1 mb-2">
-                        <label htmlFor="deviceInfo" className="text-sm font-medium text-gray-700 dark:text-gray-300">Thiết bị / Ghi chú</label>
-                        <input 
-                            id="deviceInfo"
-                            title="Thiết bị hoặc Ghi chú"
-                            type="text" 
+                    <Field label="Thiết bị / ghi chú">
+                        <input
                             value={deviceInfo}
-                            onChange={e => setDeviceInfo(e.target.value)}
-                            placeholder="Tên máy đo..."
-                            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                            onChange={(event) => setDeviceInfo(event.target.value)}
+                            placeholder="Ví dụ: Máy đo Omron tại nhà"
+                            className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-[#3C81C6] focus:ring-4 focus:ring-[#3C81C6]/10 dark:border-[#2d353e] dark:bg-[#0f141b] dark:text-white"
                         />
-                    </div>
-
-                    <div className="flex justify-end gap-2 mt-4 pt-4 border-t dark:border-gray-700 sticky bottom-0 bg-white dark:bg-[#1e242b] py-2">
-                        <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 border rounded-xl text-sm font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700 dark:text-white">
-                            Hủy
-                        </button>
-                        <button type="submit" disabled={submitting} className="px-4 py-2 bg-[#3C81C6] text-white rounded-xl text-sm font-medium hover:bg-[#2b6cb0] disabled:opacity-50">
-                            {submitting ? 'Đang lưu...' : 'Lưu chỉ số'}
-                        </button>
-                    </div>
+                    </Field>
                 </form>
             </Modal>
         </div>
     );
 }
 
-const VitalCard = ({ icon, title, value, unit }: any) => {
+function VitalCard({ icon, title, value, unit }: { icon: string; title: string; value: string; unit: string }) {
     return (
-        <div className="bg-gray-50 dark:bg-[#13191f] rounded-2xl p-5 border border-gray-100 dark:border-[#2d353e]">
-            <div className="flex items-center gap-2 mb-3">
+        <div className="rounded-[24px] border border-slate-200/80 bg-white p-5 shadow-sm dark:border-[#2d353e] dark:bg-[#111821]">
+            <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-[#3C81C6]">{icon}</span>
-                <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{title}</span>
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">{title}</span>
             </div>
-            <div className="flex items-end gap-1 flex-wrap">
-                <span className="text-2xl 2xl:text-3xl font-bold text-gray-900 dark:text-white">{value}</span>
-                <span className="text-xs 2xl:text-sm font-medium text-gray-500 mb-1">{unit}</span>
+            <div className="mt-4 flex items-end gap-2">
+                <span className="text-3xl font-bold text-slate-900 dark:text-white">{value}</span>
+                <span className="pb-1 text-sm font-medium text-slate-400">{unit}</span>
             </div>
         </div>
     );
 }
 
+function Field({
+    label,
+    required = false,
+    hint,
+    children,
+}: {
+    label: string;
+    required?: boolean;
+    hint?: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <div>
+            <div className="mb-1.5 flex items-center justify-between gap-3">
+                <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    {label} {required && <span className="text-rose-500">*</span>}
+                </label>
+                {hint && <span className="text-xs text-slate-400">{hint}</span>}
+            </div>
+            {children}
+        </div>
+    );
+}

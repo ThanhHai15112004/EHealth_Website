@@ -1,11 +1,19 @@
+export interface AvatarImage {
+    url: string;
+    public_id: string;
+    uploaded_at: string;
+}
+
 export interface PatientProfile {
     id: string;
     userId: string;
+    patientCode?: string;
     fullName: string;
     dob: string;
     gender: "male" | "female" | "other";
     phone: string;
     idNumber?: string;
+    nationality?: string;
     insuranceNumber?: string;
     address?: string;
     relationship: "self" | "parent" | "child" | "sibling" | "spouse" | "other";
@@ -18,8 +26,20 @@ export interface PatientProfile {
     isActive: boolean;
     isPrimary: boolean;
     avatar?: string;
+    avatarPublicId?: string;
+    avatarImages?: AvatarImage[];
     createdAt: string;
     updatedAt: string;
+    insuranceStatus?: "active" | "expiring" | "expired" | "none";
+    insuranceProviderName?: string;
+    hasInsurance?: boolean;
+    summary?: {
+        age?: number;
+        insuranceCount?: number;
+        allergyCount?: number;
+        medicalHistoryCount?: number;
+        tagCount?: number;
+    };
 }
 
 export const RELATIONSHIP_OPTIONS = [
@@ -29,4 +49,4 @@ export const RELATIONSHIP_OPTIONS = [
     { value: "sibling", label: "Anh/Chị/Em", icon: "group" },
     { value: "spouse", label: "Vợ/Chồng", icon: "favorite" },
     { value: "other", label: "Khác", icon: "person_add" },
-];
+] as const;

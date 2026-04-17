@@ -1,323 +1,432 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { unwrapList } from "@/api/response";
 import { useAuth } from "@/contexts/AuthContext";
-import axiosClient from "@/api/axiosClient";
-import { MEDICAL_RECORD_ENDPOINTS, EHR_ENDPOINTS } from "@/api/endpoints";
-import { unwrap, unwrapList } from "@/api/response";
 import { usePageAIContext } from "@/hooks/usePageAIContext";
-import { AIResultExplainer } from "@/components/portal/ai";
+import { medicalRecordService } from "@/services/medicalRecordService";
+import type { PatientMedicalRecordListItemVM, PatientRecordTimelineItemVM } from "@/types/patient-medical-record";
+import type { PatientProfile } from "@/types/patient-profile";
+import { adaptPatientMedicalRecordListItem, adaptPatientRecordTimelineItem } from "@/utils/patientMedicalRecordAdapters";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+const STATUS_STYLES: Record<string, string> = {
+    completed: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400",
+    in_progress: "bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400",
+    pending: "bg-slate-100 text-slate-700 dark:bg-slate-500/10 dark:text-slate-300",
+};
 
-interface MedicalRecord {
-    id: string;
-    date: string;
-    doctorName: string;
-    department: string;
-    diagnosis: string;
-    status: string;
-    encounterId?: string;
+const TRUST_STYLES: Record<string, string> = {
+    verified: "bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300",
+    finalized: "bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300",
+    draft: "bg-orange-100 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300",
+};
+
+const EXAM_ONLY_KEYWORDS = [
+    "xet nghiem",
+    "can lam sang",
+    "chan doan hinh anh",
+    "diagnostic imaging",
+    
+    "laboratory",
+    "laboratory medicine",
+    "lab",
+];
+
+function normalizeVietnamese(value: string) {
+    return value
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .trim();
 }
 
-interface TimelineItem {
-    id: string;
-    date: string;
-    type: string;
-    title: string;
-    description: string;
-    doctorName?: string;
-    department?: string;
-    status: string;
+function isExamOnlyEncounter(record: PatientMedicalRecordListItemVM) {
+    const specialty = normalizeVietnamese(record.specialtyName || "");
+    const encounterType = normalizeVietnamese(record.encounterType || "");
+    const encounterTypeLabel = normalizeVietnamese(record.encounterTypeLabel || "");
+    const primaryDiagnosis = normalizeVietnamese(record.primaryDiagnosis || "");
+
+    return EXAM_ONLY_KEYWORDS.some((keyword) =>
+        specialty.includes(keyword)
+        || encounterType.includes(keyword)
+        || encounterTypeLabel.includes(keyword)
+        || primaryDiagnosis === keyword,
+    );
+}
+
+function toTimestamp(value?: string | null) {
+    if (!value) return 0;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function EmptyState({ title, message, icon = "folder_open" }: { title: string; message: string; icon?: string }) {
+    return (
+        <div className="rounded-2xl border border-[#e5e7eb] bg-white px-6 py-16 text-center dark:border-[#2d353e] dark:bg-[#1e242b]">
+            <span className="material-symbols-outlined mb-4 text-gray-300 dark:text-gray-600" style={{ fontSize: "56px" }}>{icon}</span>
+            <h3 className="mb-1 text-lg font-semibold text-[#121417] dark:text-white">{title}</h3>
+            <p className="text-sm text-[#687582]">{message}</p>
+        </div>
+    );
+}
+
+function SummaryCard({
+    icon,
+    label,
+    value,
+    subtext,
+    accent,
+}: {
     icon: string;
-    color: string;
+    label: string;
+    value: string;
+    subtext?: string;
+    accent: string;
+}) {
+    return (
+        <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5 dark:border-[#2d353e] dark:bg-[#1e242b]">
+            <div className="flex items-start gap-3">
+                <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${accent}`}>
+                    <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>{icon}</span>
+                </div>
+                <div className="min-w-0">
+                    <p className="text-sm text-[#687582]">{label}</p>
+                    <p className="mt-1 text-2xl font-bold text-[#121417] dark:text-white">{value}</p>
+                    {subtext ? <p className="mt-1 text-xs text-[#687582]">{subtext}</p> : null}
+                </div>
+            </div>
+        </div>
+    );
 }
 
-// ─── Adapters ─────────────────────────────────────────────────────────────────
+function RecordCard({ record }: { record: PatientMedicalRecordListItemVM }) {
+    return (
+        <div className="overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white transition-all hover:border-[#3C81C6]/30 hover:shadow-lg dark:border-[#2d353e] dark:bg-[#1e242b] dark:hover:shadow-black/20">
+            <div className="space-y-4 p-5">
+                <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10 text-[#3C81C6]">
+                            <span className="material-symbols-outlined" style={{ fontSize: "22px" }}>clinical_notes</span>
+                        </div>
+                        <div>
+                            <h3 className="text-base font-bold text-[#121417] dark:text-white">{record.specialtyName}</h3>
+                            <p className="mt-0.5 text-xs text-[#687582]">Mã lần khám: {record.encounterId}</p>
+                            <p className="mt-1 text-xs text-[#687582]">{record.formattedDate}</p>
+                        </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${STATUS_STYLES[record.status] || STATUS_STYLES.pending}`}>
+                            {record.statusLabel}
+                        </span>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${TRUST_STYLES[record.trustState] || TRUST_STYLES.draft}`}>
+                            {record.trustLabel}
+                        </span>
+                    </div>
+                </div>
 
-function adaptRecord(r: any): MedicalRecord {
-    return {
-        id: r.id ?? r._id ?? r.encounterId ?? String(Math.random()),
-        date: r.date ?? r.visitDate ?? r.createdAt ?? "",
-        doctorName: r.doctorName ?? r.doctor_name ?? r.doctor?.name ?? r.doctor?.fullName ?? "",
-        department: r.department ?? r.speciality ?? r.departmentName ?? "",
-        diagnosis: r.diagnosis ?? r.mainDiagnosis ?? r.conclusion ?? "",
-        status: r.status ?? "completed",
-        encounterId: r.encounterId ?? r.encounter_id ?? r.id,
-    };
+                <div className="grid grid-cols-1 gap-3 text-sm lg:grid-cols-2">
+                    <div className="flex items-start gap-2">
+                        <span className="material-symbols-outlined mt-0.5 text-[#687582]" style={{ fontSize: "18px" }}>stethoscope</span>
+                        <div>
+                            <p className="text-[#687582]">Bác sĩ điều trị</p>
+                            <p className="font-medium text-[#121417] dark:text-white">{record.doctorName}</p>
+                        </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                        <span className="material-symbols-outlined mt-0.5 text-[#687582]" style={{ fontSize: "18px" }}>vaccines</span>
+                        <div>
+                            <p className="text-[#687582]">Chẩn đoán chính</p>
+                            <p className="font-medium text-[#121417] dark:text-white">{record.primaryDiagnosis}</p>
+                            {record.icd10Code ? <p className="mt-0.5 text-xs text-[#687582]">ICD-10: {record.icd10Code}</p> : null}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-[#3C81C6]/10 px-2.5 py-1 text-[11px] font-semibold text-[#3C81C6] dark:bg-[#3C81C6]/15">
+                        {record.encounterTypeLabel}
+                    </span>
+                    {record.visitNumber ? (
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600 dark:bg-slate-700/40 dark:text-slate-300">
+                            Lượt khám #{record.visitNumber}
+                        </span>
+                    ) : null}
+                    {record.hasSignature ? (
+                        <span className="rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                            Hồ sơ đã được xác nhận
+                        </span>
+                    ) : null}
+                </div>
+            </div>
+
+            <div className="flex justify-end border-t border-[#e5e7eb] bg-gray-50 px-5 py-3 dark:border-[#2d353e] dark:bg-black/20">
+                <Link
+                    href={`/patient/medical-records/${record.encounterId}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-[#3C81C6]/30 bg-white px-4 py-2 text-sm font-semibold text-[#3C81C6] shadow-sm transition-colors hover:border-[#3C81C6] hover:bg-[#3C81C6] hover:text-white dark:bg-[#2d353e]"
+                >
+                    Xem chi tiết
+                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_forward</span>
+                </Link>
+            </div>
+        </div>
+    );
 }
-
-function adaptTimeline(t: any): TimelineItem {
-    const iconMap: Record<string, string> = {
-        examination: "stethoscope", lab_result: "science", prescription: "medication",
-        surgery: "surgical", vaccination: "vaccines", vital_check: "monitor_heart",
-        lab: "science", visit: "stethoscope", vaccine: "vaccines",
-    };
-    const colorMap: Record<string, string> = {
-        examination: "text-blue-500 bg-blue-50 dark:bg-blue-500/10",
-        lab_result: "text-purple-500 bg-purple-50 dark:bg-purple-500/10",
-        prescription: "text-green-500 bg-green-50 dark:bg-green-500/10",
-        surgery: "text-orange-500 bg-orange-50 dark:bg-orange-500/10",
-        vaccination: "text-amber-500 bg-amber-50 dark:bg-amber-500/10",
-        vital_check: "text-red-500 bg-red-50 dark:bg-red-500/10",
-    };
-    const type = t.type ?? "examination";
-    return {
-        id: t.id ?? t._id ?? String(Math.random()),
-        date: t.date ?? t.createdAt ?? "",
-        type,
-        title: t.title ?? t.name ?? "Sự kiện y tế",
-        description: t.description ?? t.summary ?? "",
-        doctorName: t.doctorName ?? t.doctor?.name ?? t.doctor?.fullName,
-        department: t.department ?? t.speciality,
-        status: t.status ?? "completed",
-        icon: t.icon ?? iconMap[type] ?? "health_and_safety",
-        color: t.color ?? colorMap[type] ?? "text-blue-500 bg-blue-50 dark:bg-blue-500/10",
-    };
-}
-
-// ─── Status Badge ─────────────────────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: string }) {
-    const map: Record<string, { label: string; cls: string }> = {
-        completed: { label: "Hoàn thành", cls: "bg-green-100 dark:bg-green-500/10 text-green-700 dark:text-green-400" },
-        finalized: { label: "Đã ký duyệt", cls: "bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400" },
-        pending: { label: "Chờ xử lý", cls: "bg-amber-100 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400" },
-        in_progress: { label: "Đang khám", cls: "bg-cyan-100 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-400" },
-    };
-    const cfg = map[status] ?? { label: status, cls: "bg-gray-100 text-gray-600" };
-    return <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${cfg.cls}`}>{cfg.label}</span>;
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
-type ViewMode = "list" | "timeline";
 
 export default function MedicalRecordsPage() {
-    usePageAIContext({ pageKey: 'medical-records' });
+    usePageAIContext({ pageKey: "medical-records" });
+    const router = useRouter();
     const { user } = useAuth();
-    const [records, setRecords] = useState<MedicalRecord[]>([]);
-    const [timeline, setTimeline] = useState<TimelineItem[]>([]);
+
+    const [profiles, setProfiles] = useState<PatientProfile[]>([]);
+    const [selectedProfileId, setSelectedProfileId] = useState("");
+    const [records, setRecords] = useState<PatientMedicalRecordListItemVM[]>([]);
+    const [timeline, setTimeline] = useState<PatientRecordTimelineItemVM[]>([]);
     const [loading, setLoading] = useState(true);
-    const [loadingTimeline, setLoadingTimeline] = useState(false);
-    const [viewMode, setViewMode] = useState<ViewMode>("list");
-    const [selectedRecord, setSelectedRecord] = useState<MedicalRecord | null>(null);
-    const [timelineFetched, setTimelineFetched] = useState(false);
+    const [activePanel, setActivePanel] = useState<"records" | "timeline">("records");
 
     useEffect(() => {
-        loadRecords();
+        const fetchProfiles = async () => {
+            try {
+                const { patientProfileService, mapBEToFEProfile } = await import("@/services/patientProfileService");
+                const beProfiles = await patientProfileService.getMyProfiles();
+                const mapped = beProfiles.map((be) => mapBEToFEProfile(be, user?.id));
+                setProfiles(mapped);
+
+                if (mapped.length > 0) {
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = mapped.some((profile) => profile.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId || mapped[0].id : mapped[0].id);
+                }
+            } catch (error) {
+                console.error("Failed to fetch profiles", error);
+            }
+        };
+
+        if (user?.id) {
+            fetchProfiles();
+        }
     }, [user?.id]);
 
-    const loadRecords = async () => {
-        try {
+    useEffect(() => {
+        if (!selectedProfileId) return;
+
+        const loadPage = async () => {
             setLoading(true);
-            if (user?.id) {
-                const res = await axiosClient.get(MEDICAL_RECORD_ENDPOINTS.BY_PATIENT(user.id));
-                const raw = unwrapList<any>(res);
-                const data = raw.data?.length ? raw.data : (res.data?.data ?? res.data ?? []);
-                setRecords(Array.isArray(data) ? data.map(adaptRecord) : []);
-            }
-        } catch {
-            setRecords([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+            try {
+                const [recordsRes, timelineRes] = await Promise.all([
+                    medicalRecordService.getByPatient(selectedProfileId),
+                    medicalRecordService.getTimeline(selectedProfileId),
+                ]);
 
-    const loadTimeline = async () => {
-        if (timelineFetched || !user?.id) return;
-        setLoadingTimeline(true);
-        try {
-            const res = await axiosClient.get(EHR_ENDPOINTS.TIMELINE(user.id));
-            const raw = unwrapList<any>(res);
-            if (raw.data?.length) {
-                setTimeline(raw.data.map(adaptTimeline));
-            }
-            setTimelineFetched(true);
-        } catch {
-            // giữ trống
-        } finally {
-            setLoadingTimeline(false);
-        }
-    };
+                const cleanedRecords = unwrapList<any>(recordsRes).data
+                    .map(adaptPatientMedicalRecordListItem)
+                    .filter((record) => !isExamOnlyEncounter(record))
+                    .sort((a, b) => toTimestamp(b.startTime) - toTimestamp(a.startTime));
 
-    const handleViewModeChange = (mode: ViewMode) => {
-        setViewMode(mode);
-        if (mode === "timeline") loadTimeline();
+                setRecords(cleanedRecords);
+                setTimeline(
+                    unwrapList<any>(timelineRes).data
+                        .map(adaptPatientRecordTimelineItem)
+                        .filter((item) => item.type !== "LAB_ORDER" && item.type !== "LAB_RESULT")
+                        .sort((a, b) => toTimestamp(b.rawDate) - toTimestamp(a.rawDate)),
+                );
+            } catch (error) {
+                console.error("Failed to load medical records", error);
+                setRecords([]);
+                setTimeline([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadPage();
+    }, [selectedProfileId]);
+
+    const derivedStats = useMemo(() => {
+        const totalEncounters = records.length;
+        const totalFinalized = records.filter((record) => record.isFinalized).length;
+        const lastEncounter = records[0] || null;
+
+        const diagnosisCounts = new Map<string, number>();
+        const encounterTypeCounts = new Map<string, number>();
+
+        records.forEach((record) => {
+            if (record.primaryDiagnosis && normalizeVietnamese(record.primaryDiagnosis) !== "chua co chan doan chinh") {
+                diagnosisCounts.set(record.primaryDiagnosis, (diagnosisCounts.get(record.primaryDiagnosis) || 0) + 1);
+            }
+            encounterTypeCounts.set(record.encounterTypeLabel, (encounterTypeCounts.get(record.encounterTypeLabel) || 0) + 1);
+        });
+
+        const topDiagnosis = Array.from(diagnosisCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+        const topEncounterType = Array.from(encounterTypeCounts.entries()).sort((a, b) => b[1] - a[1])[0];
+
+        return {
+            totalEncounters,
+            totalFinalized,
+            completionRate: totalEncounters > 0 ? Math.round((totalFinalized / totalEncounters) * 100) : 0,
+            lastEncounterLabel: lastEncounter ? `${lastEncounter.formattedDate} • ${lastEncounter.doctorName}` : "Chưa có lượt khám",
+            lastEncounterDate: lastEncounter?.formattedDate || "--",
+            topDiagnosisLabel: topDiagnosis?.[0] || "Chưa có dữ liệu nổi bật",
+            topDiagnosisCount: topDiagnosis?.[1] || 0,
+            topEncounterTypeLabel: topEncounterType?.[0] || "Khám bệnh",
+        };
+    }, [records]);
+
+    const handleProfileChange = (profileId: string) => {
+        setSelectedProfileId(profileId);
+        if (typeof sessionStorage !== "undefined") {
+            sessionStorage.setItem("patientPortal_selectedProfileId", profileId);
+        }
     };
 
     return (
         <div className="space-y-6">
-            <div className="flex items-start justify-between">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-[#121417] dark:text-white">Kết quả khám bệnh</h1>
-                    <p className="text-sm text-[#687582] mt-0.5">Xem lại kết quả khám, đơn thuốc và xét nghiệm</p>
+                    <p className="mt-0.5 max-w-3xl text-sm text-[#687582]">
+                        Hồ sơ được sắp theo lần khám gần nhất. Kết quả cận lâm sàng chỉ hiển thị trong trang chi tiết của từng hồ sơ khám.
+                    </p>
                 </div>
-                <div className="flex items-center gap-1 p-1 bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl border border-[#e5e7eb] dark:border-[#2d353e]">
-                    {(["list", "timeline"] as ViewMode[]).map(mode => (
-                        <button key={mode} onClick={() => handleViewModeChange(mode)}
-                            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${viewMode === mode ? "bg-white dark:bg-[#1e242b] text-[#121417] dark:text-white shadow-sm" : "text-[#687582] hover:text-[#121417] dark:hover:text-white"}`}>
-                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>{mode === "list" ? "list" : "timeline"}</span>
-                            {mode === "list" ? "Danh sách" : "Dòng thời gian"}
+                <div className="self-start rounded-xl border border-[#e5e7eb] bg-[#f6f7f8] p-1 dark:border-[#2d353e] dark:bg-[#13191f]">
+                    <div className="flex items-center gap-1">
+                        <button
+                            type="button"
+                            onClick={() => setActivePanel("records")}
+                            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                                activePanel === "records"
+                                    ? "bg-white text-[#121417] shadow-sm dark:bg-[#1e242b] dark:text-white"
+                                    : "text-[#687582] hover:text-[#121417] dark:hover:text-white"
+                            }`}
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>view_agenda</span>
+                            Hồ sơ khám
                         </button>
-                    ))}
+                        <button
+                            type="button"
+                            onClick={() => setActivePanel("timeline")}
+                            className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                                activePanel === "timeline"
+                                    ? "bg-white text-[#121417] shadow-sm dark:bg-[#1e242b] dark:text-white"
+                                    : "text-[#687582] hover:text-[#121417] dark:hover:text-white"
+                            }`}
+                        >
+                            <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>timeline</span>
+                            Dòng thời gian
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            {/* AI Result Explainer */}
-            <AIResultExplainer />
+            {profiles.length > 0 ? (
+                <div className="-mx-2 flex gap-3 overflow-x-auto px-2 pb-2 snap-x">
+                    {profiles.map((profile) => (
+                        <div
+                            key={profile.id}
+                            onClick={() => handleProfileChange(profile.id)}
+                            className={`flex min-w-[240px] cursor-pointer items-center gap-3 rounded-2xl border p-3 transition-all snap-start ${
+                                selectedProfileId === profile.id
+                                    ? "border-[#3C81C6] bg-blue-50/50 shadow-sm dark:bg-blue-900/20"
+                                    : "border-gray-200 bg-white hover:border-blue-300 dark:border-gray-700 dark:bg-[#1e242b] dark:hover:border-blue-800"
+                            }`}
+                        >
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3C81C6] to-[#60a5fa] text-sm font-bold text-white shadow-md shadow-[#3C81C6]/20">
+                                {profile.fullName?.charAt(0)?.toUpperCase() || "U"}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <p className={`truncate text-sm font-bold ${selectedProfileId === profile.id ? "text-[#3C81C6]" : "text-gray-900 dark:text-white"}`}>
+                                    {profile.fullName}
+                                </p>
+                                <p className="truncate text-xs text-gray-500 dark:text-gray-400">{profile.phone || "Chưa có SĐT"}</p>
+                            </div>
+                            {selectedProfileId === profile.id ? (
+                                <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "20px" }}>check_circle</span>
+                            ) : null}
+                        </div>
+                    ))}
+                </div>
+            ) : null}
 
-            {/* ── List View ── */}
-            {viewMode === "list" && (
-                <>
+            {loading ? (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+                    {Array.from({ length: 4 }).map((_, index) => (
+                        <div key={index} className="h-32 animate-pulse rounded-2xl border border-[#e5e7eb] bg-white p-5 dark:border-[#2d353e] dark:bg-[#1e242b]" />
+                    ))}
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 2xl:grid-cols-4">
+                    <SummaryCard icon="folder_shared" label="Tổng số lần khám" value={String(derivedStats.totalEncounters)} subtext={`Loại thường gặp: ${derivedStats.topEncounterTypeLabel}`} accent="bg-[#3C81C6]/10 text-[#3C81C6]" />
+                    <SummaryCard icon="verified" label="Hồ sơ đã hoàn tất" value={String(derivedStats.totalFinalized)} subtext={`${derivedStats.completionRate}% hồ sơ đã hoàn tất`} accent="bg-indigo-100 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300" />
+                    <SummaryCard icon="schedule" label="Lần khám gần nhất" value={derivedStats.lastEncounterDate} subtext={derivedStats.lastEncounterLabel} accent="bg-emerald-100 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300" />
+                    <SummaryCard icon="clinical_notes" label="Chẩn đoán nổi bật" value={derivedStats.topDiagnosisCount > 0 ? `${derivedStats.topDiagnosisCount} lần` : "--"} subtext={derivedStats.topDiagnosisLabel} accent="bg-purple-100 text-purple-600 dark:bg-purple-500/10 dark:text-purple-300" />
+                </div>
+            )}
+
+            {activePanel === "records" ? (
+                <div>
                     {loading ? (
                         <div className="space-y-4">
-                            {Array.from({ length: 3 }).map((_, i) => (
-                                <div key={i} className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-5 animate-pulse">
-                                    <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/3 mb-3" />
-                                    <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-2/3 mb-2" />
-                                    <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/2" />
-                                </div>
+                            {Array.from({ length: 3 }).map((_, index) => (
+                                <div key={index} className="h-48 animate-pulse rounded-2xl border border-[#e5e7eb] bg-white p-5 dark:border-[#2d353e] dark:bg-[#1e242b]" />
                             ))}
                         </div>
                     ) : records.length === 0 ? (
-                        <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
-                            <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-4" style={{ fontSize: "64px" }}>folder_open</span>
-                            <h3 className="text-lg font-semibold text-[#121417] dark:text-white mb-1">Chưa có kết quả khám</h3>
-                            <p className="text-sm text-[#687582] mb-6">Kết quả sẽ được cập nhật sau mỗi lần khám tại EHealth</p>
-                            <Link href="/booking"
-                                className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white font-semibold rounded-xl shadow-md hover:shadow-lg transition-all">
-                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>calendar_month</span>
-                                Đặt lịch khám
-                            </Link>
-                        </div>
+                        <EmptyState title="Chưa có hồ sơ khám" message="Hồ sơ sẽ xuất hiện tại đây sau khi có lần khám phù hợp." />
                     ) : (
                         <div className="space-y-4">
-                            {records.map(record => (
-                                <div key={record.id}
-                                    className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] hover:border-[#3C81C6]/20 hover:shadow-md transition-all p-5 cursor-pointer"
-                                    onClick={() => setSelectedRecord(selectedRecord?.id === record.id ? null : record)}>
-                                    <div className="flex items-start justify-between">
-                                        <div className="flex gap-4">
-                                            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-[#3C81C6]/10 to-[#60a5fa]/10 flex items-center justify-center flex-shrink-0">
-                                                <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "24px" }}>description</span>
-                                            </div>
-                                            <div>
-                                                <h3 className="font-semibold text-[#121417] dark:text-white">{record.department || "Kết quả khám"}</h3>
-                                                {record.doctorName && <p className="text-sm text-[#687582] mt-0.5">BS. {record.doctorName}</p>}
-                                                <div className="flex items-center gap-3 mt-2 text-xs text-[#687582]">
-                                                    {record.date && (
-                                                        <span className="inline-flex items-center gap-1">
-                                                            <span className="material-symbols-outlined" style={{ fontSize: "14px" }}>event</span>
-                                                            {record.date}
-                                                        </span>
-                                                    )}
-                                                    <StatusBadge status={record.status} />
-                                                </div>
-                                                {record.diagnosis && (
-                                                    <p className="text-sm text-[#687582] mt-2 p-2 bg-[#f6f7f8] dark:bg-[#13191f] rounded-lg">
-                                                        <span className="font-medium text-[#121417] dark:text-white">Chẩn đoán:</span> {record.diagnosis}
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <span className={`material-symbols-outlined text-[#687582] transition-transform ${selectedRecord?.id === record.id ? "rotate-180" : ""}`} style={{ fontSize: "20px" }}>expand_more</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Detail panel */}
-                                    {selectedRecord?.id === record.id && (
-                                        <div className="mt-4 pt-4 border-t border-[#e5e7eb] dark:border-[#2d353e] space-y-3">
-                                            <div className="grid grid-cols-2 gap-3 text-sm">
-                                                <div className="bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Bác sĩ phụ trách</p>
-                                                    <p className="font-semibold text-[#121417] dark:text-white">{record.doctorName || "—"}</p>
-                                                </div>
-                                                <div className="bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Khoa / Phòng</p>
-                                                    <p className="font-semibold text-[#121417] dark:text-white">{record.department || "—"}</p>
-                                                </div>
-                                                <div className="bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Ngày khám</p>
-                                                    <p className="font-semibold text-[#121417] dark:text-white">{record.date || "—"}</p>
-                                                </div>
-                                                <div className="bg-[#f6f7f8] dark:bg-[#13191f] rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Trạng thái</p>
-                                                    <StatusBadge status={record.status} />
-                                                </div>
-                                            </div>
-                                            {record.diagnosis && (
-                                                <div className="bg-blue-50 dark:bg-blue-500/10 rounded-xl p-3">
-                                                    <p className="text-xs text-[#687582] mb-1">Chẩn đoán / Kết luận</p>
-                                                    <p className="text-sm text-[#121417] dark:text-white font-medium">{record.diagnosis}</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
+                            {records.map((record) => (
+                                <RecordCard key={record.encounterId} record={record} />
                             ))}
                         </div>
                     )}
-                </>
-            )}
-
-            {/* ── Timeline View ── */}
-            {viewMode === "timeline" && (
-                <>
-                    {loadingTimeline ? (
-                        <div className="space-y-4 animate-pulse">
-                            {Array.from({ length: 4 }).map((_, i) => (
-                                <div key={i} className="flex gap-4">
-                                    <div className="w-9 h-9 rounded-full bg-gray-200 dark:bg-gray-700 flex-shrink-0" />
-                                    <div className="flex-1 bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-4 space-y-2">
-                                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/3" />
-                                        <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-2/3" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : timeline.length === 0 ? (
-                        <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] py-16 text-center">
-                            <span className="material-symbols-outlined text-gray-300 dark:text-gray-600 mb-3" style={{ fontSize: "56px" }}>timeline</span>
-                            <p className="text-sm text-[#687582]">Chưa có dữ liệu dòng thời gian</p>
-                        </div>
+                </div>
+            ) : (
+                <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5 dark:border-[#2d353e] dark:bg-[#1e242b]">
+                    {timeline.length === 0 ? (
+                        <EmptyState
+                            title="Chưa có dữ liệu dòng thời gian"
+                            message="Thông tin lần khám, chẩn đoán và đơn thuốc sẽ xuất hiện tại đây sau mỗi lần khám."
+                            icon="timeline"
+                        />
                     ) : (
-                        <div className="bg-white dark:bg-[#1e242b] rounded-2xl border border-[#e5e7eb] dark:border-[#2d353e] p-6">
-                            <h3 className="text-lg font-bold text-[#121417] dark:text-white mb-6">Lịch sử khám bệnh</h3>
-                            <div className="relative">
-                                <div className="absolute left-[18px] top-0 bottom-0 w-0.5 bg-[#e5e7eb] dark:bg-[#2d353e]" />
-                                <div className="space-y-6">
-                                    {timeline.map(item => (
-                                        <div key={item.id} className="relative flex gap-4">
-                                            <div className={`relative z-10 w-9 h-9 rounded-full ${item.color} flex items-center justify-center flex-shrink-0 ring-4 ring-white dark:ring-[#1e242b]`}>
-                                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{item.icon}</span>
-                                            </div>
-                                            <div className="flex-1 pb-6">
-                                                <div className="flex items-start justify-between gap-3">
-                                                    <div>
-                                                        <h4 className="text-sm font-bold text-[#121417] dark:text-white">{item.title}</h4>
-                                                        <p className="text-xs text-[#687582] mt-0.5">{item.description}</p>
-                                                        {item.doctorName && (
-                                                            <p className="text-xs text-[#687582] mt-1">
-                                                                BS. {item.doctorName}{item.department && ` • ${item.department}`}
-                                                            </p>
-                                                        )}
+                        <div className="relative">
+                            <div className="absolute bottom-0 left-[18px] top-0 w-0.5 bg-[#e5e7eb] dark:bg-[#2d353e]" />
+                            <div className="space-y-6">
+                                {timeline.map((item) => (
+                                    <button
+                                        key={item.id}
+                                        onClick={() => item.encounterId && router.push(`/patient/medical-records/${item.encounterId}`)}
+                                        className="group relative flex w-full gap-4 text-left"
+                                    >
+                                        <div className={`relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full ring-4 ring-white dark:ring-[#1e242b] ${item.color}`}>
+                                            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{item.icon}</span>
+                                        </div>
+                                        <div className="flex-1 pb-6">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <h4 className="text-sm font-bold text-[#121417] transition-colors group-hover:text-[#3C81C6] dark:text-white">
+                                                            {item.title}
+                                                        </h4>
+                                                        <span className="rounded-full bg-[#f6f7f8] px-2 py-0.5 text-[10px] font-semibold text-[#687582] dark:bg-[#13191f]">
+                                                            {item.statusLabel}
+                                                        </span>
                                                     </div>
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        <span className="text-xs text-[#687582] whitespace-nowrap bg-[#f6f7f8] dark:bg-[#13191f] px-2 py-1 rounded-md">{item.date}</span>
-                                                        <StatusBadge status={item.status} />
-                                                    </div>
+                                                    <p className="mt-1 text-xs text-[#687582]">{item.description}</p>
                                                 </div>
+                                                <span className="whitespace-nowrap rounded-md bg-[#f6f7f8] px-2 py-1 text-xs text-[#687582] dark:bg-[#13191f]">
+                                                    {item.date}
+                                                </span>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
+                                    </button>
+                                ))}
                             </div>
                         </div>
                     )}
-                </>
+                </div>
             )}
         </div>
     );

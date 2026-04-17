@@ -27,6 +27,28 @@ export interface ClinicalResultTrend {
     [key: string]: any;
 }
 
+export interface ClinicalResultsSummary {
+    total_orders?: number;
+    total_with_results?: number;
+    total_pending?: number;
+    total_completed?: number;
+    total_in_progress?: number;
+    total_cancelled?: number;
+    by_order_type?: Array<{ order_type: string; count: number }>;
+    latest_order_at?: string | null;
+    latest_result_at?: string | null;
+}
+
+export interface ClinicalResultAttachment {
+    medical_orders_id: string;
+    service_code: string;
+    service_name: string;
+    order_type: string;
+    attachment_urls: string[];
+    performed_at?: string | null;
+    performer_name?: string | null;
+}
+
 // Local fallback cho uploadFile (endpoints.ts có ATTACHMENTS list)
 const LOCAL = {
     UPLOAD_FILE: (patientId: string, orderId: string) =>
@@ -70,11 +92,21 @@ export const clinicalResultsService = {
     },
 
     /** Xu hướng theo thời gian theo loại xét nghiệm */
-    getTrends: async (patientId: string, type: string) => {
+    getTrends: async (patientId: string, serviceCode: string) => {
         const res = await axiosClient.get(CLINICAL_RESULTS_ENDPOINTS.TRENDS(patientId), {
-            params: { type },
+            params: { service_code: serviceCode },
         });
         return unwrap<ClinicalResultTrend>(res);
+    },
+
+    getSummary: async (patientId: string) => {
+        const res = await axiosClient.get(CLINICAL_RESULTS_ENDPOINTS.SUMMARY(patientId));
+        return unwrap<ClinicalResultsSummary>(res);
+    },
+
+    getAttachments: async (patientId: string) => {
+        const res = await axiosClient.get(CLINICAL_RESULTS_ENDPOINTS.ATTACHMENTS(patientId));
+        return unwrapList<ClinicalResultAttachment>(res);
     },
 
     /** Kết quả bất thường */

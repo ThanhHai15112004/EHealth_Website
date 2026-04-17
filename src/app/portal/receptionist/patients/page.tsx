@@ -27,6 +27,10 @@ function fmtDate(iso?: string): string {
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
 }
 
+function getPrimaryAvatarUrl(patient: Patient): string {
+    return Array.isArray(patient.avatar_url) ? patient.avatar_url[0]?.url || "" : "";
+}
+
 // ==================== TYPES ====================
 interface FilterState {
     search: string;
@@ -353,10 +357,21 @@ export default function ReceptionistPatients() {
                                                             {p.patient_code ?? p.patient_id}
                                                         </td>
                                                         <td className="px-4 py-3">
-                                                            <p className="text-sm font-semibold text-[#121417] dark:text-white">{p.full_name}</p>
-                                                            {p.identity_number && (
-                                                                <p className="text-xs text-[#687582]">CCCD: {p.identity_number}</p>
-                                                            )}
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-[#3C81C6] to-[#2a6da8] text-sm font-semibold text-white">
+                                                                    {getPrimaryAvatarUrl(p) ? (
+                                                                        <img src={getPrimaryAvatarUrl(p)} alt={p.full_name} className="h-full w-full object-cover" />
+                                                                    ) : (
+                                                                        p.full_name.charAt(0)
+                                                                    )}
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-sm font-semibold text-[#121417] dark:text-white">{p.full_name}</p>
+                                                                    {p.identity_number && (
+                                                                        <p className="text-xs text-[#687582]">CCCD: {p.identity_number}</p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </td>
                                                         <td className="px-4 py-3">
                                                             <p className="text-sm text-[#121417] dark:text-white">{fmtDob(p.date_of_birth)}</p>

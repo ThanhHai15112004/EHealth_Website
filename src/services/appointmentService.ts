@@ -51,6 +51,9 @@ export interface CreateAppointmentData {
     slotId?: string;
     shiftId?: string;
     branchId?: string;
+    facilityId?: string;
+    specialtyId?: string;
+    slot_id?: string;
     bookingChannel?: 'WEB' | 'APP' | 'DIRECT_CLINIC' | 'HOTLINE';
 }
 
@@ -101,12 +104,54 @@ export const getAppointments = async (params?: {
 };
 
 // ============================================
+// Lấy lịch hẹn của bệnh nhân đang đăng nhập
+// BE auto-resolve patient_id từ token
+// ============================================
+export interface MyAppointmentsResponse {
+    success?: boolean;
+    data: Appointment[];
+    pagination?: any;
+}
+
+const normalizeAppointment = (a: any): Appointment => ({
+    ...a,
+    id: a.appointments_id || a.id,
+    patientId: a.patient_id || a.patientId,
+    patientName: a.patient_name || a.patientName,
+    doctorId: a.doctor_id || a.doctorId,
+    doctorName: a.doctor_name || a.doctorName,
+    departmentId: a.department_id || a.departmentId,
+    departmentName: a.department_name || a.departmentName || a.specialty_name,
+    date: a.appointment_date || a.date,
+    time: a.slot_start_time || a.time,
+    status: a.status,
+    reason: a.reason_for_visit || a.reason,
+    createdAt: a.created_at || a.createdAt,
+    updatedAt: a.updated_at || a.updatedAt,
+});
+
+export const getMyAppointments = async (
+    params?: { status?: string; patient_id?: string; fromDate?: string; toDate?: string; page?: number; limit?: number }
+): Promise<MyAppointmentsResponse> => {
+    try {
+        const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.MY_APPOINTMENTS, { params });
+        const raw = response.data;
+        return {
+            ...raw,
+            data: Array.isArray(raw?.data) ? raw.data.map(normalizeAppointment) : [],
+        };
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy lịch hẹn của tôi thất bại');
+    }
+};
+
+// ============================================
 // Lấy chi tiết lịch hẹn
 // ============================================
 export const getAppointmentById = async (id: string): Promise<Appointment> => {
     try {
         const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.DETAIL(id));
-        return unwrapOne(response);
+        return normalizeAppointment(unwrapOne(response));
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Lấy thông tin lịch hẹn thất bại');
     }
@@ -120,9 +165,10 @@ export const getAppointmentById = async (id: string): Promise<Appointment> => {
 export const createAppointment = async (data: CreateAppointmentData): Promise<Appointment> => {
     try {
         // Resolve slot/branch nếu FE chỉ có doctorId + date + time
-        let slotId = data.slotId;
-        let branchId = data.branchId;
-        let shiftId = data.shiftId;
+        // Support cả camelCase (slotId) và snake_case (slot_id)
+        let slotId = data.slotId || (data as any).slot_id;
+        let branchId = data.branchId || (data as any).branch_id || (data as any).facilityId;
+        let shiftId = data.shiftId || (data as any).shift_id;
 
         if (!slotId && !shiftId && data.doctorId && data.date && data.time) {
             try {
@@ -193,7 +239,7 @@ export const updateAppointment = async (
 // ============================================
 export const confirmAppointment = async (id: string): Promise<Appointment> => {
     try {
-        const response = await axiosClient.post(APPOINTMENT_ENDPOINTS.CONFIRM(id), {});
+        const response = await axiosClient.patch(APPOINTMENT_ENDPOINTS.CONFIRM(id), {});
         return unwrapOne(response);
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Xác nhận lịch hẹn thất bại');
@@ -222,20 +268,6 @@ export const generateAppointmentQr = async (id: string): Promise<{ qr_token: str
         return response.data?.data ?? response.data;
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Tạo mã QR thất bại');
-    }
-};
-
-// ============================================
-// Lấy lịch hẹn của tôi (BE tự resolve patientId từ JWT)
-// ============================================
-export const getMyAppointments = async (
-    params?: { status?: string; patient_id?: string; fromDate?: string; toDate?: string; page?: number; limit?: number }
-): Promise<{ success: boolean; data: Appointment[]; pagination?: any }> => {
-    try {
-        const response = await axiosClient.get(APPOINTMENT_ENDPOINTS.MY_APPOINTMENTS, { params });
-        return response.data;
-    } catch (error: any) {
-        throw new Error(error.response?.data?.message || 'Lấy lịch hẹn của tôi thất bại');
     }
 };
 
@@ -278,6 +310,47 @@ export const getAppointmentsByPatient = async (
         return unwrapList(response);
     } catch (error: any) {
         throw new Error(error.response?.data?.message || 'Lấy lịch hẹn theo bệnh nhân thất bại');
+    }
+};
+
+// ============================================
+// Lấy danh sách slot khám khả dụng
+// GET /api/appointments/available-slots
+// ============================================
+export const getAvailableSlots = async (params: {
+    date?: string;
+    doctor_id?: string;
+    service_id?: string;
+    branch_id?: string;
+    facility_id?: string;
+    exclude_appointment_id?: string;
+}): Promise<any[]> => {
+    try {
+        const response = await axiosClient.get('/api/appointments/available-slots', { params });
+        const d = response?.data?.data ?? response?.data ?? response;
+        return Array.isArray(d) ? d : [];
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy danh sách slot thất bại');
+    }
+};
+
+// ============================================
+// Lấy danh sách slot khám theo khoa/chuyên khoa
+// GET /api/appointments/available-slots-by-department
+// ============================================
+export const getAvailableSlotsByDepartment = async (params: {
+    department_id: string;
+    facility_id: string;
+    branch_id?: string;
+    start_date?: string;
+    days?: number;
+}): Promise<any[]> => {
+    try {
+        const response = await axiosClient.get('/api/appointments/available-slots-by-department', { params });
+        const d = response?.data?.data ?? response?.data ?? response;
+        return Array.isArray(d) ? d : [];
+    } catch (error: any) {
+        throw new Error(error.response?.data?.message || 'Lấy danh sách slot theo khoa thất bại');
     }
 };
 
@@ -360,7 +433,7 @@ export const appointmentChangesService = {
     getById: (id: string) =>
         axiosClient.get(`/api/appointment-changes/${id}`).then(r => r?.data?.data ?? r?.data ?? r),
 
-    request: (data: { appointmentId: string; newDate: string; newTime: string; reason?: string }) =>
+    request: (data: { appointmentId: string; newDate: string; newSlotId: string; reason?: string }) =>
         axiosClient.post('/api/appointment-changes', data).then(r => r?.data?.data ?? r?.data ?? r),
 
     approve: (id: string) =>
