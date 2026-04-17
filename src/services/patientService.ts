@@ -1,6 +1,129 @@
 
 import axiosClient from '@/api/axiosClient';
-import { PATIENT_ENDPOINTS, PATIENT_ENDPOINTS_EXT, DOCUMENT_ENDPOINTS, EMR_ENDPOINTS, PRESCRIPTION_ENDPOINTS } from '@/api/endpoints';
+import {
+    PATIENT_ENDPOINTS,
+    PATIENT_ENDPOINTS_EXT,
+    PATIENT_CONTACT_ENDPOINTS,
+    RELATION_TYPE_ENDPOINTS,
+    DOCUMENT_ENDPOINTS,
+    EMR_ENDPOINTS,
+    PRESCRIPTION_ENDPOINTS,
+} from '@/api/endpoints';
+
+export const createPatientRelation = async (
+    patientId: string,
+    data: {
+        contact_name: string;
+        relation_type_id: string;
+        phone_number: string;
+        address?: string;
+        is_emergency_contact?: boolean;
+    }
+): Promise<{ success: boolean; data?: PatientRelation; message?: string }> => {
+    try {
+        const response = await axiosClient.post(PATIENT_CONTACT_ENDPOINTS.CREATE, {
+            patient_id: patientId,
+            relation_type_id: data.relation_type_id,
+            contact_name: data.contact_name,
+            phone_number: data.phone_number,
+            address: data.address,
+            is_emergency_contact: Boolean(data.is_emergency_contact),
+        });
+        return { success: true, data: normalizePatientRelation(unwrap<any>(response) || response.data) };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Thêm người thân thất bại' };
+    }
+};
+
+export const updatePatientRelation = async (
+    relationId: string,
+    data: {
+        contact_name: string;
+        relation_type_id: string;
+        phone_number: string;
+        address?: string;
+        is_emergency_contact?: boolean;
+    }
+): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.put(PATIENT_CONTACT_ENDPOINTS.UPDATE(relationId), data);
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Cập nhật người thân thất bại' };
+    }
+};
+
+export const removePatientRelation = async (relationId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.delete(PATIENT_CONTACT_ENDPOINTS.DELETE(relationId));
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Xóa người thân thất bại' };
+    }
+};
+
+export const getRelationTypes = async (): Promise<{ success: boolean; data?: PatientRelationType[]; message?: string }> => {
+    try {
+        const response = await axiosClient.get(RELATION_TYPE_ENDPOINTS.LIST);
+        const data = unwrap<PatientRelationType[]>(response) || [];
+        return { success: true, data };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Không thể tải danh mục quan hệ' };
+    }
+};
+
+export const setPatientRelationEmergency = async (
+    relationId: string,
+    isEmergencyContact: boolean
+): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.patch(PATIENT_CONTACT_ENDPOINTS.SET_EMERGENCY(relationId), {
+            is_emergency_contact: isEmergencyContact,
+        });
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Không thể cập nhật liên hệ khẩn cấp' };
+    }
+};
+
+export const setPatientRelationLegalRepresentative = async (
+    relationId: string,
+    isLegalRepresentative: boolean
+): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.patch(PATIENT_CONTACT_ENDPOINTS.SET_LEGAL_REPRESENTATIVE(relationId), {
+            is_legal_representative: isLegalRepresentative,
+        });
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Không thể cập nhật đại diện pháp lý' };
+    }
+};
+
+export const getPatientRelationMedicalDecisionNote = async (
+    relationId: string
+): Promise<{ success: boolean; data?: { medical_decision_note: string | null }; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_CONTACT_ENDPOINTS.MEDICAL_DECISION_NOTE(relationId));
+        return { success: true, data: unwrap<{ medical_decision_note: string | null }>(response) };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Không thể tải ghi chú quyền quyết định y tế' };
+    }
+};
+
+export const updatePatientRelationMedicalDecisionNote = async (
+    relationId: string,
+    medicalDecisionNote: string
+): Promise<{ success: boolean; message?: string }> => {
+    try {
+        const response = await axiosClient.patch(PATIENT_CONTACT_ENDPOINTS.MEDICAL_DECISION_NOTE(relationId), {
+            medical_decision_note: medicalDecisionNote,
+        });
+        return response.data;
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || 'Không thể cập nhật ghi chú quyền quyết định y tế' };
+    }
+};
 
 // ============================================
 // Types — theo đúng schema backend
@@ -10,6 +133,14 @@ export type PatientGender = 'MALE' | 'FEMALE' | 'OTHER' | 'UNKNOWN';
 export type PatientStatus = 'ACTIVE' | 'INACTIVE' | 'DECEASED';
 export type IdentityType = 'CCCD' | 'PASSPORT' | 'OTHER';
 export type RelationType = 'PARENT' | 'SPOUSE' | 'CHILD' | 'SIBLING' | 'OTHER';
+
+export interface PatientRelationType {
+    relation_types_id: string;
+    code: string;
+    name: string;
+    description?: string | null;
+    is_active: boolean;
+}
 
 export interface Patient {
     patient_id: string;
@@ -109,15 +240,29 @@ export interface PatientDocument {
 }
 
 export interface PatientRelation {
-    relation_id: string;
+    patient_contacts_id: string;
     patient_id: string;
-    full_name: string;
-    relationship: RelationType;
+    relation_type_id: string;
+    contact_name: string;
     phone_number: string;
-    is_emergency: boolean;
-    has_legal_rights: boolean;
+    address?: string | null;
+    is_emergency_contact: boolean;
+    is_legal_representative: boolean;
+    medical_decision_note?: string | null;
+    relation_type_code?: string;
+    relation_type_name?: string;
+    patient_name?: string;
+    patient_code?: string;
     created_at: string;
     updated_at: string;
+    deleted_at?: string | null;
+
+    // Compatibility aliases for older callers.
+    relation_id?: string;
+    full_name?: string;
+    relationship?: RelationType;
+    is_emergency?: boolean;
+    has_legal_rights?: boolean;
 }
 
 export interface MedicalRecord {
@@ -160,6 +305,57 @@ export interface PatientListResponse {
 // Helper unwrap pattern
 function unwrap<T>(res: any): T | undefined {
     return res?.data?.data ?? res?.data ?? res;
+}
+
+function mapRelationCodeToLegacy(code?: string, name?: string): RelationType {
+    const source = `${code || ''} ${name || ''}`.toUpperCase();
+    if (/(FATHER|MOTHER|PARENT|CHA|MẸ|ME)/.test(source)) return 'PARENT';
+    if (/(SPOUSE|HUSBAND|WIFE|VỢ|VO|CHỒNG|CHONG)/.test(source)) return 'SPOUSE';
+    if (/(CHILD|SON|DAUGHTER|CON)/.test(source)) return 'CHILD';
+    if (/(SIBLING|BROTHER|SISTER|ANH|CHỊ|CHI|EM)/.test(source)) return 'SIBLING';
+    return 'OTHER';
+}
+
+function normalizePatientRelation(raw: any): PatientRelation {
+    const legacyRelationship = mapRelationCodeToLegacy(raw?.relation_type_code, raw?.relation_type_name);
+
+    return {
+        patient_contacts_id: raw?.patient_contacts_id || raw?.relation_id || '',
+        patient_id: raw?.patient_id || '',
+        relation_type_id: raw?.relation_type_id || '',
+        contact_name: raw?.contact_name || raw?.full_name || '',
+        phone_number: raw?.phone_number || '',
+        address: raw?.address ?? null,
+        is_emergency_contact: Boolean(raw?.is_emergency_contact ?? raw?.is_emergency),
+        is_legal_representative: Boolean(raw?.is_legal_representative ?? raw?.has_legal_rights),
+        medical_decision_note: raw?.medical_decision_note ?? null,
+        relation_type_code: raw?.relation_type_code,
+        relation_type_name: raw?.relation_type_name,
+        patient_name: raw?.patient_name,
+        patient_code: raw?.patient_code,
+        created_at: raw?.created_at || '',
+        updated_at: raw?.updated_at || '',
+        deleted_at: raw?.deleted_at ?? null,
+        relation_id: raw?.patient_contacts_id || raw?.relation_id || '',
+        full_name: raw?.contact_name || raw?.full_name || '',
+        relationship: legacyRelationship,
+        is_emergency: Boolean(raw?.is_emergency_contact ?? raw?.is_emergency),
+        has_legal_rights: Boolean(raw?.is_legal_representative ?? raw?.has_legal_rights),
+    };
+}
+
+async function resolveRelationTypeId(input: {
+    relation_type_id?: string;
+    relationship?: RelationType;
+}): Promise<string | undefined> {
+    if (input.relation_type_id) return input.relation_type_id;
+    if (!input.relationship) return undefined;
+
+    const response = await axiosClient.get(RELATION_TYPE_ENDPOINTS.LIST);
+    const relationTypes = unwrap<PatientRelationType[]>(response) || [];
+
+    const matched = relationTypes.find((item) => mapRelationCodeToLegacy(item.code, item.name) === input.relationship);
+    return matched?.relation_types_id;
 }
 
 // ============================================
@@ -462,9 +658,9 @@ export const deleteContact = async (patientId: string, contactId: string): Promi
  */
 export const getRelations = async (patientId: string): Promise<{ success: boolean; data?: PatientRelation[]; message?: string }> => {
     try {
-        const response = await axiosClient.get(PATIENT_ENDPOINTS.ADD_RELATION(patientId));
-        const raw = response.data;
-        const data: PatientRelation[] = raw?.data?.items ?? raw?.data ?? raw ?? [];
+        const response = await axiosClient.get(PATIENT_ENDPOINTS_EXT.ALL_RELATIONS(patientId));
+        const raw = unwrap<any[]>(response) || [];
+        const data: PatientRelation[] = Array.isArray(raw) ? raw.map(normalizePatientRelation) : [];
         return { success: true, data };
     } catch (error: any) {
         return { success: false, message: error.response?.data?.message || 'Lấy người thân thất bại' };
@@ -475,9 +671,13 @@ export const getRelations = async (patientId: string): Promise<{ success: boolea
  * Thêm thông tin người thân
  */
 export const addRelation = async (patientId: string, data: {
-    full_name: string;
-    relationship: RelationType;
+    contact_name?: string;
+    relation_type_id?: string;
     phone_number: string;
+    address?: string;
+    is_emergency_contact?: boolean;
+    full_name?: string;
+    relationship?: RelationType;
     is_emergency?: boolean;
     has_legal_rights?: boolean;
 }): Promise<{ success: boolean; data?: PatientRelation; message?: string }> => {

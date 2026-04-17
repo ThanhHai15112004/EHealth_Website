@@ -7,6 +7,7 @@ export interface PatientProfile {
     gender: "male" | "female" | "other";
     phone: string;
     idNumber?: string;
+    nationality?: string;
     insuranceNumber?: string;
     address?: string;
     relationship: "self" | "parent" | "child" | "sibling" | "spouse" | "other";

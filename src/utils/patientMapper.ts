@@ -77,6 +77,7 @@ export const mapToProfile = (p: Patient, userParam?: any): PatientProfile => {
         gender: (p.gender?.toLowerCase() as PatientProfile["gender"]) || "other",
         phone: p.phone_number || p.contact?.phone_number || "",
         idNumber: p.id_card_number || p.identity_number || "",
+        nationality: p.nationality || "",
         insuranceNumber: normalizedInsuranceNumber,
         address: p.address || p.contact?.street_address || "",
         relationship: relationshipVal,

@@ -880,15 +880,15 @@ export default function PatientDetailPage({ params }: { params: { id: string } }
                                             </div>
                                             <div>
                                                 <div className="flex items-center gap-2">
-                                                    <p className="text-sm font-semibold text-[#121417] dark:text-white">{r.full_name}</p>
+                                                    <p className="text-sm font-semibold text-[#121417] dark:text-white">{r.full_name || r.contact_name || "Chưa cập nhật"}</p>
                                                     {r.is_emergency && (
                                                         <span className="px-1.5 py-0.5 rounded text-[10px] bg-red-100 dark:bg-red-500/20 text-red-600 font-medium">Khẩn cấp</span>
                                                     )}
                                                 </div>
-                                                <p className="text-xs text-[#687582]">{r.phone_number} · {relLabel(r.relationship)}</p>
+                                                <p className="text-xs text-[#687582]">{r.phone_number} · {relLabel(r.relationship || "OTHER")}</p>
                                             </div>
                                         </div>
-                                        <button onClick={() => handleDeleteRelation(r.relation_id)} aria-label="Xóa người thân" className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-[#687582] hover:text-red-500 transition-colors flex-shrink-0" title="Xóa">
+                                        <button onClick={() => handleDeleteRelation(r.relation_id || r.patient_contacts_id)} aria-label="Xóa người thân" className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 text-[#687582] hover:text-red-500 transition-colors flex-shrink-0" title="Xóa">
                                             <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>delete</span>
                                         </button>
                                     </div>

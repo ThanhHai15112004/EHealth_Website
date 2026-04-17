@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { type PatientProfile } from "@/types/patient-profile";
-import { ehrService } from "@/services/ehrService";
 
 import OverviewTab from "./tabs/OverviewTab";
 import InsuranceTab from "./tabs/InsuranceTab";
@@ -39,30 +38,13 @@ const TABS: Array<{ id: TabId; label: string }> = [
 
 export default function PatientDetail({ profile, onBack, onEdit }: PatientDetailProps) {
     const [activeTab, setActiveTab] = useState<TabId>("overview");
-    const [insuranceInfo, setInsuranceInfo] = useState<any | null>(null);
-
-    const fetchInsuranceStatus = async () => {
-        if (!profile.id) return;
-
-        try {
-            const res = await ehrService.getInsuranceStatus(profile.id);
-            const firstItem = Array.isArray(res.data) ? res.data[0] : null;
-            setInsuranceInfo(firstItem || null);
-        } catch {
-            setInsuranceInfo(null);
-        }
-    };
-
-    useEffect(() => {
-        fetchInsuranceStatus();
-    }, [profile.id]);
 
     const renderActiveTab = () => {
         switch (activeTab) {
             case "overview":
-                return <OverviewTab profile={profile} insuranceInfo={insuranceInfo} />;
+                return <OverviewTab profile={profile} />;
             case "insurance":
-                return <InsuranceTab profile={profile} onInsuranceChanged={fetchInsuranceStatus} />;
+                return <InsuranceTab profile={profile} />;
             case "vitals":
                 return <VitalsTab profile={profile} />;
             case "medical-history":
@@ -74,7 +56,7 @@ export default function PatientDetail({ profile, onBack, onEdit }: PatientDetail
             case "timeline":
                 return <TimelineTab profile={profile} />;
             default:
-                return <OverviewTab profile={profile} insuranceInfo={insuranceInfo} />;
+                return <OverviewTab profile={profile} />;
         }
     };
 
@@ -123,7 +105,10 @@ export default function PatientDetail({ profile, onBack, onEdit }: PatientDetail
                         {profile.fullName}
                     </h1>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                        Mã bệnh nhân: <span className="font-medium text-slate-700 dark:text-slate-200">{profile.patientCode || profile.id}</span>
+                        Mã bệnh nhân:{" "}
+                        <span className="font-medium text-slate-700 dark:text-slate-200">
+                            {profile.patientCode || profile.id}
+                        </span>
                     </p>
                 </div>
             </div>
