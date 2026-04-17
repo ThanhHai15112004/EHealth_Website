@@ -1,34 +1,58 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { type PatientProfile } from "@/types/patient-profile";
 import Modal from "@/components/common/Modal";
 import { extractErrorMessage } from "@/api/response";
 import { useToast } from "@/contexts/ToastContext";
-import { patientInsuranceService } from "@/services/patientInsuranceService";
+import { patientInsuranceService, type InsuranceProvider, type PatientInsuranceRecord } from "@/services/patientInsuranceService";
 
 interface TabProps {
     profile: PatientProfile;
+    onInsuranceChanged?: () => Promise<void> | void;
 }
 
-export default function InsuranceTab({ profile }: TabProps) {
-    const { showToast } = useToast();
-    const [insurances, setInsurances] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    
-    // For creating new insurance
-    const [insuranceNum, setInsuranceNum] = useState("");
-    const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-    const [expiry, setExpiry] = useState("");
-    const [provider, setProvider] = useState("");
-    const [submitting, setSubmitting] = useState(false);
+type InsuranceFormState = {
+    provider_id: string;
+    insurance_number: string;
+    start_date: string;
+    end_date: string;
+    coverage_percent: string;
+    is_primary: boolean;
+};
 
-    const fetchInsurances = async () => {
+const INITIAL_FORM = (): InsuranceFormState => ({
+    provider_id: "",
+    insurance_number: "",
+    start_date: new Date().toISOString().split("T")[0],
+    end_date: "",
+    coverage_percent: "80",
+    is_primary: true,
+});
+
+export default function InsuranceTab({ profile, onInsuranceChanged }: TabProps) {
+    const { showToast } = useToast();
+    const [insurances, setInsurances] = useState<PatientInsuranceRecord[]>([]);
+    const [providers, setProviders] = useState<InsuranceProvider[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [submitting, setSubmitting] = useState(false);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [selectedInsurance, setSelectedInsurance] = useState<PatientInsuranceRecord | null>(null);
+    const [historyItems, setHistoryItems] = useState<any[]>([]);
+    const [form, setForm] = useState<InsuranceFormState>(INITIAL_FORM());
+    const [errors, setErrors] = useState<Record<string, string>>({});
+
+    const loadInsuranceData = async () => {
+        if (!profile.id) return;
+
         try {
             setLoading(true);
-            const patientId = profile.id;
-            if (!patientId) return;
-            const res = await patientInsuranceService.getList({ patient_id: patientId });
-            setInsurances(Array.isArray(res?.data) ? res.data : []);
+            const [listRes, providerRes] = await Promise.all([
+                patientInsuranceService.getByPatient(profile.id).catch(() => patientInsuranceService.getList({ patient_id: profile.id })),
+                patientInsuranceService.getProviders({ limit: 200 }),
+            ]);
+
+            setInsurances(Array.isArray(listRes.data) ? listRes.data : []);
+            setProviders(Array.isArray(providerRes.data) ? providerRes.data.filter((item) => item?.is_active !== false) : []);
         } catch (error) {
             console.error("Error fetching insurances:", error);
             setInsurances([]);
@@ -39,194 +63,472 @@ export default function InsuranceTab({ profile }: TabProps) {
     };
 
     useEffect(() => {
-        fetchInsurances();
+        loadInsuranceData();
     }, [profile.id]);
+
+    const normalizedInsurances = useMemo(() => {
+        const today = new Date();
+        const sorted = [...insurances].sort((a, b) => {
+            const primaryDiff = Number(Boolean(b.is_primary)) - Number(Boolean(a.is_primary));
+            if (primaryDiff !== 0) return primaryDiff;
+            return new Date(b.end_date || 0).getTime() - new Date(a.end_date || 0).getTime();
+        });
+
+        return sorted.map((insurance) => {
+            const endDate = insurance.end_date ? new Date(insurance.end_date) : null;
+            const diffDays = endDate ? Math.ceil((endDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)) : null;
+            const effectiveStatus =
+                diffDays === null ? "active" : diffDays < 0 ? "expired" : diffDays <= 30 ? "expiring" : "active";
+
+            return {
+                ...insurance,
+                effectiveStatus,
+            };
+        });
+    }, [insurances]);
+
+    const activeInsurances = normalizedInsurances.filter((item) => item.effectiveStatus !== "expired");
+    const expiringInsurances = activeInsurances.filter((item) => item.effectiveStatus === "expiring");
+
+    const resetForm = () => {
+        setForm(INITIAL_FORM());
+        setErrors({});
+        setSelectedInsurance(null);
+    };
+
+    const openCreate = () => {
+        resetForm();
+        setIsFormOpen(true);
+    };
+
+    const openEdit = (insurance: PatientInsuranceRecord) => {
+        setSelectedInsurance(insurance);
+        setForm({
+            provider_id: insurance.provider_id || "",
+            insurance_number: insurance.insurance_number || "",
+            start_date: insurance.start_date ? insurance.start_date.slice(0, 10) : "",
+            end_date: insurance.end_date ? insurance.end_date.slice(0, 10) : "",
+            coverage_percent: insurance.coverage_percent != null ? String(insurance.coverage_percent) : "80",
+            is_primary: Boolean(insurance.is_primary),
+        });
+        setErrors({});
+        setIsFormOpen(true);
+    };
+
+    const validateForm = () => {
+        const nextErrors: Record<string, string> = {};
+
+        if (!form.provider_id) nextErrors.provider_id = "Vui lòng chọn nhà cung cấp bảo hiểm.";
+        if (!form.insurance_number.trim()) nextErrors.insurance_number = "Vui lòng nhập số thẻ bảo hiểm.";
+        if (!form.start_date) nextErrors.start_date = "Vui lòng chọn ngày bắt đầu.";
+        if (!form.end_date) nextErrors.end_date = "Vui lòng chọn ngày kết thúc.";
+        if (form.start_date && form.end_date && new Date(form.start_date) > new Date(form.end_date)) {
+            nextErrors.end_date = "Ngày kết thúc phải sau hoặc bằng ngày bắt đầu.";
+        }
+
+        setErrors(nextErrors);
+        return Object.keys(nextErrors).length === 0;
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setSubmitting(true);
+        if (!validateForm()) return;
+
         try {
-            const patientId = profile.id;
-            if (!patientId) return;
+            setSubmitting(true);
+            const payload = {
+                provider_id: form.provider_id,
+                insurance_number: form.insurance_number.trim().toUpperCase(),
+                start_date: form.start_date,
+                end_date: form.end_date,
+                coverage_percent: Number(form.coverage_percent || 0),
+                is_primary: form.is_primary,
+            };
 
-            await patientInsuranceService.create({
-                patient_id: patientId,
-                insurance_number: insuranceNum,
-                provider_id: provider || "INS_BHYT",
-                start_date: startDate,
-                end_date: expiry,
-            });
+            if (selectedInsurance?.patient_insurances_id) {
+                await patientInsuranceService.update(selectedInsurance.patient_insurances_id, payload);
+                showToast("Cập nhật thẻ bảo hiểm thành công!", "success");
+            } else {
+                await patientInsuranceService.createForPatient(profile.id, payload);
+                showToast("Liên kết bảo hiểm thành công!", "success");
+            }
 
-            showToast("Cập nhật bảo hiểm thành công!", "success");
-            setIsModalOpen(false);
-            
-            // Reset form and refetch
-            setInsuranceNum("");
-            setStartDate(new Date().toISOString().split('T')[0]);
-            setExpiry("");
-            setProvider("");
-            await fetchInsurances();
+            setIsFormOpen(false);
+            resetForm();
+            await loadInsuranceData();
+            await onInsuranceChanged?.();
         } catch (error) {
-            console.error("Lỗi cập nhật bảo hiểm:", error);
             showToast(extractErrorMessage(error), "error");
         } finally {
             setSubmitting(false);
         }
     };
 
+    const handleDelete = async (insurance: PatientInsuranceRecord) => {
+        if (!window.confirm("Bạn có chắc muốn xóa thẻ bảo hiểm này?")) return;
+
+        try {
+            await patientInsuranceService.delete(insurance.patient_insurances_id);
+            showToast("Đã xóa thẻ bảo hiểm.", "success");
+            await loadInsuranceData();
+            await onInsuranceChanged?.();
+        } catch (error) {
+            showToast(extractErrorMessage(error), "error");
+        }
+    };
+
+    const handleViewHistory = async (insurance: PatientInsuranceRecord) => {
+        try {
+            setSelectedInsurance(insurance);
+            const res = await patientInsuranceService.getHistory(insurance.patient_insurances_id, { limit: 20 });
+            setHistoryItems(Array.isArray(res.data) ? res.data : []);
+            setIsHistoryOpen(true);
+        } catch (error) {
+            showToast(extractErrorMessage(error), "error");
+        }
+    };
+
+    const hasAnyInsurance = normalizedInsurances.length > 0;
+
     return (
-        <div className="space-y-6 max-w-3xl">
-            <div className="flex items-center justify-between mb-6">
-                <h3 className="font-bold text-gray-900 dark:text-white text-lg">Bảo hiểm Y tế</h3>
-                <button 
-                    onClick={() => setIsModalOpen(true)}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#3C81C6] text-white rounded-xl hover:bg-[#2b6cb0] transition-colors text-sm font-medium"
+        <div className="space-y-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                    <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Bảo hiểm y tế</h2>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                        Chỉ hiển thị các thẻ còn hiệu lực để người dùng dễ theo dõi và thao tác hơn.
+                    </p>
+                </div>
+
+                <button
+                    onClick={openCreate}
+                    className="inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-[#3C81C6] to-[#2563eb] px-4 py-2.5 text-sm font-medium text-white transition-all hover:shadow-lg"
                 >
-                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
-                        add
-                    </span>
-                    Thêm bảo hiểm
+                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>add_card</span>
+                    Liên kết thẻ mới
                 </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <StatusSummaryCard
+                    label="Đang hiển thị"
+                    value={String(activeInsurances.length)}
+                    tone="from-emerald-50 to-white text-emerald-700"
+                    icon="verified_user"
+                />
+                <StatusSummaryCard
+                    label="Sắp hết hạn"
+                    value={String(expiringInsurances.length)}
+                    tone="from-amber-50 to-white text-amber-700"
+                    icon="event_upcoming"
+                />
             </div>
 
             {loading ? (
                 <div className="flex items-center justify-center p-12">
-                    <div className="w-8 h-8 border-4 border-[#3C81C6] border-t-transparent rounded-full animate-spin"></div>
+                    <div className="h-8 w-8 animate-spin rounded-full border-4 border-[#3C81C6] border-t-transparent"></div>
                 </div>
-            ) : insurances.length > 0 ? (
-                insurances.map((ins, idx) => (
-                    <div key={ins.id || idx} className="relative overflow-hidden bg-gradient-to-br from-[#3C81C6] to-[#2563eb] rounded-2xl p-6 text-white shadow-md mb-4">
-                        <div className="absolute top-0 right-0 p-4 opacity-10">
-                            <span className="material-symbols-outlined" style={{ fontSize: "120px" }}>health_and_safety</span>
-                        </div>
-                        <div className="relative z-10">
-                            <div className="flex items-center justify-between mb-6">
-                                <div className="font-bold tracking-wider opacity-90 text-sm">{ins.provider || "THẺ BẢO HIỂM Y TẾ"}</div>
-                                <span className="material-symbols-outlined" style={{ fontSize: "32px" }}>verified_user</span>
-                            </div>
-                            <div className="space-y-4">
-                                <div>
-                                    <div className="text-xs opacity-70 mb-1">Họ và tên</div>
-                                    <div className="text-lg font-medium">{profile.fullName}</div>
-                                </div>
-                                <div>
-                                    <div className="text-xs opacity-70 mb-1">Mã số thẻ</div>
-                                    <div className="text-xl tracking-widest font-mono font-bold bg-white/10 inline-block px-4 py-1.5 rounded-lg">
-                                        {ins.insurance_number ? ins.insurance_number.replace(/(.{4})/g, "$1 ").trim() : "Chưa cập nhật"}
-                                    </div>
-                                </div>
-                                {ins.expiration_date && (
-                                    <div>
-                                        <div className="text-xs opacity-70 mb-1">Giá trị sử dụng đến</div>
-                                        <div className="font-medium">{new Date(ins.expiration_date).toLocaleDateString("vi-VN")}</div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                ))
+            ) : activeInsurances.length > 0 ? (
+                <InsuranceSection
+                    title="Thẻ đang hiệu lực"
+                    description="Ưu tiên hiển thị thẻ chính trước, sau đó đến các thẻ còn sử dụng."
+                    items={activeInsurances}
+                    onEdit={openEdit}
+                    onDelete={handleDelete}
+                    onHistory={handleViewHistory}
+                />
             ) : (
-                <div className="bg-gray-50 dark:bg-[#13191f] rounded-2xl p-12 text-center border border-dashed border-gray-300 dark:border-[#2d353e]">
-                    <div className="w-20 h-20 bg-[#3C81C6]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="rounded-3xl border border-dashed border-gray-300 bg-gray-50 p-12 text-center dark:border-[#2d353e] dark:bg-[#13191f]">
+                    <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[#3C81C6]/10">
                         <span className="material-symbols-outlined text-[#3C81C6]" style={{ fontSize: "40px" }}>health_and_safety</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Chưa cập nhật</h4>
-                    <p className="text-sm text-gray-500 max-w-sm mx-auto">Chưa có thông tin bảo hiểm y tế cho hồ sơ này.</p>
+                    <h4 className="mb-2 font-semibold text-gray-900 dark:text-white">
+                        {hasAnyInsurance ? "Không có thẻ bảo hiểm còn hiệu lực" : "Chưa liên kết bảo hiểm"}
+                    </h4>
+                    <p className="mx-auto max-w-md text-sm text-gray-500">
+                        {hasAnyInsurance
+                            ? "Các thẻ đã hết hạn đang được ẩn đi. Hãy liên kết thẻ mới hoặc cập nhật lại thẻ hiện có để tiếp tục sử dụng."
+                            : "Hãy liên kết thẻ bảo hiểm để hiển thị nhà cung cấp, thời hạn và tình trạng sử dụng nhanh hơn."}
+                    </p>
                 </div>
             )}
 
             <Modal
-                isOpen={isModalOpen}
-                onClose={() => setIsModalOpen(false)}
-                title="Thông tin Bảo hiểm y tế"
-                size="sm"
+                isOpen={isFormOpen}
+                onClose={() => setIsFormOpen(false)}
+                title={selectedInsurance ? "Cập nhật thẻ bảo hiểm" : "Liên kết thẻ bảo hiểm"}
+                size="md"
             >
-                <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
-                    <div className="flex flex-col gap-1">
-                        <label htmlFor="provider" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Loại bảo hiểm / Nhà cung cấp
-                        </label>
+                <form onSubmit={handleSubmit} className="mt-2 flex flex-col gap-4">
+                    <Field label="Nhà cung cấp" error={errors.provider_id}>
                         <select
-                            id="provider"
-                            value={provider}
-                            onChange={(e) => setProvider(e.target.value)}
-                            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                            required
+                            value={form.provider_id}
+                            onChange={(e) => setForm((prev) => ({ ...prev, provider_id: e.target.value }))}
+                            className="rounded-xl border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 focus:border-[#3C81C6] focus:ring-[#3C81C6] dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         >
-                            <option value="">-- Chọn nơi cấp --</option>
-                            <option value="INS_BHYT">Bảo hiểm Y tế Việt Nam (BHYT)</option>
-                            <option value="INS_BHXH_HCM">Bảo hiểm Xã hội TP. Hồ Chí Minh</option>
-                            <option value="INS_BAOVIET">Tổng Công ty Bảo hiểm Bảo Việt</option>
-                            <option value="INS_PRUDENTIAL">Prudential Việt Nam</option>
-                            <option value="INS_MANULIFE">Manulife Việt Nam</option>
-                            <option value="INS_AIA">AIA Việt Nam</option>
-                            <option value="INS_DAIICHI">Dai-ichi Life Việt Nam</option>
-                            <option value="INS_PVI">Bảo hiểm PVI (PVI Insurance)</option>
-                            <option value="INS_MICS">Bảo hiểm Quân đội (MIC)</option>
-                            <option value="INS_LIBERTY">Liberty Insurance Việt Nam</option>
+                            <option value="">-- Chọn nhà cung cấp --</option>
+                            {providers.map((provider) => (
+                                <option key={provider.insurance_providers_id} value={provider.insurance_providers_id}>
+                                    {provider.provider_name}{provider.provider_code ? ` (${provider.provider_code})` : ""}
+                                </option>
+                            ))}
                         </select>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <label htmlFor="insuranceNum" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Mã số thẻ BHYT
-                        </label>
+                    </Field>
+
+                    <Field label="Số thẻ bảo hiểm" error={errors.insurance_number}>
                         <input
-                            id="insuranceNum"
-                            value={insuranceNum}
-                            onChange={(e) => setInsuranceNum(e.target.value)}
-                            placeholder="Ví dụ: DN401..."
-                            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white uppercase"
-                            required
+                            value={form.insurance_number}
+                            onChange={(e) => setForm((prev) => ({ ...prev, insurance_number: e.target.value.toUpperCase() }))}
+                            placeholder="Ví dụ: DK2-12345678901"
+                            className="rounded-xl border border-gray-300 bg-gray-50 p-2.5 text-sm uppercase text-gray-900 focus:border-[#3C81C6] focus:ring-[#3C81C6] dark:border-gray-600 dark:bg-gray-700 dark:text-white"
                         />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <label htmlFor="startDate" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Ngày có hiệu lực
-                        </label>
-                        <input
-                            id="startDate"
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                            required
-                        />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                        <label htmlFor="expiry" className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Giá trị sử dụng đến
-                        </label>
-                        <input
-                            id="expiry"
-                            type="date"
-                            value={expiry}
-                            onChange={(e) => setExpiry(e.target.value)}
-                            className="bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-xl focus:ring-[#3C81C6] focus:border-[#3C81C6] p-2.5 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                            required
-                        />
+                    </Field>
+
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        <Field label="Ngày bắt đầu" error={errors.start_date}>
+                            <input
+                                type="date"
+                                value={form.start_date}
+                                onChange={(e) => setForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                                className="rounded-xl border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 focus:border-[#3C81C6] focus:ring-[#3C81C6] dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            />
+                        </Field>
+
+                        <Field label="Ngày kết thúc" error={errors.end_date}>
+                            <input
+                                type="date"
+                                value={form.end_date}
+                                onChange={(e) => setForm((prev) => ({ ...prev, end_date: e.target.value }))}
+                                className="rounded-xl border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 focus:border-[#3C81C6] focus:ring-[#3C81C6] dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            />
+                        </Field>
                     </div>
 
-                    <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
-                        <button 
-                            type="button" 
-                            onClick={() => setIsModalOpen(false)} 
+                    <div className="grid grid-cols-1 gap-4 md:grid-cols-[0.6fr_0.4fr]">
+                        <Field label="Tỷ lệ hưởng (%)">
+                            <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                value={form.coverage_percent}
+                                onChange={(e) => setForm((prev) => ({ ...prev, coverage_percent: e.target.value }))}
+                                className="rounded-xl border border-gray-300 bg-gray-50 p-2.5 text-sm text-gray-900 focus:border-[#3C81C6] focus:ring-[#3C81C6] dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                            />
+                        </Field>
+
+                        <label className="mt-7 flex items-center gap-3 text-sm text-gray-700 dark:text-gray-200">
+                            <input
+                                type="checkbox"
+                                checked={form.is_primary}
+                                onChange={(e) => setForm((prev) => ({ ...prev, is_primary: e.target.checked }))}
+                                className="rounded border-gray-300 text-[#3C81C6] focus:ring-[#3C81C6]"
+                            />
+                            Đặt là thẻ chính
+                        </label>
+                    </div>
+
+                    <div className="mt-4 flex justify-end gap-2 border-t border-gray-100 pt-4 dark:border-gray-700">
+                        <button
+                            type="button"
+                            onClick={() => setIsFormOpen(false)}
                             disabled={submitting}
-                            className="px-4 py-2 border rounded-xl text-sm font-medium hover:bg-gray-50 dark:border-gray-600 dark:hover:bg-gray-700 dark:text-white"
+                            className="rounded-xl border px-4 py-2 text-sm font-medium hover:bg-gray-50 dark:border-gray-600 dark:text-white dark:hover:bg-gray-700"
                         >
                             Hủy
                         </button>
-                        <button 
-                            type="submit" 
+                        <button
+                            type="submit"
                             disabled={submitting}
-                            className="px-4 py-2 bg-[#3C81C6] text-white rounded-xl text-sm font-medium hover:bg-[#2b6cb0] flex items-center gap-2"
+                            className="flex items-center gap-2 rounded-xl bg-[#3C81C6] px-4 py-2 text-sm font-medium text-white hover:bg-[#2b6cb0]"
                         >
                             {submitting ? (
-                                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div> Lưu...</>
-                            ) : "Xác nhận"}
+                                <>
+                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                                    Đang lưu...
+                                </>
+                            ) : (
+                                selectedInsurance ? "Lưu cập nhật" : "Liên kết thẻ"
+                            )}
                         </button>
                     </div>
                 </form>
             </Modal>
+
+            <Modal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} title="Lịch sử thẻ bảo hiểm" size="md">
+                <div className="mt-2 max-h-[60vh] space-y-3 overflow-y-auto">
+                    <div className="rounded-xl bg-gray-50 p-4 dark:bg-[#13191f]">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                            {selectedInsurance?.insurance_number || "Không rõ số thẻ"}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-500">
+                            {selectedInsurance?.provider_name || "Không rõ nhà cung cấp"}
+                        </p>
+                    </div>
+                    {historyItems.length > 0 ? historyItems.map((item, index) => (
+                        <div key={item.audit_logs_id || item.id || index} className="rounded-xl border border-gray-100 p-4 dark:border-[#2d353e]">
+                            <div className="flex items-center justify-between gap-3">
+                                <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">
+                                    {item.action_type || "UPDATE"}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                    {item.created_at ? new Date(item.created_at).toLocaleString("vi-VN") : "Chưa rõ thời gian"}
+                                </span>
+                            </div>
+                            <p className="mt-3 text-sm text-gray-700 dark:text-gray-300">
+                                {item.user_email || item.user_name || "Hệ thống"}
+                            </p>
+                            {(item.new_values || item.old_values) && (
+                                <pre className="mt-3 overflow-x-auto rounded-lg bg-gray-50 p-3 text-xs text-gray-500 whitespace-pre-wrap break-words dark:bg-[#0f141b]">
+                                    {JSON.stringify(item.new_values || item.old_values, null, 2)}
+                                </pre>
+                            )}
+                        </div>
+                    )) : (
+                        <p className="text-sm text-gray-500">Chưa có lịch sử thay đổi nào cho thẻ này.</p>
+                    )}
+                </div>
+            </Modal>
         </div>
+    );
+}
+
+function InsuranceSection({
+    title,
+    description,
+    items,
+    onEdit,
+    onDelete,
+    onHistory,
+}: {
+    title: string;
+    description: string;
+    items: Array<PatientInsuranceRecord & { effectiveStatus: string }>;
+    onEdit: (insurance: PatientInsuranceRecord) => void;
+    onDelete: (insurance: PatientInsuranceRecord) => void;
+    onHistory: (insurance: PatientInsuranceRecord) => void;
+}) {
+    return (
+        <section className="space-y-4">
+            <div>
+                <h3 className="font-semibold text-gray-900 dark:text-white">{title}</h3>
+                <p className="mt-1 text-sm text-gray-500">{description}</p>
+            </div>
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                {items.map((insurance) => (
+                    <InsuranceCard
+                        key={insurance.patient_insurances_id}
+                        insurance={insurance}
+                        onEdit={onEdit}
+                        onDelete={onDelete}
+                        onHistory={onHistory}
+                    />
+                ))}
+            </div>
+        </section>
+    );
+}
+
+function InsuranceCard({
+    insurance,
+    onEdit,
+    onDelete,
+    onHistory,
+}: {
+    insurance: PatientInsuranceRecord & { effectiveStatus: string };
+    onEdit: (insurance: PatientInsuranceRecord) => void;
+    onDelete: (insurance: PatientInsuranceRecord) => void;
+    onHistory: (insurance: PatientInsuranceRecord) => void;
+}) {
+    const statusMap: Record<string, { label: string; className: string }> = {
+        active: { label: "Còn hiệu lực", className: "bg-emerald-50 text-emerald-700" },
+        expiring: { label: "Sắp hết hạn", className: "bg-amber-50 text-amber-700" },
+        expired: { label: "Hết hạn", className: "bg-rose-50 text-rose-700" },
+    };
+    const status = statusMap[insurance.effectiveStatus] || statusMap.active;
+
+    return (
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#3C81C6] to-[#2563eb] p-6 text-white shadow-md">
+            <div className="absolute -right-4 -top-6 opacity-10">
+                <span className="material-symbols-outlined" style={{ fontSize: "140px" }}>health_and_safety</span>
+            </div>
+            <div className="relative z-10">
+                <div className="flex items-start justify-between gap-3">
+                    <div>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-white/15 px-2.5 py-1 text-[11px] font-bold">
+                                {insurance.provider_name || "Nhà cung cấp bảo hiểm"}
+                            </span>
+                            {insurance.is_primary && (
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-[#2563eb]">
+                                    Thẻ chính
+                                </span>
+                            )}
+                            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${status.className}`}>
+                                {status.label}
+                            </span>
+                        </div>
+                        <p className="text-xs uppercase tracking-[0.22em] opacity-80">Số thẻ</p>
+                        <p className="mt-2 break-all font-mono text-xl font-bold tracking-[0.18em]">{insurance.insurance_number}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <IconButton icon="edit" title="Cập nhật thẻ" onClick={() => onEdit(insurance)} />
+                        <IconButton icon="history" title="Lịch sử thay đổi" onClick={() => onHistory(insurance)} />
+                        <IconButton icon="delete" title="Xóa thẻ" onClick={() => onDelete(insurance)} />
+                    </div>
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-3 text-sm">
+                    <InsuranceMeta
+                        label="Ngày bắt đầu"
+                        value={insurance.start_date ? new Date(insurance.start_date).toLocaleDateString("vi-VN") : "Chưa có"}
+                    />
+                    <InsuranceMeta
+                        label="Ngày kết thúc"
+                        value={insurance.end_date ? new Date(insurance.end_date).toLocaleDateString("vi-VN") : "Chưa có"}
+                    />
+                    <InsuranceMeta label="Tỷ lệ hưởng" value={`${insurance.coverage_percent ?? 0}%`} />
+                    <InsuranceMeta label="Mã thẻ" value={insurance.patient_insurances_id} />
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function InsuranceMeta({ label, value }: { label: string; value: string }) {
+    return (
+        <div className="rounded-2xl bg-white/10 p-3">
+            <p className="text-[11px] uppercase tracking-[0.15em] opacity-70">{label}</p>
+            <p className="mt-1 break-all text-sm font-semibold">{value}</p>
+        </div>
+    );
+}
+
+function StatusSummaryCard({ label, value, tone, icon }: { label: string; value: string; tone: string; icon: string }) {
+    return (
+        <div className={`rounded-2xl border border-gray-100 bg-gradient-to-br ${tone} p-4 dark:border-[#2d353e]`}>
+            <div className="flex items-center justify-between">
+                <p className="text-xs font-semibold uppercase tracking-[0.15em]">{label}</p>
+                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
+            </div>
+            <p className="mt-3 text-2xl font-bold">{value}</p>
+        </div>
+    );
+}
+
+function Field({ label, children, error }: { label: string; children: React.ReactNode; error?: string }) {
+    return (
+        <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>
+            {children}
+            {error && <p className="text-xs text-red-500">{error}</p>}
+        </div>
+    );
+}
+
+function IconButton({ icon, title, onClick }: { icon: string; title: string; onClick: () => void }) {
+    return (
+        <button onClick={onClick} className="rounded-xl bg-white/10 p-2 transition-colors hover:bg-white/20" title={title} type="button">
+            <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>{icon}</span>
+        </button>
     );
 }

@@ -1,6 +1,7 @@
 export interface PatientProfile {
     id: string;
     userId: string;
+    patientCode?: string;
     fullName: string;
     dob: string;
     gender: "male" | "female" | "other";
@@ -20,6 +21,16 @@ export interface PatientProfile {
     avatar?: string;
     createdAt: string;
     updatedAt: string;
+    insuranceStatus?: "active" | "expiring" | "expired" | "none";
+    insuranceProviderName?: string;
+    hasInsurance?: boolean;
+    summary?: {
+        age?: number;
+        insuranceCount?: number;
+        allergyCount?: number;
+        medicalHistoryCount?: number;
+        tagCount?: number;
+    };
 }
 
 export const RELATIONSHIP_OPTIONS = [

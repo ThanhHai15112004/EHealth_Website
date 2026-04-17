@@ -1,12 +1,6 @@
-/**
- * Patient Service
- * Quản lý bệnh nhân — theo đúng Swagger API Backend
- *
- * Backend: http://160.250.186.97:3000/api-docs
- */
 
 import axiosClient from '@/api/axiosClient';
-import { PATIENT_ENDPOINTS, DOCUMENT_ENDPOINTS, EMR_ENDPOINTS, PRESCRIPTION_ENDPOINTS } from '@/api/endpoints';
+import { PATIENT_ENDPOINTS, PATIENT_ENDPOINTS_EXT, DOCUMENT_ENDPOINTS, EMR_ENDPOINTS, PRESCRIPTION_ENDPOINTS } from '@/api/endpoints';
 
 // ============================================
 // Types — theo đúng schema backend
@@ -93,7 +87,9 @@ export interface PatientInsurance {
     patient_id: string;
     insurance_number: string;
     provider?: string;
+    provider_name?: string;
     expiry_date?: string;
+    end_date?: string;
     issued_date?: string;
     is_active: boolean;
     created_at: string;
@@ -134,6 +130,15 @@ export interface MedicalRecord {
     diagnosis?: string;
     chief_complaint?: string;
     status?: string;
+}
+
+export interface PatientSummary {
+    age?: number;
+    tag_count?: number;
+    insurance_count?: number;
+    medical_history_count?: number;
+    allergy_count?: number;
+    [key: string]: any;
 }
 
 export interface PaginationInfo {
@@ -294,6 +299,42 @@ export const getPatientsByAccountId = async (accountId: string): Promise<{ succe
             success: false,
             message: error.response?.data?.message || 'Không thể lấy danh sách hồ sơ bệnh nhân',
         };
+    }
+};
+
+export const getPatientSummary = async (patientId: string): Promise<{ success: boolean; data?: PatientSummary; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_ENDPOINTS_EXT.SUMMARY(patientId));
+        return { success: true, data: unwrap<PatientSummary>(response) };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || "Không thể lấy tóm tắt hồ sơ" };
+    }
+};
+
+export const getEmergencyContacts = async (patientId: string): Promise<{ success: boolean; data?: any[]; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_ENDPOINTS_EXT.EMERGENCY_CONTACTS(patientId));
+        return { success: true, data: unwrap<any[]>(response) };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || "Không thể lấy liên hệ khẩn cấp" };
+    }
+};
+
+export const getLegalRepresentative = async (patientId: string): Promise<{ success: boolean; data?: any; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_ENDPOINTS_EXT.LEGAL_REPRESENTATIVE(patientId));
+        return { success: true, data: unwrap<any>(response) };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || "Không thể lấy người đại diện pháp lý" };
+    }
+};
+
+export const getPatientAppointments = async (patientId: string): Promise<{ success: boolean; data?: any[]; message?: string }> => {
+    try {
+        const response = await axiosClient.get(PATIENT_ENDPOINTS_EXT.PATIENT_APPOINTMENTS(patientId));
+        return { success: true, data: unwrap<any[]>(response) };
+    } catch (error: any) {
+        return { success: false, message: error.response?.data?.message || "Không thể lấy lịch hẹn của bệnh nhân" };
     }
 };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
@@ -47,7 +47,7 @@ export default function PatientProfilesPage() {
                 setProfiles([]);
             }
         } catch (error) {
-            showToast("Không thể tải danh sách hồ sơ", "error");
+            showToast("Kh?ng th? t?i danh s?ch h? s?", "error");
         } finally {
             setLoaded(true);
         }
@@ -220,13 +220,20 @@ export default function PatientProfilesPage() {
         }
     };
 
-    const activeProfiles = profiles.filter(p => p.isActive);
-    const inactiveProfiles = profiles.filter(p => !p.isActive);
+    const activeProfiles = useMemo(() => profiles.filter(p => p.isActive), [profiles]);
+    const inactiveProfiles = useMemo(() => profiles.filter(p => !p.isActive), [profiles]);
 
     const getRelIcon = (rel: string) => RELATIONSHIP_OPTIONS.find(r => r.value === rel)?.icon || "person";
     const getRelColor = (rel: string) => {
         const colors: Record<string, string> = { self: "from-[#3C81C6] to-[#2563eb]", parent: "from-violet-500 to-purple-600", child: "from-cyan-500 to-teal-600", sibling: "from-emerald-500 to-green-600", spouse: "from-rose-500 to-pink-600", other: "from-gray-500 to-gray-600" };
         return colors[rel] || colors.other;
+    };
+
+    const getInsuranceBadge = (profile: PatientProfile) => {
+        if (!profile.hasInsurance && !profile.insuranceNumber) return { label: "Chưa có BH", className: "bg-amber-50 text-amber-700" };
+        if (profile.insuranceStatus === "expired") return { label: "BH hết hạn", className: "bg-rose-50 text-rose-700" };
+        if (profile.insuranceStatus === "expiring") return { label: "BH sắp hết hạn", className: "bg-amber-50 text-amber-700" };
+        return { label: "BH còn hiệu lực", className: "bg-emerald-50 text-emerald-700" };
     };
 
     if (!loaded) return <div className="flex justify-center py-20"><span className="material-symbols-outlined animate-spin text-[#3C81C6]" style={{ fontSize: "32px" }}>progress_activity</span></div>;
@@ -272,14 +279,18 @@ export default function PatientProfilesPage() {
                                 </div>
                                 <div>
                                     <h3 className="text-base font-bold text-[#121417] dark:text-white">{profile.fullName}</h3>
-                                    <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="flex flex-wrap items-center gap-2 mt-0.5">
                                         <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${profile.isPrimary ? "bg-[#3C81C6]/10 text-[#3C81C6]" : "bg-gray-100 dark:bg-gray-800 text-gray-500"}`}>
                                             {profile.relationshipLabel}
                                         </span>
                                         {profile.isPrimary && (
                                             <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-600 rounded-full">Chính</span>
                                         )}
+                                        <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${getInsuranceBadge(profile).className}`}>
+                                            {getInsuranceBadge(profile).label}
+                                        </span>
                                     </div>
+                                    <p className="text-xs text-gray-400 mt-1">{profile.patientCode || profile.id}</p>
                                 </div>
                             </div>
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

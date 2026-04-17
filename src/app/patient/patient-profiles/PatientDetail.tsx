@@ -1,12 +1,13 @@
-import React, { useState } from "react";
-import { type PatientProfile } from "@/types/patient-profile";
+"use client";
 
-// Giả lập import các Tab (sẽ được tách ra các file riêng sau)
+import React, { useEffect, useState } from "react";
+import { type PatientProfile } from "@/types/patient-profile";
+import { ehrService } from "@/services/ehrService";
+
 import OverviewTab from "./tabs/OverviewTab";
 import InsuranceTab from "./tabs/InsuranceTab";
 import VitalsTab from "./tabs/VitalsTab";
 import MedicalHistoryTab from "./tabs/MedicalHistoryTab";
-import EncountersTab from "./tabs/EncountersTab";
 import MedicationsTab from "./tabs/MedicationsTab";
 import DocumentsTab from "./tabs/DocumentsTab";
 import TimelineTab from "./tabs/TimelineTab";
@@ -17,90 +18,142 @@ interface PatientDetailProps {
     onEdit: () => void;
 }
 
-const TABS = [
-    { id: "overview", label: "Tổng quan", icon: "person" },
-    { id: "insurance", label: "Bảo hiểm Y tế", icon: "health_and_safety" },
-    { id: "vitals", label: "Chỉ số sinh tồn", icon: "favorite" },
-    { id: "medical-history", label: "Tiền sử y tế", icon: "history" },
-    { id: "encounters", label: "Khám & Lịch hẹn", icon: "stethoscope" },
-    { id: "medications", label: "Đơn thuốc", icon: "pill" },
-    { id: "documents", label: "Tài liệu", icon: "folder_open" },
-    { id: "timeline", label: "Dòng thời gian", icon: "timeline" },
+type TabId =
+    | "overview"
+    | "insurance"
+    | "vitals"
+    | "medical-history"
+    | "medications"
+    | "documents"
+    | "timeline";
+
+const TABS: Array<{ id: TabId; label: string }> = [
+    { id: "overview", label: "Thông tin cá nhân" },
+    { id: "insurance", label: "Bảo hiểm" },
+    { id: "vitals", label: "Chỉ số" },
+    { id: "medical-history", label: "Tiền sử" },
+    { id: "medications", label: "Đơn thuốc" },
+    { id: "documents", label: "Tài liệu" },
+    { id: "timeline", label: "Dòng thời gian" },
 ];
 
 export default function PatientDetail({ profile, onBack, onEdit }: PatientDetailProps) {
-    const [activeTab, setActiveTab] = useState("overview");
+    const [activeTab, setActiveTab] = useState<TabId>("overview");
+    const [insuranceInfo, setInsuranceInfo] = useState<any | null>(null);
+
+    const fetchInsuranceStatus = async () => {
+        if (!profile.id) return;
+
+        try {
+            const res = await ehrService.getInsuranceStatus(profile.id);
+            const firstItem = Array.isArray(res.data) ? res.data[0] : null;
+            setInsuranceInfo(firstItem || null);
+        } catch {
+            setInsuranceInfo(null);
+        }
+    };
+
+    useEffect(() => {
+        fetchInsuranceStatus();
+    }, [profile.id]);
 
     const renderActiveTab = () => {
         switch (activeTab) {
-            case "overview": return <OverviewTab profile={profile} />;
-            case "insurance": return <InsuranceTab profile={profile} />;
-            case "vitals": return <VitalsTab profile={profile} />;
-            case "medical-history": return <MedicalHistoryTab profile={profile} />;
-            case "encounters": return <EncountersTab profile={profile} />;
-            case "medications": return <MedicationsTab profile={profile} />;
-            case "documents": return <DocumentsTab profile={profile} />;
-            case "timeline": return <TimelineTab profile={profile} />;
-            default: return <OverviewTab profile={profile} />;
+            case "overview":
+                return <OverviewTab profile={profile} insuranceInfo={insuranceInfo} />;
+            case "insurance":
+                return <InsuranceTab profile={profile} onInsuranceChanged={fetchInsuranceStatus} />;
+            case "vitals":
+                return <VitalsTab profile={profile} />;
+            case "medical-history":
+                return <MedicalHistoryTab profile={profile} />;
+            case "medications":
+                return <MedicationsTab profile={profile} />;
+            case "documents":
+                return <DocumentsTab profile={profile} />;
+            case "timeline":
+                return <TimelineTab profile={profile} />;
+            default:
+                return <OverviewTab profile={profile} insuranceInfo={insuranceInfo} />;
         }
     };
 
     return (
-        <div className="bg-white dark:bg-[#0d1117] rounded-2xl border border-gray-100 dark:border-[#2d353e] flex flex-col shadow-sm h-full max-h-[calc(100vh-100px)] overflow-hidden">
-            {/* Header / Back */}
-            <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-100 dark:border-[#2d353e] shrink-0">
-                <div className="flex items-center gap-4">
-                    <button onClick={onBack} className="p-2 rounded-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors group">
-                        <span className="material-symbols-outlined transition-transform group-hover:-translate-x-1" style={{ fontSize: "20px" }}>arrow_back</span>
+        <div className="min-h-full w-full bg-[linear-gradient(180deg,#f8fafc_0%,#ffffff_100%)] dark:bg-[linear-gradient(180deg,#0d1117_0%,#111821_100%)]">
+            <div className="border-b border-slate-200/80 bg-white/85 px-5 py-5 backdrop-blur-sm dark:border-[#2d353e] dark:bg-[#111821]/90 sm:px-8">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <button
+                        onClick={onBack}
+                        className="inline-flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>arrow_back</span>
+                        Danh sách hồ sơ
                     </button>
-                    <div>
-                        <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            {profile.fullName}
-                            {profile.isPrimary && <span className="px-2 py-0.5 bg-[#3C81C6]/10 text-[#3C81C6] text-[10px] font-bold rounded-lg uppercase tracking-wider">Hồ sơ chính</span>}
-                            {!profile.isActive && <span className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-gray-500 text-[10px] font-bold rounded-lg uppercase tracking-wider">Đã ngưng</span>}
-                        </h2>
-                        <p className="text-sm text-gray-500 mt-0.5">{profile.relationshipLabel} • Cập nhật lần cuối: {new Date(profile.updatedAt || "").toLocaleDateString("vi-VN")}</p>
-                    </div>
+
+                    <button
+                        onClick={onEdit}
+                        className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3.5 py-2 text-sm font-semibold text-[#3C81C6] transition-all hover:border-[#3C81C6]/30 hover:bg-[#3C81C6]/5 dark:border-[#2d353e] dark:bg-[#111821]"
+                        title="Chỉnh sửa thông tin"
+                    >
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>edit</span>
+                        Chỉnh sửa
+                    </button>
                 </div>
-                <button onClick={onEdit} className="p-2 text-[#3C81C6] bg-[#3C81C6]/10 hover:bg-[#3C81C6]/20 rounded-xl transition-all" title="Chỉnh sửa thông tin">
-                    <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>edit</span>
-                </button>
+
+                <div className="mt-5">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-[#3C81C6]/10 px-2.5 py-1 text-[11px] font-bold tracking-wide text-[#3C81C6]">
+                            {profile.relationshipLabel}
+                        </span>
+                        {profile.isPrimary && (
+                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700">
+                                Hồ sơ chính
+                            </span>
+                        )}
+                        <span
+                            className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                                profile.isActive ? "bg-slate-100 text-slate-700" : "bg-gray-100 text-gray-500"
+                            }`}
+                        >
+                            {profile.isActive ? "Đang hoạt động" : "Đã ngưng"}
+                        </span>
+                    </div>
+
+                    <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-[30px]">
+                        {profile.fullName}
+                    </h1>
+                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                        Mã bệnh nhân: <span className="font-medium text-slate-700 dark:text-slate-200">{profile.patientCode || profile.id}</span>
+                    </p>
+                </div>
             </div>
 
-            {/* Layout Main */}
-            <div className="flex flex-1 overflow-hidden">
-                {/* Vertical Sidebar Tabs */}
-                <div className="w-64 border-r border-gray-100 dark:border-[#2d353e] flex flex-col shrink-0 overflow-y-auto bg-gray-50/50 dark:bg-[#13191f]">
-                    <div className="flex flex-col p-4 gap-1">
+            <div className="sticky top-0 z-10 border-b border-slate-200/80 bg-white/92 px-5 py-3 backdrop-blur-sm dark:border-[#2d353e] dark:bg-[#111821]/95 sm:px-8">
+                <div className="scrollbar-none -mb-1 overflow-x-auto pb-1">
+                    <div className="inline-flex min-w-full gap-1 rounded-[22px] bg-slate-100 p-1.5 dark:bg-slate-800/90 sm:min-w-0">
                         {TABS.map((tab) => {
                             const isActive = activeTab === tab.id;
+
                             return (
                                 <button
                                     key={tab.id}
                                     onClick={() => setActiveTab(tab.id)}
-                                    className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium ${
-                                        isActive 
-                                            ? 'bg-gradient-to-r from-[#3C81C6] to-[#2563eb] text-white shadow-md shadow-blue-500/20' 
-                                            : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                                    className={`shrink-0 rounded-[18px] px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
+                                        isActive
+                                            ? "bg-white text-slate-900 shadow-[0_6px_18px_rgba(15,23,42,0.08)] dark:bg-[#0f141b] dark:text-white"
+                                            : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
                                     }`}
                                 >
-                                    <span 
-                                        className={`material-symbols-outlined ${isActive ? 'text-white' : 'text-gray-400'}`} 
-                                        style={{ fontSize: "20px" }}
-                                    >
-                                        {tab.icon}
-                                    </span>
                                     {tab.label}
                                 </button>
                             );
                         })}
                     </div>
                 </div>
+            </div>
 
-                {/* Main Content Area */}
-                <div className="flex-1 overflow-y-auto p-6 bg-white dark:bg-[#0d1117]">
-                    {renderActiveTab()}
-                </div>
+            <div className="px-5 py-6 sm:px-8 sm:py-8">
+                {renderActiveTab()}
             </div>
         </div>
     );

@@ -30,7 +30,7 @@ export default function PatientProfileDetailPage() {
                 const matchedPatient = listRes.data?.find((patient) =>
                     patient.patient_id === id ||
                     patient.patient_code === id ||
-                    patient.id === id
+                    patient.id === id,
                 );
 
                 if (matchedPatient) {
@@ -45,7 +45,7 @@ export default function PatientProfileDetailPage() {
                 setProfile(mapped);
             } else {
                 showToast("Không tìm thấy hồ sơ bệnh nhân.", "error");
-                router.push('/patient/patient-profiles');
+                router.push("/patient/patient-profiles");
             }
         } catch (error) {
             showToast("Lỗi khi tải dữ liệu", "error");
@@ -60,8 +60,8 @@ export default function PatientProfileDetailPage() {
 
     if (loading) {
         return (
-            <div className="flex h-screen items-center justify-center bg-gray-50 dark:bg-[#0d1117]">
-                <div className="w-10 h-10 border-4 border-[#3C81C6] border-t-transparent rounded-full animate-spin"></div>
+            <div className="flex min-h-[calc(100vh-80px)] items-center justify-center bg-gray-50 dark:bg-[#0d1117]">
+                <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#3C81C6] border-t-transparent"></div>
             </div>
         );
     }
@@ -69,11 +69,11 @@ export default function PatientProfileDetailPage() {
     if (!profile) return null;
 
     return (
-        <div className="h-full w-full max-w-7xl mx-auto p-4 md:p-6 lg:p-8">
-            <PatientDetail 
-                profile={profile} 
-                onBack={() => router.push('/patient/patient-profiles')} 
-                onEdit={() => router.push(`/patient/patient-profiles?action=edit&id=${profile.id}`)} 
+        <div className="h-full w-full">
+            <PatientDetail
+                profile={profile}
+                onBack={() => router.push("/patient/patient-profiles")}
+                onEdit={() => router.push(`/patient/patient-profiles?action=edit&id=${profile.id}`)}
             />
         </div>
     );

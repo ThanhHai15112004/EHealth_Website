@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { type PatientProfile } from "@/types/patient-profile";
 import axiosClient from "@/api/axiosClient";
 import { PATIENT_ENDPOINTS } from "@/api/endpoints";
+import { ehrService } from "@/services/ehrService";
 
 interface TabProps {
     profile: PatientProfile;
@@ -30,9 +31,14 @@ export default function TimelineTab({ profile }: TabProps) {
                 setLoading(true);
                 const patientId = profile.id;
                 if (!patientId) return;
-                const res = await axiosClient.get(PATIENT_ENDPOINTS.AUDIT_LOGS(patientId.toString())).catch(() => null);
-                if (res?.data?.data) {
-                    setEvents(Array.isArray(res.data.data) ? res.data.data : []);
+                const [timelineRes, auditRes] = await Promise.allSettled([
+                    ehrService.getHealthTimeline(patientId, { limit: 50 }),
+                    axiosClient.get(PATIENT_ENDPOINTS.AUDIT_LOGS(patientId.toString())).catch(() => null),
+                ]);
+                if (timelineRes.status === "fulfilled" && Array.isArray(timelineRes.value.data) && timelineRes.value.data.length > 0) {
+                    setEvents(timelineRes.value.data);
+                } else if (auditRes.status === "fulfilled" && auditRes.value?.data?.data) {
+                    setEvents(Array.isArray(auditRes.value.data.data) ? auditRes.value.data.data : []);
                 }
             } catch (error) {
                 console.error("Error fetching timeline:", error);
