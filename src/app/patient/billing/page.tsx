@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { Invoice, Transaction, ServicePrice } from "@/types/patient-portal";
 import { billingService } from "@/services/billingService";
+import { patientProfileService, type PatientProfileBE } from "@/services/patientProfileService";
 import { unwrapList, unwrap } from "@/api/response";
+import { useAuth } from "@/contexts/AuthContext";
 
 const TABS = [
     { id: "pending", label: "Chờ thanh toán", icon: "pending_actions" },
@@ -16,8 +18,11 @@ const formatVND = (n: number) => (n || 0).toLocaleString("vi-VN") + "đ";
 type QRState = "idle" | "loading" | "showing" | "success" | "error";
 
 export default function BillingPage() {
+    const { user } = useAuth();
     const [activeTab, setActiveTab]         = useState("pending");
     const [selectedProfileId, setSelectedProfileId] = useState("");
+    const [profiles, setProfiles] = useState<PatientProfileBE[]>([]);
+    const [profilesLoaded, setProfilesLoaded] = useState(false);
 
     // ── Invoices state ────────────────────────────────────────────────────────
     const [invoices, setInvoices]           = useState<Invoice[]>([]);
@@ -40,14 +45,41 @@ export default function BillingPage() {
     // ── Catalog filter ────────────────────────────────────────────────────────
     const [priceCategory, setPriceCategory] = useState("all");
 
+    useEffect(() => {
+        if (!user?.id) return;
+
+        const loadProfiles = async () => {
+            try {
+                const response = await patientProfileService.getMyProfiles();
+                if (response.length > 0) {
+                    setProfiles(response);
+                    const cachedId = sessionStorage.getItem("patientPortal_selectedProfileId");
+                    const exists = response.some((profile) => profile.id === cachedId);
+                    setSelectedProfileId(exists ? cachedId! : response[0].id);
+                } else {
+                    setProfiles([]);
+                }
+            } catch {
+                setProfiles([]);
+            } finally {
+                setProfilesLoaded(true);
+            }
+        };
+
+        void loadProfiles();
+    }, [user?.id]);
+
     // ── Load invoices from API ────────────────────────────────────────────────
     const fetchInvoices = useCallback(async () => {
+        if (!profilesLoaded) return;
         setLoadingInvoices(true);
         setInvoiceError(null);
         try {
-            const params: Record<string, any> = { limit: 50 };
-            if (selectedProfileId) params.profileId = selectedProfileId;
-            const res = await billingService.getInvoices(params);
+            if (!selectedProfileId) {
+                setInvoices([]);
+                return;
+            }
+            const res = await billingService.getByPatient(selectedProfileId, { limit: 50 });
             const { data } = unwrapList<any>(res);
             if (data.length > 0) {
                 // BE (snake_case): invoices_id, invoice_code, patient_name, total_amount,
@@ -84,13 +116,15 @@ export default function BillingPage() {
                     };
                 });
                 setInvoices(mapped);
+            } else {
+                setInvoices([]);
             }
         } catch {
             setInvoiceError("Không thể tải hóa đơn từ máy chủ. Đang hiển thị dữ liệu mẫu.");
         } finally {
             setLoadingInvoices(false);
         }
-    }, [selectedProfileId]);
+    }, [profilesLoaded, selectedProfileId]);
 
     useEffect(() => { fetchInvoices(); }, [fetchInvoices]);
 
@@ -142,13 +176,13 @@ export default function BillingPage() {
                 description: `Thanh toán ${inv.code}`,
             });
             const data = unwrap<any>(res);
-            setQrOrderId(data.orderId ?? data.transferId ?? "");
-            setQrImage(data.qrImageUrl ?? data.qrCode ?? data.qrDataURL ?? "");
+            setQrOrderId(data.orderId ?? data.order_id ?? data.payment_orders_id ?? data.transferId ?? "");
+            setQrImage(data.qrImageUrl ?? data.qrCode ?? data.qrDataURL ?? data.qr_code_url ?? "");
             setQrState("showing");
 
             // Poll payment status every 5 seconds (max 5 minutes)
-            if (data.orderId || data.transferId) {
-                const oid = data.orderId ?? data.transferId;
+            if (data.orderId || data.order_id || data.payment_orders_id || data.transferId) {
+                const oid = data.orderId ?? data.order_id ?? data.payment_orders_id ?? data.transferId;
                 let pollCount = 0;
                 const MAX_POLLS = 60; // 5 minutes
                 pollRef.current = setInterval(async () => {
@@ -162,7 +196,7 @@ export default function BillingPage() {
                     try {
                         const statusRes = await billingService.getQRStatus(oid);
                         const st = unwrap<any>(statusRes);
-                        const status = st?.status ?? st?.paymentStatus;
+                        const status = String(st?.status ?? st?.paymentStatus ?? "").toLowerCase();
                         if (status === "paid" || status === "success" || status === "completed") {
                             stopPoll();
                             setQrState("success");
@@ -253,6 +287,33 @@ export default function BillingPage() {
                     </div>
                 ))}
             </div>
+
+            {profiles.length > 0 && (
+                <div className="flex gap-3 overflow-x-auto pb-1">
+                    {profiles.map((profile) => (
+                        <button
+                            key={profile.id}
+                            onClick={() => {
+                                setSelectedProfileId(profile.id);
+                                sessionStorage.setItem("patientPortal_selectedProfileId", profile.id);
+                            }}
+                            className={`min-w-[220px] rounded-2xl border p-3 text-left transition-all ${
+                                selectedProfileId === profile.id
+                                    ? "border-[#3C81C6] bg-blue-50/60 dark:bg-blue-900/20"
+                                    : "border-[#e5e7eb] dark:border-[#2d353e] bg-white dark:bg-[#1e242b]"
+                            }`}
+                        >
+                            <p className={`text-sm font-bold ${selectedProfileId === profile.id ? "text-[#3C81C6]" : "text-[#121417] dark:text-white"}`}>
+                                {profile.full_name}
+                            </p>
+                            <p className="mt-1 text-xs text-[#687582]">
+                                {profile.patient_code}
+                                {profile.relationship ? ` • ${profile.relationship}` : ""}
+                            </p>
+                        </button>
+                    ))}
+                </div>
+            )}
 
             {/* Tabs */}
             <div className="flex gap-1 bg-[#f1f2f4] dark:bg-[#13191f] p-1 rounded-xl">

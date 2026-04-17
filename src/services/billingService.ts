@@ -61,12 +61,16 @@ export const billingService = {
         axiosClient.post(BILLING_ENDPOINTS.PAY_ONLINE, data),
 
     /** Create SePay QR code for payment */
-    createQR: (data: { invoiceId: string; amount: number; description?: string }) =>
-        axiosClient.post('/api/billing/payments/create-qr', data),
+    createQR: (data: { invoiceId: string; amount?: number; description?: string }) =>
+        axiosClient.post('/api/billing/payments/qr-generate', {
+            invoice_id: data.invoiceId,
+            amount: data.amount,
+            description: data.description,
+        }),
 
     /** Poll payment status by orderId */
     getQRStatus: (orderId: string) =>
-        axiosClient.get(`/api/billing/payments/${orderId}/status`),
+        axiosClient.get(`/api/billing/payments/orders/${orderId}/status`),
 
     /** List payments with optional filters */
     getPayments: (params?: Record<string, any>) =>

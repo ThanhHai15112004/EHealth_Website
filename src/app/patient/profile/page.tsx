@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/contexts/ToastContext";
 import axiosClient from "@/api/axiosClient";
-import { PROFILE_ENDPOINTS, PATIENT_ENDPOINTS } from "@/api/endpoints";
+import { PROFILE_ENDPOINTS } from "@/api/endpoints";
 import { getProfileSessions, deleteProfileSession } from "@/services/authService";
 import { validateName, validatePhone, validateDob, validateIdNumber, validateBHYT } from "@/utils/validation";
 
@@ -197,7 +197,7 @@ export default function ProfilePage() {
         if (!newFamily.name || !newFamily.relation) return;
         try {
             if (user?.id) {
-                await axiosClient.post(PATIENT_ENDPOINTS.ADD_RELATION(user.id), newFamily);
+                showToast("Quản lý người thân được thực hiện trong mục Hồ sơ BN.", "error");
             }
             setFamilyMembers(prev => [...prev, { ...newFamily, id: `fm-${Date.now()}` } as FamilyMember]);
             setShowAddFamily(false);
@@ -253,7 +253,7 @@ export default function ProfilePage() {
 
             {/* Tabs */}
             <div className="flex gap-1 overflow-x-auto pb-1 scrollbar-hide">
-                {TABS.map(tab => (
+                {TABS.filter(tab => tab.id !== "family").map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium whitespace-nowrap transition-all
                         ${activeTab === tab.id ? "bg-[#3C81C6] text-white shadow-sm shadow-[#3C81C6]/20" : "bg-white text-gray-500 hover:bg-gray-50 border border-gray-100"}`}>
