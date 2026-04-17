@@ -727,6 +727,10 @@ function adaptMedication(m: any): Medication {
     };
 }
 
+function hasMeasuredValue(value: number | null | undefined) {
+    return Number.isFinite(value) && Number(value) > 0;
+}
+
 // ─── Loading Skeleton ─────────────────────────────────────────────────────────
 
 function Skeleton({ rows = 3 }: { rows?: number }) {
@@ -827,7 +831,7 @@ export default function HealthRecordsPage() {
         if (fetched[`overview_${selectedProfileId}`]) return;
         setLoadingOverview(true);
         try {
-            const [profileRes, summaryRes, activeConditionsRes, diagnosisRes, insuranceRes, medsRes, allergiesRes, timelineRes] = await Promise.allSettled([
+            const [profileRes, summaryRes, activeConditionsRes, diagnosisRes, insuranceRes, medsRes, allergiesRes, timelineRes, metricsRes] = await Promise.allSettled([
                 ehrService.getHealthProfile(patientId),
                 ehrService.getHealthSummary(patientId),
                 ehrService.getActiveConditions(patientId),
@@ -836,13 +840,16 @@ export default function HealthRecordsPage() {
                 ehrService.getCurrentMedications(patientId),
                 ehrService.getAllergies(patientId),
                 ehrService.getHealthTimeline(patientId, { limit: 6 }),
+                ehrService.getHealthMetrics(patientId, { limit: 50 }),
             ]);
 
             if (profileRes.status === "fulfilled") {
                 const profile = profileRes.value ?? {};
                 const latest = profile?.latest_vitals ?? profile?.latestVital ?? null;
-                if (latest) {
-                    setLatestVital(adaptVital(latest));
+                const healthMetrics = metricsRes.status === "fulfilled" ? metricsRes.value?.data ?? [] : [];
+                const latestVitalWithMetrics = applyHealthMetricsToVital(latest ? adaptVital(latest) : null, healthMetrics);
+                if (latestVitalWithMetrics?.date) {
+                    setLatestVital(latestVitalWithMetrics);
                 }
                 if (Array.isArray(profile?.current_medications) && profile.current_medications.length > 0) {
                     setMedications(profile.current_medications.map(adaptMedication));
@@ -1177,12 +1184,30 @@ function OverviewTab({
     recentTimeline: HealthTimelineItem[];
     overview: OverviewState;
 }) {
+    const hasBloodSugar = hasMeasuredValue(vital?.bloodSugar);
+    const bloodSugarValue = hasBloodSugar ? `${vital?.bloodSugar}` : "—";
+    const bloodSugarStatus = !hasBloodSugar
+        ? {
+            ok: false,
+            label: "Chưa có dữ liệu",
+            tone: "bg-slate-100 text-slate-600 dark:bg-slate-500/10 dark:text-slate-300",
+            icon: "info",
+        }
+        : {
+            ok: toNumber(vital?.bloodSugar, 0) >= 70 && toNumber(vital?.bloodSugar, 0) <= 140,
+            label: toNumber(vital?.bloodSugar, 0) >= 70 && toNumber(vital?.bloodSugar, 0) <= 140 ? "Bình thường" : "Cần theo dõi",
+            tone: toNumber(vital?.bloodSugar, 0) >= 70 && toNumber(vital?.bloodSugar, 0) <= 140
+                ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400"
+                : "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400",
+            icon: toNumber(vital?.bloodSugar, 0) >= 70 && toNumber(vital?.bloodSugar, 0) <= 140 ? "check_circle" : "warning",
+        };
+
     const healthCards = [
         { label: "Huyết áp", value: vital ? `${vital.bloodPressureSystolic}/${vital.bloodPressureDiastolic}` : "—", unit: "mmHg", icon: "bloodtype", color: "from-red-500 to-rose-600", ok: !vital || vital.bloodPressureSystolic <= 130 },
         { label: "Nhịp tim", value: vital ? `${vital.heartRate}` : "—", unit: "bpm", icon: "cardiology", color: "from-pink-500 to-red-500", ok: true },
         { label: "BMI", value: vital ? toNumber(vital.bmi).toFixed(1) : "—", unit: "", icon: "monitor_weight", color: "from-blue-500 to-indigo-600", ok: !vital || (toNumber(vital.bmi) >= 18.5 && toNumber(vital.bmi) <= 25) },
         { label: "SpO2", value: vital ? `${vital.spo2 || "—"}` : "—", unit: "%", icon: "pulmonology", color: "from-cyan-500 to-teal-600", ok: true },
-        { label: "Đường huyết", value: vital ? `${vital.bloodSugar || "—"}` : "—", unit: "mg/dL", icon: "water_drop", color: "from-amber-500 to-orange-500", ok: true },
+        { label: "Đường huyết", value: bloodSugarValue, unit: "mg/dL", icon: "water_drop", color: "from-amber-500 to-orange-500", ok: bloodSugarStatus.ok, statusLabel: bloodSugarStatus.label, statusTone: bloodSugarStatus.tone, statusIcon: bloodSugarStatus.icon },
         { label: "Nhiệt độ", value: vital ? toNumber(vital.temperature, 36.5).toFixed(1) : "—", unit: "°C", icon: "thermostat", color: "from-green-500 to-emerald-600", ok: true },
     ];
     const summaryCards = [
@@ -1207,9 +1232,9 @@ function OverviewTab({
                             <span className="text-2xl font-bold text-[#121417] dark:text-white">{c.value}</span>
                             {c.unit && <span className="text-sm text-[#687582] mb-0.5">{c.unit}</span>}
                         </div>
-                        <div className={`mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${c.ok ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400"}`}>
-                            <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>{c.ok ? "check_circle" : "warning"}</span>
-                            {c.ok ? "Bình thường" : "Cần theo dõi"}
+                        <div className={`mt-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${c.statusTone ?? (c.ok ? "bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-400" : "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400")}`}>
+                            <span className="material-symbols-outlined" style={{ fontSize: "12px" }}>{c.statusIcon ?? (c.ok ? "check_circle" : "warning")}</span>
+                            {c.statusLabel ?? (c.ok ? "Bình thường" : "Cần theo dõi")}
                         </div>
                     </div>
                 ))}

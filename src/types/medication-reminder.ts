@@ -4,11 +4,15 @@ export interface MedicationReminder {
     medicationName: string;
     dosage: string;
     frequency: number;
+    frequencyLabel?: string;
     timesOfDay: string[];
     instructions: string;
     startDate: string;
     endDate: string;
     prescriptionId?: string;
+    prescriptionDetailId?: string;
+    doctorName?: string;
+    daysRemaining?: number | null;
     isActive: boolean;
     color: string;
     createdAt: string;
