@@ -65,8 +65,8 @@ export default function MedicinesPage() {
 
     const loadMedicines = async () => {
         const [response, inventoryResponse] = await Promise.all([
-            getDrugs({ limit: 200 }),
-            inventoryService.getList({ limit: 500 }).catch(() => null),
+            Promise.resolve(getDrugs({ limit: 200 })),
+            Promise.resolve(inventoryService.getList({ limit: 500 })).catch(() => null),
         ]);
 
         const items = Array.isArray(response?.data) ? response.data : [];
